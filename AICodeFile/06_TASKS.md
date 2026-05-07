@@ -578,8 +578,7 @@ interface SettingsState {
 重构现有的 DashboardPage，使其更加美观和实用。
 
 **涉及文件：**
-- `${REPO_ROOT}/src/pages/DashboardPage/index.tsx`（重构）
-- `${REPO_ROOT}/src/pages/DashboardPage/styles.css`
+- `${REPO_ROOT}/src/pages/DashboardPage.tsx`（重构）
 
 **开发步骤：**
 
@@ -603,12 +602,26 @@ interface SettingsState {
 **前置任务：** 任务 2.1
 
 **验收标准：**
-- [ ] 界面美观、专业
-- [ ] 信息显示完整
-- [ ] 快速操作可用
-- [ ] 响应式布局
+- [x] 界面美观、专业（Card/Statistic/Alert/Tag/图标）
+- [x] 信息显示完整（版本、Gateway 状态、技能数、连接器数）
+- [x] 快速操作可用（启停 Gateway、跳转 Chat/Skills/Connectors）
+- [x] 响应式布局（Row/Col 断点）
 
 **预计复杂度：** 简单
+
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-07
+- **完成内容概览**：
+  - DashboardPage 重构为 Ant Design 卡片化布局（指标 + 快捷入口 + 刷新）
+  - Gateway 启停对接 `gatewayStore`（loading/error），并在启停后强制刷新状态
+  - 技能/连接器数量对接 `skillStore/connectorStore`（进入页面时触发 fetch）
+  - CLI 缺失时给出明确警告提示，并禁用 Gateway 操作
+  - 设置入口暂未接路由，按钮以禁用态展示（避免跳转失败）
+- **涉及文件**：
+  - `src/pages/DashboardPage.tsx`
+- **验收结果（本阶段）**：
+  - [x] 4 项验收标准全部满足
 
 ---
 
