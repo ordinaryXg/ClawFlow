@@ -1,102 +1,490 @@
-import { spawn, ChildProcess } from 'child_process';
-import { ipcMain } from 'electron';
+import { spawn, ChildProcess, ExecException, exec } from 'child_process';
+import { app, ipcMain } from 'electron';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import EventEmitter from 'events';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const execAsync = promisify(exec);
 
-export interface OpenClawEngine {
-  getVersion(): Promise<string>;
-  getGatewayStatus(): Promise<'running' | 'stopped' | 'unknown'>;
-  startGateway(): Promise<void>;
-  stopGateway(): Promise<void>;
+/**
+ * OpenClaw 引擎配置接口
+ */
+export interface OpenClawEngineConfig {
+  /** OpenClaw CLI 可执行文件路径（默认：'openclaw'，从 PATH 查找） */
+  cliPath?: string;
+  /** 命令执行超时时间（毫秒，默认：30000） */
+  commandTimeout?: number;
+  /** Gateway 启动确认超时时间（毫秒，默认：5000） */
+  gatewayStartTimeout?: number;
+  /** 是否启用详细日志（默认：false） */
+  verbose?: boolean;
 }
 
-class OpenClawEngineImpl implements OpenClawEngine {
-  private gatewayProcess: ChildProcess | null = null;
+/**
+ * OpenClaw 引擎事件
+ */
+export interface OpenClawEngineEvents {
+  'gateway:starting': [];
+  'gateway:started': [];
+  'gateway:stopping': [];
+  'gateway:stopped': [];
+  'gateway:error': [error: Error];
+  'command:executed': [command: string, args: string[]];
+  'command:error': [command: string, args: string[], error: Error];
+}
 
-  async getVersion(): Promise<string> {
-    try {
-      const { stdout } = await execAsync('openclaw --version');
-      return stdout.trim();
-    } catch (error) {
-      console.error('获取 OpenClaw 版本失败:', error);
-      throw error;
+/**
+ * OpenClaw 引擎接口定义
+ */
+export interface OpenClawEngine {
+  /** 获取 OpenClaw 版本 */
+  getVersion(): Promise<string>;
+  /** 获取 Gateway 状态 */
+  getGatewayStatus(): Promise<'running' | 'stopped' | 'unknown'>;
+  /** 启动 Gateway */
+  startGateway(): Promise<void>;
+  /** 停止 Gateway */
+  stopGateway(): Promise<void>;
+  /** 获取当前配置 */
+  getConfig(): Readonly<OpenClawEngineConfig>;
+  /** 更新配置 */
+  updateConfig(config: Partial<OpenClawEngineConfig>): void;
+  /** 验证 CLI 是否可用 */
+  validateCLI(): Promise<boolean>;
+}
+
+/**
+ * OpenClaw 引擎事件发射器接口
+ */
+export interface OpenClawEngineEventEmitter {
+  on<K extends keyof OpenClawEngineEvents>(
+    event: K,
+    listener: (...args: OpenClawEngineEvents[K]) => void
+  ): this;
+  emit<K extends keyof OpenClawEngineEvents>(
+    event: K,
+    ...args: OpenClawEngineEvents[K]
+  ): boolean;
+}
+
+/**
+ * OpenClaw CLI 执行结果
+ */
+interface CLIExecutionResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
+/**
+ * 解析 OpenClaw CLI 路径
+ * 优先使用内置版本，回退到系统 PATH
+ */
+function resolveOpenClawPath(): string {
+  const isDev = !app.isPackaged;
+  
+  if (isDev) {
+    // 开发模式：使用本地安装的 openclaw
+    return 'openclaw';
+  }
+  
+  // 生产模式：从应用资源中解析
+  const resourcesPath = process.resourcesPath || 
+    (process.platform === 'darwin' 
+      ? path.join(app.getAppPath(), '..', '..', '..', '..')  // macOS: ../../..
+      : path.join(app.getAppPath(), '..'));                  // Windows/Linux: ../
+  
+  // 尝试多个可能位置（按优先级）
+  const possiblePaths = [
+    // 1. postPackage 钩子复制的位置（推荐）
+    path.join(resourcesPath, 'openclaw-cli', 'openclaw.mjs'),
+    path.join(resourcesPath, 'openclaw-cli', 'bin', 'openclaw.mjs'),
+    // 2. 解压的 asar 位置（如果配置了 asarUnpack）
+    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'openclaw', 'openclaw.mjs'),
+    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.bin', 'openclaw'),
+    // 3. 未打包的 node_modules（如果 asar: false）
+    path.join(resourcesPath, 'app', 'node_modules', '.bin', 'openclaw'),
+    path.join(app.getAppPath(), 'node_modules', '.bin', 'openclaw'),
+  ];
+  
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  
+  // 回退到系统 PATH 中的 openclaw
+  console.warn('[OpenClawEngine] 未找到内置 OpenClaw，尝试使用系统版本');
+  return 'openclaw';
+}
+
+/**
+ * OpenClaw 引擎实现类
+ */
+class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenClawEngineEventEmitter {
+  private config: Required<OpenClawEngineConfig>;
+  private gatewayProcess: ChildProcess | null = null;
+  private isStarting = false;
+  private isStopping = false;
+
+  constructor(config: OpenClawEngineConfig = {}) {
+    super();
+    
+    // 解析 OpenClaw 路径
+    const resolvedCliPath = config.cliPath ?? resolveOpenClawPath();
+    
+    this.config = {
+      cliPath: resolvedCliPath,
+      commandTimeout: config.commandTimeout ?? 30000,
+      gatewayStartTimeout: config.gatewayStartTimeout ?? 5000,
+      verbose: config.verbose ?? false,
+    };
+    
+    this.log('解析 OpenClaw CLI 路径:', this.config.cliPath);
+  }
+
+  /**
+   * 更新配置
+   */
+  updateConfig(config: Partial<OpenClawEngineConfig>): void {
+    this.config = {
+      ...this.config,
+      ...config,
+    };
+    this.log('配置已更新:', this.config);
+  }
+
+  /**
+   * 获取当前配置（只读）
+   */
+  getConfig(): Readonly<OpenClawEngineConfig> {
+    return { ...this.config };
+  }
+
+  /**
+   * 内部日志方法
+   */
+  private log(...args: any[]): void {
+    if (this.config.verbose) {
+      console.log('[OpenClawEngine]', ...args);
     }
   }
 
+  /**
+   * 内部错误日志方法
+   */
+  private logError(...args: any[]): void {
+    console.error('[OpenClawEngine]', ...args);
+  }
+
+  /**
+   * 获取生成命令（处理 ESM 执行）
+   */
+  private getSpawnCommand(): { command: string; args: string[] } {
+    const cliPath = this.config.cliPath;
+    
+    // 如果是 .mjs 文件，需要使用 node 运行
+    if (cliPath.endsWith('.mjs')) {
+      return {
+        command: process.execPath,  // 使用 Electron 的 Node
+        args: ['--experimental-vm-modules', cliPath]
+      };
+    }
+    
+    // 否则，假设它是可执行文件
+    return {
+      command: cliPath,
+      args: []
+    };
+  }
+
+  /**
+   * 执行 OpenClaw CLI 命令
+   */
+  private async executeCommand(
+    args: string[],
+    options: { timeout?: number; checkExitCode?: boolean } = {}
+  ): Promise<CLIExecutionResult> {
+    const { timeout = this.config.commandTimeout, checkExitCode = false } = options;
+    const command = this.config.cliPath;
+    const fullCommand = `${command} ${args.join(' ')}`;
+
+    this.log('执行命令:', fullCommand);
+
+    try {
+      const { stdout, stderr } = await execAsync(fullCommand, {
+        timeout,
+        windowsHide: true,
+      });
+
+      this.emit('command:executed', command, args);
+      this.log('命令执行成功:', fullCommand);
+
+      return {
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: 0,
+      };
+    } catch (error: any) {
+      const execError = error as ExecException & { stdout?: string; stderr?: string; code?: number };
+      
+      this.logError('命令执行失败:', fullCommand, execError.message);
+      this.emit('command:error', command, args, execError);
+
+      // 如果不检查退出码，则视为成功（某些命令退出码非0但仍有输出）
+      if (!checkExitCode) {
+        return {
+          stdout: (execError.stdout ?? '').trim(),
+          stderr: (execError.stderr ?? '').trim(),
+          exitCode: execError.code ?? null,
+        };
+      }
+
+      throw execError;
+    }
+  }
+
+  /**
+   * 验证 OpenClaw CLI 是否可用
+   */
+  async validateCLI(): Promise<boolean> {
+    try {
+      await this.getVersion();
+      return true;
+    } catch (error) {
+      this.logError('CLI 验证失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取 OpenClaw 版本
+   */
+  async getVersion(): Promise<string> {
+    const result = await this.executeCommand(['--version']);
+    return result.stdout;
+  }
+
+  /**
+   * 获取 Gateway 状态（通过 CLI 命令）
+   */
   async getGatewayStatus(): Promise<'running' | 'stopped' | 'unknown'> {
     try {
-      const { stdout } = await execAsync('openclaw gateway status');
-      if (stdout.includes('running') || stdout.includes('运行中')) {
+      const result = await this.executeCommand(['gateway', 'status'], {
+        checkExitCode: false,
+      });
+
+      const output = `${result.stdout} ${result.stderr}`.toLowerCase();
+
+      // 多种语言支持
+      if (
+        output.includes('running') ||
+        output.includes('运行中') ||
+        output.includes('active')
+      ) {
         return 'running';
-      } else if (stdout.includes('stopped') || stdout.includes('已停止')) {
+      }
+
+      if (
+        output.includes('stopped') ||
+        output.includes('已停止') ||
+        output.includes('inactive') ||
+        output.includes('not running')
+      ) {
         return 'stopped';
       }
+
       return 'unknown';
-    } catch (error: any) {
-      // 如果命令执行失败（退出码非0），可能表示 Gateway 未运行
-      if (error.code === 1 || error.stderr?.includes('not running')) {
-        return 'stopped';
-      }
+    } catch (error) {
+      this.logError('获取 Gateway 状态失败:', error);
       return 'unknown';
     }
   }
 
+  /**
+   * 等待 Gateway 达到指定状态
+   */
+  private async waitForGatewayStatus(
+    expectedStatus: 'running' | 'stopped',
+    timeoutMs: number
+  ): Promise<boolean> {
+    const startTime = Date.now();
+    const checkInterval = 500; // 每 500ms 检查一次
+
+    while (Date.now() - startTime < timeoutMs) {
+      const status = await this.getGatewayStatus();
+      
+      if (status === expectedStatus) {
+        return true;
+      }
+
+      // 等待后再次检查
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+
+    return false;
+  }
+
+  /**
+   * 启动 Gateway
+   */
   async startGateway(): Promise<void> {
-    if (this.gatewayProcess) {
-      console.log('Gateway 已经在运行');
+    if (this.isStarting) {
+      this.log('Gateway 正在启动中，跳过重复请求');
       return;
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        this.gatewayProcess = spawn('openclaw', ['gateway', 'start'], {
-          detached: true,
-          stdio: 'ignore',
-        });
-
-        this.gatewayProcess.unref();
-
-        // 简单等待 2 秒后认为启动成功
-        setTimeout(() => {
-          resolve();
-        }, 2000);
-      } catch (error) {
-        reject(error);
+    if (this.gatewayProcess) {
+      this.log('Gateway 进程已存在');
+      
+      // 验证是否真的在运行
+      const status = await this.getGatewayStatus();
+      if (status === 'running') {
+        this.log('Gateway 已经在运行');
+        return;
       }
-    });
+      
+      // 进程存在但状态不对，清理
+      this.log('进程存在但状态异常，先清理');
+      this.gatewayProcess = null;
+    }
+
+    this.isStarting = true;
+    this.emit('gateway:starting');
+
+    try {
+      this.log('正在启动 Gateway...');
+      
+      const { command, args: baseArgs } = this.getSpawnCommand();
+      const spawnArgs = [...baseArgs, 'gateway', 'start'];
+      
+      this.gatewayProcess = spawn(command, spawnArgs, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+
+      this.gatewayProcess.unref();
+
+      // 等待 Gateway 真正启动（通过状态检查确认）
+      this.log('等待 Gateway 启动确认...');
+      const started = await this.waitForGatewayStatus('running', this.config.gatewayStartTimeout);
+
+      if (started) {
+        this.log('Gateway 启动成功');
+        this.emit('gateway:started');
+      } else {
+        throw new Error(`Gateway 启动超时（${this.config.gatewayStartTimeout}ms）`);
+      }
+    } catch (error: any) {
+      this.logError('Gateway 启动失败:', error);
+      this.gatewayProcess = null;
+      this.emit('gateway:error', error);
+      throw error;
+    } finally {
+      this.isStarting = false;
+    }
   }
 
+  /**
+   * 停止 Gateway
+   */
   async stopGateway(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        const stopProcess = spawn('openclaw', ['gateway', 'stop']);
-        
-        stopProcess.on('close', (code) => {
-          this.gatewayProcess = null;
+    if (this.isStopping) {
+      this.log('Gateway 正在停止中，跳过重复请求');
+      return;
+    }
+
+    this.isStopping = true;
+    this.emit('gateway:stopping');
+
+    try {
+      this.log('正在停止 Gateway...');
+      
+      const { command, args: baseArgs } = this.getSpawnCommand();
+      const spawnArgs = [...baseArgs, 'gateway', 'stop'];
+      
+      const stopProcess = spawn(command, spawnArgs, {
+        windowsHide: true,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        stopProcess.on('close', (code: number | null) => {
           if (code === 0) {
+            this.log('Gateway 停止命令执行成功');
             resolve();
           } else {
-            reject(new Error(`停止 Gateway 失败，退出码: ${code}`));
+            reject(new Error(`Gateway 停止失败，退出码: ${code}`));
           }
         });
 
-        stopProcess.on('error', (err) => {
+        stopProcess.on('error', (err: Error) => {
+          this.logError('Gateway 停止进程错误:', err);
           reject(err);
         });
-      } catch (error) {
-        reject(error);
+      });
+
+      // 等待 Gateway 真正停止
+      this.log('等待 Gateway 停止确认...');
+      const stopped = await this.waitForGatewayStatus('stopped', 3000);
+
+      if (stopped) {
+        this.log('Gateway 已停止');
+        this.gatewayProcess = null;
+        this.emit('gateway:stopped');
+      } else {
+        this.log('Gateway 停止命令已执行，但状态未确认');
+        this.gatewayProcess = null;
+        this.emit('gateway:stopped');
       }
-    });
+    } catch (error: any) {
+      this.logError('Gateway 停止失败:', error);
+      this.emit('gateway:error', error);
+      throw error;
+    } finally {
+      this.isStopping = false;
+    }
+  }
+
+  /**
+   * 清理资源（应用退出时调用）
+   */
+  dispose(): void {
+    this.log('清理引擎资源...');
+    
+    if (this.gatewayProcess && !this.gatewayProcess.killed) {
+      this.log('正在停止 Gateway 进程...');
+      this.gatewayProcess.kill();
+      this.gatewayProcess = null;
+    }
+
+    this.removeAllListeners();
   }
 }
 
-// 导出单例
-const engine = new OpenClawEngineImpl();
+/** 引擎实例（单例） */
+let engineInstance: OpenClawEngineImpl | null = null;
 
-// 注册 IPC 处理程序
-export function registerOpenClawIPC() {
+/**
+ * 获取引擎实例
+ */
+export function getOpenClawEngine(config?: OpenClawEngineConfig): OpenClawEngine {
+  if (!engineInstance) {
+    engineInstance = new OpenClawEngineImpl(config);
+  } else if (config) {
+    engineInstance.updateConfig(config);
+  }
+  return engineInstance;
+}
+
+/**
+ * 注册 IPC 处理程序
+ * @param config 可选的配置参数
+ */
+export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
+  const engine = getOpenClawEngine(config);
+
   ipcMain.handle('openclaw:getVersion', async () => {
     return await engine.getVersion();
   });
@@ -112,6 +500,27 @@ export function registerOpenClawIPC() {
   ipcMain.handle('openclaw:stopGateway', async () => {
     await engine.stopGateway();
   });
+
+  ipcMain.handle('openclaw:getConfig', async () => {
+    return engine.getConfig();
+  });
+
+  ipcMain.handle('openclaw:updateConfig', async (_event, config: Partial<OpenClawEngineConfig>) => {
+    engine.updateConfig(config);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:validateCLI', async () => {
+    return await engine.validateCLI();
+  });
 }
 
-export default engine;
+/**
+ * 获取引擎事件发射器（用于监听引擎事件）
+ */
+export function getOpenClawEngineEvents(): OpenClawEngineEventEmitter {
+  return getOpenClawEngine() as OpenClawEngineImpl;
+}
+
+/** 默认导出引擎实例 */
+export default getOpenClawEngine();
