@@ -1,4 +1,4 @@
-import { spawn, ChildProcess, ExecException, exec } from 'child_process';
+import { ExecException, exec } from 'child_process';
 import { app, ipcMain } from 'electron';
 import { promisify } from 'util';
 import EventEmitter from 'events';
@@ -124,7 +124,6 @@ function resolveOpenClawPath(): string {
  */
 class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenClawEngineEventEmitter {
   private config: Required<OpenClawEngineConfig>;
-  private gatewayProcess: ChildProcess | null = null;
   private isStarting = false;
   private isStopping = false;
 
@@ -179,24 +178,18 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
   }
 
   /**
-   * 获取生成命令（处理 ESM 执行）
+   * 获取可用于 exec 的完整命令前缀
+   * 处理 .mjs 文件需要用 node/electron 运行的问题
    */
-  private getSpawnCommand(): { command: string; args: string[] } {
+  private getCommandPrefix(): string {
     const cliPath = this.config.cliPath;
     
-    // 如果是 .mjs 文件，需要使用 node 运行
     if (cliPath.endsWith('.mjs')) {
-      return {
-        command: process.execPath,  // 使用 Electron 的 Node
-        args: ['--experimental-vm-modules', cliPath]
-      };
+      // 使用 Electron 可执行文件运行 ESM 文件
+      return `"${process.execPath}" --experimental-vm-modules "${cliPath}"`;
     }
     
-    // 否则，假设它是可执行文件
-    return {
-      command: cliPath,
-      args: []
-    };
+    return `"${cliPath}"`;
   }
 
   /**
@@ -207,8 +200,8 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     options: { timeout?: number; checkExitCode?: boolean } = {}
   ): Promise<CLIExecutionResult> {
     const { timeout = this.config.commandTimeout, checkExitCode = false } = options;
-    const command = this.config.cliPath;
-    const fullCommand = `${command} ${args.join(' ')}`;
+    const commandPrefix = this.getCommandPrefix();
+    const fullCommand = `${commandPrefix} ${args.join(' ')}`;
 
     this.log('执行命令:', fullCommand);
 
@@ -335,38 +328,15 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       return;
     }
 
-    if (this.gatewayProcess) {
-      this.log('Gateway 进程已存在');
-      
-      // 验证是否真的在运行
-      const status = await this.getGatewayStatus();
-      if (status === 'running') {
-        this.log('Gateway 已经在运行');
-        return;
-      }
-      
-      // 进程存在但状态不对，清理
-      this.log('进程存在但状态异常，先清理');
-      this.gatewayProcess = null;
-    }
-
     this.isStarting = true;
     this.emit('gateway:starting');
 
     try {
       this.log('正在启动 Gateway...');
       
-      const { command, args: baseArgs } = this.getSpawnCommand();
-      const spawnArgs = [...baseArgs, 'gateway', 'start'];
+      // 使用 executeCommand 启动 Gateway（CLI 会作为守护进程在后台运行）
+      await this.executeCommand(['gateway', 'start']);
       
-      this.gatewayProcess = spawn(command, spawnArgs, {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-
-      this.gatewayProcess.unref();
-
       // 等待 Gateway 真正启动（通过状态检查确认）
       this.log('等待 Gateway 启动确认...');
       const started = await this.waitForGatewayStatus('running', this.config.gatewayStartTimeout);
@@ -379,7 +349,6 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       }
     } catch (error: any) {
       this.logError('Gateway 启动失败:', error);
-      this.gatewayProcess = null;
       this.emit('gateway:error', error);
       throw error;
     } finally {
@@ -402,40 +371,18 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     try {
       this.log('正在停止 Gateway...');
       
-      const { command, args: baseArgs } = this.getSpawnCommand();
-      const spawnArgs = [...baseArgs, 'gateway', 'stop'];
+      // 使用 executeCommand 停止 Gateway
+      await this.executeCommand(['gateway', 'stop']);
       
-      const stopProcess = spawn(command, spawnArgs, {
-        windowsHide: true,
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        stopProcess.on('close', (code: number | null) => {
-          if (code === 0) {
-            this.log('Gateway 停止命令执行成功');
-            resolve();
-          } else {
-            reject(new Error(`Gateway 停止失败，退出码: ${code}`));
-          }
-        });
-
-        stopProcess.on('error', (err: Error) => {
-          this.logError('Gateway 停止进程错误:', err);
-          reject(err);
-        });
-      });
-
       // 等待 Gateway 真正停止
       this.log('等待 Gateway 停止确认...');
       const stopped = await this.waitForGatewayStatus('stopped', 3000);
 
       if (stopped) {
         this.log('Gateway 已停止');
-        this.gatewayProcess = null;
         this.emit('gateway:stopped');
       } else {
         this.log('Gateway 停止命令已执行，但状态未确认');
-        this.gatewayProcess = null;
         this.emit('gateway:stopped');
       }
     } catch (error: any) {
@@ -452,12 +399,16 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
    */
   dispose(): void {
     this.log('清理引擎资源...');
-    
-    if (this.gatewayProcess && !this.gatewayProcess.killed) {
-      this.log('正在停止 Gateway 进程...');
-      this.gatewayProcess.kill();
-      this.gatewayProcess = null;
-    }
+
+    // 尝试停止 Gateway
+    this.getGatewayStatus().then(status => {
+      if (status === 'running') {
+        this.log('正在停止 Gateway...');
+        this.stopGateway().catch(err => {
+          this.logError('停止 Gateway 失败:', err);
+        });
+      }
+    });
 
     this.removeAllListeners();
   }
