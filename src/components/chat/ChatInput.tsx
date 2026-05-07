@@ -1,6 +1,4 @@
 import { FC, useEffect, useMemo, useState } from 'react';
-import { Button, Input } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
 import './chat.css';
 
 interface Props {
@@ -34,11 +32,11 @@ const ChatInput: FC<Props> = ({ disabled, onSend }) => {
 
   return (
     <div className="cf-chatInput">
-      <Input.TextArea
+      <textarea
+        className="cf-textarea"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-        autoSize={{ minRows: 2, maxRows: 8 }}
         disabled={disabled || isSending}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
@@ -46,17 +44,16 @@ const ChatInput: FC<Props> = ({ disabled, onSend }) => {
             void submit();
           }
         }}
+        rows={3}
       />
       <div className="cf-chatInput__actions">
-        <Button
-          type="primary"
-          icon={<SendOutlined />}
+        <button
+          className={canSend ? 'cf-btn cf-btnPrimary' : 'cf-btn'}
           onClick={() => void submit()}
           disabled={!canSend}
-          loading={isSending}
         >
-          发送
-        </Button>
+          {isSending ? '发送中…' : '发送'}
+        </button>
       </div>
     </div>
   );

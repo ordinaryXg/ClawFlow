@@ -185,6 +185,34 @@
   - Connectors
   - Settings
 
+### 7.1 可视化原型（Single Source of Truth）
+
+- **HTML 原型入口**：`${REPO_ROOT}/prototype/index.html`
+- **覆盖范围**：主页面（Dashboard/Chat/Skills/Connectors/Settings）+ 关键弹窗/抽屉 + 空/加载/错误态 + Toast
+- **使用原则**：在 UI 重构与实现阶段，页面结构/组件样式/状态文案以 `prototype/` 为准；PRD 负责定义“做什么/为什么做/做到什么算成”，原型负责定义“长什么样/怎么交互”。
+
+### 7.2 视觉与组件规范（极简深色主题）
+
+- **主题色**：灰 + 暗绿 + 暗金（低干扰、强调关键动作与状态）
+- **颜色 Token（建议）**
+  - 背景：`#0F1113`（应用底色）、`#1A1D21`（侧栏/分区）、`#2A2F36`（卡片/浮层）
+  - 文本：主文 `#E6E9ED`，次文 `#A7B0B8`，弱化 `#6E7681`
+  - 主色（暗绿）：`#1E5B45`（主按钮/高亮），hover `#237055`
+  - 强调（暗金）：`#8A6A2A`（状态/提示），hover `#9B7A33`
+  - 危险：`#C24B4B`（仅用于错误与删除确认）
+- **形态**
+  - 圆角：8–10px；分割线：1px `#2F353D`
+  - 卡片化分区：信息块统一卡片容器，避免“满屏表格”
+- **核心组件（P0/P1）**
+  - Button（Primary/Secondary/Ghost/Danger）
+  - Card / Banner
+  - Status Chip：Running / Stopped / Unknown
+  - Field：Input/Select/Textarea + 校验错误文案
+  - Drawer（连接器新增/编辑）
+  - Modal（删除确认）
+  - Toast（success/error）
+  - Empty / Loading Skeleton / Error（分层 + 下一步）
+
 ---
 
 ## 8. 关键流程（Flow）
@@ -266,3 +294,4 @@
 - [ ] Dashboard：版本与 Gateway 状态/启停可用
 - [ ] Settings：主题/语言可切换并持久化
 - [ ] 关键依赖缺失时提示清晰（openclaw 找不到/不可执行）
+- [ ] Gateway 启停后状态刷新一致（以 status 命令为准）

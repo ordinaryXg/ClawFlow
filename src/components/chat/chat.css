@@ -21,13 +21,13 @@
   width: fit-content;
   border-radius: 14px;
   padding: 10px 12px;
-  border: 1px solid #e8e8e8;
-  background: #fff;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
 }
 
 .cf-msgItem--user .cf-msgItem__bubble {
-  background: #f0f6ff;
-  border-color: #d6e6ff;
+  background: rgba(138,106,42,.10);
+  border-color: rgba(138,106,42,.25);
 }
 
 .cf-msgItem__meta {
@@ -43,7 +43,7 @@
 }
 
 .cf-msgItem__content {
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.6;
   white-space: normal;
   word-break: break-word;
@@ -54,11 +54,12 @@
 }
 
 .cf-codeBlock {
-  background: #0b1020;
-  color: #eef2ff;
+  background: rgba(0,0,0,.35);
+  color: var(--text);
   padding: 10px 12px;
   border-radius: 10px;
   overflow: auto;
+  border: 1px solid rgba(255,255,255,.06);
 }
 
 .cf-chatInput {
@@ -82,8 +83,8 @@
   max-width: 860px;
   border-radius: 14px;
   padding: 10px 12px;
-  border: 1px dashed #c9c9c9;
-  background: #fafafa;
+  border: 1px solid rgba(30,91,69,.45);
+  background: rgba(30,91,69,.10);
 }
 
 .cf-stream__meta {
@@ -92,9 +93,25 @@
 }
 
 .cf-stream__content {
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.cf-textarea{
+  width:100%;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.08);
+  color:var(--text);
+  border-radius:12px;
+  padding:10px 12px;
+  outline:none;
+  font-size:12px;
+  resize:vertical;
+}
+.cf-textarea:focus{
+  border-color:rgba(30,91,69,.55);
+  box-shadow:0 0 0 4px rgba(30,91,69,.15);
 }
 

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClawFlow 原型 · Skills</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar">
+        <div class="brand">
+          <div class="brand-badge"></div>
+          <div>
+            <h1>ClawFlow</h1>
+            <p>桌面端工作助手 · 原型</p>
+          </div>
+        </div>
+        <div class="nav">
+          <a data-nav href="index.html">Dashboard <span class="hint">状态</span></a>
+          <a data-nav href="chat.html">Chat <span class="hint">对话</span></a>
+          <a data-nav href="skills.html" class="active">Skills <span class="hint">技能</span></a>
+          <a data-nav href="connectors.html">Connectors <span class="hint">连接器</span></a>
+          <a data-nav href="settings.html">Settings <span class="hint">偏好</span></a>
+          <a data-nav href="states.html">States <span class="hint">空/错/载</span></a>
+        </div>
+        <div class="side-footer">
+          <div class="meta">
+            <b>Gateway</b>
+            <span>running · 低延迟</span>
+          </div>
+          <div class="dot" style="background: var(--green); box-shadow: 0 0 0 4px rgba(30, 91, 69, 0.18)"></div>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="topbar">
+          <div class="page-title">
+            <h2>Skills</h2>
+            <p>搜索/筛选 · 安装/卸载 · 启用/禁用 · 统一反馈。</p>
+          </div>
+          <div class="row">
+            <button class="btn ghost" id="btnInstall">模拟安装</button>
+            <button class="btn ghost" id="btnEmpty">切换为空状态</button>
+          </div>
+        </div>
+
+        <section class="card">
+          <div class="row" style="align-items: center; justify-content: space-between">
+            <div class="row" style="align-items: center; gap: 10px; flex-wrap: wrap">
+              <input class="input" style="width: 320px" placeholder="搜索技能（名称/描述）…" />
+              <div class="pillbar">
+                <div class="pill active">全部</div>
+                <div class="pill">已安装</div>
+                <div class="pill">未安装</div>
+              </div>
+            </div>
+            <span class="sub">共 6 项（示例）</span>
+          </div>
+        </section>
+
+        <div style="height: 12px"></div>
+
+        <section class="grid" id="skillsGrid">
+          <div class="card col-4">
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <h3 style="margin: 0">feishu-doc</h3>
+              <span class="chip running">Installed</span>
+            </div>
+            <div class="sub">读取飞书文档/表格/知识库并转 Markdown。</div>
+            <div class="divider"></div>
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <div class="row" style="gap: 8px; align-items: center">
+                <span class="sub">启用</span>
+                <span class="chip running">ON</span>
+              </div>
+              <div class="row">
+                <button class="btn small">卸载</button>
+                <button class="btn small ghost">详情</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-4">
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <h3 style="margin: 0">security-auditor</h3>
+              <span class="chip stopped">Not Installed</span>
+            </div>
+            <div class="sub">安全扫描与输入净化，减少注入与泄露风险。</div>
+            <div class="divider"></div>
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <div class="row" style="gap: 8px; align-items: center">
+                <span class="sub">启用</span>
+                <span class="chip stopped" title="未安装时不可启用">OFF</span>
+              </div>
+              <div class="row">
+                <button class="btn small primary">安装</button>
+                <button class="btn small ghost">详情</button>
+              </div>
+            </div>
+            <div class="help">未安装时“启用”不可用，并给出解释。</div>
+          </div>
+
+          <div class="card col-4">
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <h3 style="margin: 0">test-runner</h3>
+              <span class="chip stopped">Not Installed</span>
+            </div>
+            <div class="sub">在原型中用于展示“安装/失败/重试”的反馈链路。</div>
+            <div class="divider"></div>
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <div class="row" style="gap: 8px; align-items: center">
+                <span class="sub">启用</span>
+                <span class="chip stopped">OFF</span>
+              </div>
+              <div class="row">
+                <button class="btn small primary">安装</button>
+                <button class="btn small ghost">详情</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-4">
+            <h3>安装中（骨架示例）</h3>
+            <div class="skeleton" style="height: 12px; width: 80%"></div>
+            <div style="height: 10px"></div>
+            <div class="skeleton" style="height: 12px; width: 62%"></div>
+            <div style="height: 14px"></div>
+            <div class="row">
+              <div class="skeleton" style="height: 34px; width: 92px"></div>
+              <div class="skeleton" style="height: 34px; width: 72px"></div>
+            </div>
+            <div class="help">loading/success/fail 都要可感知。</div>
+          </div>
+
+          <div class="card col-8">
+            <h3>统一反馈策略（摘要）</h3>
+            <div class="sub">安装/卸载/启用/禁用每一步都要：loading → 结果 → 下一步。</div>
+            <div class="divider"></div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>场景</th>
+                  <th>提示</th>
+                  <th>下一步</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>安装失败</strong></td>
+                  <td>网络不可用或包源不可达</td>
+                  <td>重试 / 复制错误 / 查看日志</td>
+                </tr>
+                <tr>
+                  <td><strong>未安装启用</strong></td>
+                  <td>该技能尚未安装</td>
+                  <td>引导点击“安装”</td>
+                </tr>
+                <tr>
+                  <td><strong>启用成功</strong></td>
+                  <td>技能已可在 Chat 中调用</td>
+                  <td>跳转 Chat / 复制示例指令</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" id="emptyState" style="display: none">
+          <h3>无匹配技能</h3>
+          <p class="sub" style="margin: 0">尝试清空筛选条件，或切换到“全部”。</p>
+          <div style="height: 12px"></div>
+          <button class="btn primary">清空筛选</button>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-wrap"></div>
+    <div class="overlay" id="overlay"></div>
+    <script src="shared.js"></script>
+    <script>
+      const grid = document.getElementById("skillsGrid");
+      const empty = document.getElementById("emptyState");
+      let isEmpty = false;
+
+      document.getElementById("btnInstall").addEventListener("click", () => {
+        toast({ type: "success", title: "安装成功（示例）", message: "你现在可以在 Chat 中使用该技能。" });
+      });
+      document.getElementById("btnEmpty").addEventListener("click", () => {
+        isEmpty = !isEmpty;
+        grid.style.display = isEmpty ? "none" : "grid";
+        empty.style.display = isEmpty ? "block" : "none";
+        toast({ type: "success", title: "已切换视图", message: isEmpty ? "展示空状态。" : "恢复技能列表。" });
+      });
+    </script>
+  </body>
+</html>
+

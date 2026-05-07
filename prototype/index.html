@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClawFlow 原型 · Dashboard</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar">
+        <div class="brand">
+          <div class="brand-badge"></div>
+          <div>
+            <h1>ClawFlow</h1>
+            <p>桌面端工作助手 · 原型</p>
+          </div>
+        </div>
+        <div class="nav">
+          <a data-nav href="index.html" class="active">Dashboard <span class="hint">状态</span></a>
+          <a data-nav href="chat.html">Chat <span class="hint">对话</span></a>
+          <a data-nav href="skills.html">Skills <span class="hint">技能</span></a>
+          <a data-nav href="connectors.html">Connectors <span class="hint">连接器</span></a>
+          <a data-nav href="settings.html">Settings <span class="hint">偏好</span></a>
+          <a data-nav href="states.html">States <span class="hint">空/错/载</span></a>
+        </div>
+        <div class="side-footer">
+          <div class="meta">
+            <b>Gateway</b>
+            <span>unknown · 点击刷新</span>
+          </div>
+          <div class="dot"></div>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="topbar">
+          <div class="page-title">
+            <h2>Dashboard</h2>
+            <p>快速查看依赖与服务状态，并进入关键模块。</p>
+          </div>
+          <div class="row">
+            <button class="btn ghost" data-action="toast-success">显示成功 Toast</button>
+            <button class="btn ghost" data-action="toast-error">显示错误 Toast</button>
+          </div>
+        </div>
+
+        <div class="banner">
+          <div>
+            <b>未检测到 OpenClaw</b>
+            <span>请在设置中配置可执行路径，或查看安装指引。</span>
+          </div>
+          <a class="btn gold" href="settings.html">去设置路径</a>
+        </div>
+
+        <div style="height: 12px"></div>
+
+        <section class="grid">
+          <div class="card col-4">
+            <h3>OpenClaw 版本</h3>
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <span class="sub">v0.0.x（示例）</span>
+              <button class="btn small">重新检测</button>
+            </div>
+            <div class="divider"></div>
+            <div class="sub">若缺失依赖：请前往 Settings → OpenClaw Path。</div>
+          </div>
+
+          <div class="card col-8">
+            <h3>Gateway 状态</h3>
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <div class="row" style="align-items: center; gap: 10px">
+                <span class="chip unknown">Unknown</span>
+                <span class="sub">以 `openclaw gateway status` 为事实来源</span>
+              </div>
+              <div class="row">
+                <button class="btn">刷新状态</button>
+                <button class="btn primary">启动 Gateway</button>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="grid">
+              <div class="card col-4">
+                <h3>最近事件</h3>
+                <div class="sub">- 启动失败：找不到 openclaw</div>
+                <div class="sub">- 上次运行：未记录</div>
+              </div>
+              <div class="card col-8">
+                <h3>快捷入口</h3>
+                <div class="row">
+                  <a class="btn primary" href="chat.html">进入 Chat</a>
+                  <a class="btn" href="skills.html">管理 Skills</a>
+                  <a class="btn" href="connectors.html">管理 Connectors</a>
+                  <a class="btn" href="settings.html">打开 Settings</a>
+                </div>
+                <div class="help">目标：新用户 5 分钟内完成一次对话并得到反馈（含降级提示）。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-12">
+            <h3>系统概览</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>模块</th>
+                  <th>当前状态</th>
+                  <th>下一步</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Chat</strong></td>
+                  <td>可用（示例）</td>
+                  <td>发送消息，观察流式回复与失败可恢复</td>
+                </tr>
+                <tr>
+                  <td><strong>Skills</strong></td>
+                  <td>待安装</td>
+                  <td>安装 1 个技能并启用</td>
+                </tr>
+                <tr>
+                  <td><strong>Connectors</strong></td>
+                  <td>未配置</td>
+                  <td>新增连接器并测试连接</td>
+                </tr>
+                <tr>
+                  <td><strong>Gateway</strong></td>
+                  <td>Unknown</td>
+                  <td>配置 OpenClaw 路径 → 启动/刷新状态</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-wrap"></div>
+    <div class="overlay" id="overlay"></div>
+    <script src="shared.js"></script>
+  </body>
+</html>
+

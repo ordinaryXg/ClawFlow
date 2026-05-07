@@ -5,6 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import ChatPage from './pages/ChatPage';
 import SkillsPage from './pages/SkillsPage';
 import ConnectorsPage from './pages/ConnectorsPage';
+import SettingsPage from './pages/SettingsPage';
+import StatesPage from './pages/StatesPage';
 
 const App: FC = () => {
   return (
@@ -16,6 +18,8 @@ const App: FC = () => {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/states" element={<StatesPage />} />
         </Route>
       </Routes>
     </HashRouter>

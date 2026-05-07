@@ -1,13 +1,9 @@
 import { FC, useMemo } from 'react';
-import { Button, Empty, Input, List, Popconfirm, Typography, message as antdMessage } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useChatStore } from '../../store/modules/chatStore';
 import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
 import StreamingMessage from '../../components/chat/StreamingMessage';
 import './styles.css';
-
-const { Text } = Typography;
 
 const ChatPage: FC = () => {
   const {
@@ -31,11 +27,12 @@ const ChatPage: FC = () => {
 
   const onNewConversation = () => {
     createConversation();
+    (window as any).__cf_toast?.success?.('已新建对话', '你可以立即开始输入。');
   };
 
   const onDeleteConversation = (id: string) => {
     deleteConversation(id);
-    antdMessage.success('已删除对话');
+    (window as any).__cf_toast?.success?.('已删除对话', '对话已从本地移除。');
   };
 
   const onSend = async (content: string) => {
@@ -46,68 +43,64 @@ const ChatPage: FC = () => {
     <div className="cf-chatPage">
       <aside className="cf-chatPage__sidebar">
         <div className="cf-chatPage__sidebarHeader">
-          <Text strong>对话</Text>
-          <Button size="small" type="primary" icon={<PlusOutlined />} onClick={onNewConversation}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <b style={{ fontSize: 12 }}>会话</b>
+            <span className="cf-sub">组织不同主题</span>
+          </div>
+          <button className="cf-btn cf-btnPrimary cf-btnSmall" onClick={onNewConversation}>
             新建
-          </Button>
+          </button>
         </div>
 
         <div className="cf-chatPage__sidebarSearch">
-          <Input placeholder="搜索（暂未实现）" disabled size="small" />
+          <input className="cf-input" placeholder="搜索（暂未实现）" disabled />
         </div>
 
         <div className="cf-chatPage__sidebarList">
           {conversations.length === 0 ? (
             <div className="cf-chatPage__sidebarEmpty">
-              <Empty description="暂无对话" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              <Button type="primary" onClick={onNewConversation} icon={<PlusOutlined />}>
-                创建第一个对话
-              </Button>
+              <div className="cf-card" style={{ width: '100%' }}>
+                <h3 style={{ marginBottom: 6 }}>暂无对话</h3>
+                <div className="cf-sub">创建第一个会话开始使用。</div>
+                <div style={{ height: 12 }} />
+                <button className="cf-btn cf-btnPrimary" onClick={onNewConversation}>
+                  创建第一个对话
+                </button>
+              </div>
             </div>
           ) : (
-            <List
-              size="small"
-              dataSource={[...conversations].sort((a, b) => b.updatedAt - a.updatedAt)}
-              renderItem={(conv) => {
-                const isActive = conv.id === activeConversationId;
-                return (
-                  <List.Item
-                    className={isActive ? 'cf-convItem cf-convItem--active' : 'cf-convItem'}
-                    onClick={() => switchConversation(conv.id)}
-                    actions={[
-                      <Popconfirm
-                        key="delete"
-                        title="删除该对话？"
-                        okText="删除"
-                        cancelText="取消"
-                        onConfirm={(e) => {
-                          e?.stopPropagation();
-                          onDeleteConversation(conv.id);
-                        }}
-                        onCancel={(e) => e?.stopPropagation()}
-                      >
-                        <Button
-                          size="small"
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </Popconfirm>,
-                    ]}
-                  >
-                    <div className="cf-convItem__content">
-                      <div className="cf-convItem__title">{conv.title || '未命名对话'}</div>
-                      <div className="cf-convItem__meta">
-                        <Text type="secondary" ellipsis>
-                          {conv.messages.length} 条消息
-                        </Text>
+            <div className="cf-convList">
+              {[...conversations]
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .map((conv) => {
+                  const isActive = conv.id === activeConversationId;
+                  return (
+                    <div
+                      key={conv.id}
+                      className={isActive ? 'cf-convItem cf-convItem--active' : 'cf-convItem'}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => switchConversation(conv.id)}
+                    >
+                      <div className="cf-convItem__content">
+                        <div className="cf-convItem__title">{conv.title || '未命名对话'}</div>
+                        <div className="cf-convItem__meta">{conv.messages.length} 条消息</div>
                       </div>
+                      <button
+                        className="cf-btn cf-btnGhost cf-btnSmall"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const ok = window.confirm('删除该对话？此操作不可恢复。');
+                          if (ok) onDeleteConversation(conv.id);
+                        }}
+                        title="删除对话"
+                      >
+                        删除
+                      </button>
                     </div>
-                  </List.Item>
-                );
-              }}
-            />
+                  );
+                })}
+            </div>
           )}
         </div>
       </aside>
@@ -115,15 +108,15 @@ const ChatPage: FC = () => {
       <section className="cf-chatPage__main">
         <header className="cf-chatPage__mainHeader">
           <div className="cf-chatPage__title">
-            <Text strong>{activeConversation?.title ?? '未选择对话'}</Text>
-            {isLoading ? <Text type="secondary">（响应中…）</Text> : null}
+            <b style={{ fontSize: 12 }}>{activeConversation?.title ?? '未选择对话'}</b>
+            {isLoading ? <span className="cf-sub">（响应中…）</span> : null}
           </div>
           {error ? (
             <div className="cf-chatPage__error">
-              <Text type="danger">{error}</Text>
-              <Button size="small" type="link" onClick={() => setError(null)}>
+              <span className="cf-errorText">{error}</span>
+              <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setError(null)}>
                 清除
-              </Button>
+              </button>
             </div>
           ) : null}
         </header>
@@ -131,10 +124,10 @@ const ChatPage: FC = () => {
         <div className="cf-chatPage__messages">
           {messages.length === 0 && !streamingMessage ? (
             <div className="cf-chatPage__emptyMain">
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="开始一个对话：在下方输入消息并发送"
-              />
+              <div className="cf-card" style={{ maxWidth: 520 }}>
+                <h3 style={{ marginBottom: 6 }}>开始一个对话</h3>
+                <div className="cf-sub">在下方输入消息并发送；支持 Enter 发送、Shift+Enter 换行。</div>
+              </div>
             </div>
           ) : (
             <>

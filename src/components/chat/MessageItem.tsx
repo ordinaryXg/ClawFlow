@@ -1,13 +1,9 @@
 import { FC, useMemo } from 'react';
-import { Button, Tooltip, Typography, message as antdMessage } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
 import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
-import 'highlight.js/styles/github.css';
+import 'highlight.js/styles/github-dark.css';
 import { Message } from '../../store/modules/chatStore';
 import './chat.css';
-
-const { Text } = Typography;
 
 interface Props {
   message: Message;
@@ -36,9 +32,9 @@ const MessageItem: FC<Props> = ({ message }) => {
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
-      antdMessage.success('已复制');
+      (window as any).__cf_toast?.success?.('已复制', '内容已复制到剪贴板。');
     } catch {
-      antdMessage.error('复制失败');
+      (window as any).__cf_toast?.error?.('复制失败', '请稍后重试。');
     }
   };
 
@@ -46,13 +42,13 @@ const MessageItem: FC<Props> = ({ message }) => {
     <div className={isUser ? 'cf-msgItem cf-msgItem--user' : 'cf-msgItem cf-msgItem--assistant'}>
       <div className="cf-msgItem__bubble">
         <div className="cf-msgItem__meta">
-          <Text type="secondary">{isUser ? '你' : 'OpenClaw'}</Text>
-          <Text type="secondary">·</Text>
-          <Text type="secondary">{time}</Text>
+          <span className="cf-sub">{isUser ? '你' : 'OpenClaw'}</span>
+          <span className="cf-sub">·</span>
+          <span className="cf-sub">{time}</span>
           <div className="cf-msgItem__actions">
-            <Tooltip title="复制">
-              <Button size="small" type="text" icon={<CopyOutlined />} onClick={onCopy} />
-            </Tooltip>
+            <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={onCopy}>
+              复制
+            </button>
           </div>
         </div>
 

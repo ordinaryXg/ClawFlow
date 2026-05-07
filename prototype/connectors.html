@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClawFlow 原型 · Connectors</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar">
+        <div class="brand">
+          <div class="brand-badge"></div>
+          <div>
+            <h1>ClawFlow</h1>
+            <p>桌面端工作助手 · 原型</p>
+          </div>
+        </div>
+        <div class="nav">
+          <a data-nav href="index.html">Dashboard <span class="hint">状态</span></a>
+          <a data-nav href="chat.html">Chat <span class="hint">对话</span></a>
+          <a data-nav href="skills.html">Skills <span class="hint">技能</span></a>
+          <a data-nav href="connectors.html" class="active">Connectors <span class="hint">连接器</span></a>
+          <a data-nav href="settings.html">Settings <span class="hint">偏好</span></a>
+          <a data-nav href="states.html">States <span class="hint">空/错/载</span></a>
+        </div>
+        <div class="side-footer">
+          <div class="meta">
+            <b>Gateway</b>
+            <span>running · 低延迟</span>
+          </div>
+          <div class="dot" style="background: var(--green); box-shadow: 0 0 0 4px rgba(30, 91, 69, 0.18)"></div>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="topbar">
+          <div class="page-title">
+            <h2>Connectors</h2>
+            <p>新增/编辑/删除 · 测试连接 · 敏感字段脱敏展示。</p>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="btnAdd">新增连接器</button>
+          </div>
+        </div>
+
+        <section class="split">
+          <div class="card">
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <h3 style="margin: 0">列表</h3>
+              <button class="btn small" id="btnSearchHint">搜索提示</button>
+            </div>
+            <div style="height: 10px"></div>
+            <input class="input" placeholder="搜索连接器（名称/类型）…" />
+            <div style="height: 10px"></div>
+            <div class="list">
+              <div class="item active">
+                <div class="meta">
+                  <b>Feishu</b>
+                  <span>type: feishu · 已测试</span>
+                </div>
+                <span class="chip running">OK</span>
+              </div>
+              <div class="item">
+                <div class="meta">
+                  <b>Supabase</b>
+                  <span>type: postgres · 未测试</span>
+                </div>
+                <span class="chip unknown">?</span>
+              </div>
+              <div class="item">
+                <div class="meta">
+                  <b>GitHub</b>
+                  <span>type: github · 失败</span>
+                </div>
+                <span class="chip" style="border-color: rgba(194, 75, 75, 0.5); background: rgba(194, 75, 75, 0.12); color: #F0B4B4">FAIL</span>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="help">敏感字段默认脱敏；可在详情面板临时“显示/隐藏”。</div>
+          </div>
+
+          <div class="card">
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <h3 style="margin: 0">详情：Feishu</h3>
+              <span class="chip running">已连接</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="grid">
+              <div class="card col-6">
+                <h3>基础信息</h3>
+                <div class="sub">名称：Feishu</div>
+                <div class="sub">类型：feishu</div>
+                <div class="sub">上次测试：2026-05-07 17:10</div>
+              </div>
+              <div class="card col-6">
+                <h3>配置（脱敏）</h3>
+                <div class="sub">App ID：cli_***_a1</div>
+                <div class="sub">
+                  Token：••••1234
+                  <button class="btn ghost small" id="btnReveal">显示</button>
+                </div>
+                <div class="help">仅临时显示，不在列表与日志中明文输出。</div>
+              </div>
+              <div class="card col-12">
+                <h3>操作</h3>
+                <div class="row">
+                  <button class="btn" id="btnEdit">编辑</button>
+                  <button class="btn danger" id="btnDelete">删除</button>
+                  <button class="btn primary" id="btnTest">测试连接</button>
+                </div>
+                <div style="height: 10px"></div>
+                <div class="card" id="testResult">
+                  <h3>测试结果</h3>
+                  <div class="sub" id="testText">尚未执行测试。点击“测试连接”。</div>
+                  <div class="help">失败时必须给出原因 + 下一步（例如：检查 Token、检查网络、查看日志）。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-wrap"></div>
+    <div class="overlay" id="overlay"></div>
+
+    <!-- Drawer: Add/Edit Connector -->
+    <aside class="drawer" id="drawerConnector">
+      <div class="head">
+        <div>
+          <h3 id="drawerTitle">新增连接器</h3>
+          <p>配置完成后可点击“测试连接”，确保技能可用。</p>
+        </div>
+        <button class="btn ghost small" id="drawerClose">关闭</button>
+      </div>
+      <div class="body">
+        <div class="field">
+          <label>名称</label>
+          <input class="input" id="fName" placeholder="例如：Feishu / Supabase" />
+        </div>
+        <div class="field">
+          <label>类型</label>
+          <select class="select" id="fType">
+            <option value="feishu">feishu</option>
+            <option value="github">github</option>
+            <option value="postgres">postgres</option>
+            <option value="custom">custom</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>端点 / 主机</label>
+          <input class="input" id="fHost" placeholder="https://... 或 host:port" />
+          <div class="help">不同类型可映射不同字段，此处只做原型示意。</div>
+        </div>
+        <div class="field">
+          <label>API Key / Token</label>
+          <input class="input" id="fToken" placeholder="••••••••" />
+          <div class="error" id="tokenErr" style="display: none">Token 不能为空</div>
+        </div>
+        <div class="field">
+          <label>备注</label>
+          <textarea class="textarea" id="fNote" placeholder="可选：用途、权限范围、失效时间等"></textarea>
+        </div>
+
+        <div class="card">
+          <h3>测试连接</h3>
+          <div class="sub" id="drawerTestText">未测试。</div>
+          <div style="height: 10px"></div>
+          <button class="btn" id="drawerTestBtn">测试连接</button>
+        </div>
+      </div>
+      <div class="foot">
+        <button class="btn" id="drawerCancel">取消</button>
+        <button class="btn primary" id="drawerSave">保存</button>
+      </div>
+    </aside>
+
+    <!-- Modal: Delete confirm -->
+    <div class="modal" id="modalDelete">
+      <h3>确认删除连接器？</h3>
+      <p>该操作不可恢复。建议先确认没有技能依赖此连接器。</p>
+      <div class="actions">
+        <button class="btn" id="btnDeleteCancel">取消</button>
+        <button class="btn danger" id="btnDeleteConfirm">删除</button>
+      </div>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+      const testText = document.getElementById("testText");
+      const btnTest = document.getElementById("btnTest");
+      const btnReveal = document.getElementById("btnReveal");
+      let revealed = false;
+
+      function openConnectorDrawer(mode) {
+        document.getElementById("drawerTitle").textContent = mode === "edit" ? "编辑连接器" : "新增连接器";
+        document.getElementById("tokenErr").style.display = "none";
+        openDrawer("#drawerConnector");
+      }
+
+      document.getElementById("btnAdd").addEventListener("click", () => openConnectorDrawer("add"));
+      document.getElementById("btnEdit").addEventListener("click", () => openConnectorDrawer("edit"));
+
+      document.getElementById("drawerClose").addEventListener("click", () => closeDrawer("#drawerConnector"));
+      document.getElementById("drawerCancel").addEventListener("click", () => closeDrawer("#drawerConnector"));
+
+      document.getElementById("drawerSave").addEventListener("click", () => {
+        const token = document.getElementById("fToken").value.trim();
+        if (!token) {
+          document.getElementById("tokenErr").style.display = "block";
+          toast({ type: "error", title: "校验失败", message: "请补全必填项后再保存。" });
+          return;
+        }
+        closeDrawer("#drawerConnector");
+        toast({ type: "success", title: "已保存（示例）", message: "建议立即执行“测试连接”。" });
+      });
+
+      document.getElementById("drawerTestBtn").addEventListener("click", () => {
+        document.getElementById("drawerTestText").textContent = "测试中…（示例）";
+        setTimeout(() => {
+          document.getElementById("drawerTestText").textContent = "成功：认证通过，权限正常。";
+          toast({ type: "success", title: "测试成功", message: "连接器可用于技能调用。" });
+        }, 650);
+      });
+
+      document.getElementById("btnDelete").addEventListener("click", () => openModal("#modalDelete"));
+      document.getElementById("btnDeleteCancel").addEventListener("click", () => closeModal("#modalDelete"));
+      document.getElementById("btnDeleteConfirm").addEventListener("click", () => {
+        closeModal("#modalDelete");
+        toast({ type: "success", title: "已删除（示例）", message: "列表将刷新并移除该项。" });
+      });
+
+      btnTest.addEventListener("click", () => {
+        testText.textContent = "测试中…（示例）";
+        setTimeout(() => {
+          testText.textContent = "失败：Token 无效或权限不足。下一步：检查 Token → 重新测试 → 查看日志。";
+          toast({ type: "error", title: "测试失败", message: "请检查 Token/网络，或前往日志查看详细错误。" });
+        }, 720);
+      });
+
+      btnReveal.addEventListener("click", () => {
+        revealed = !revealed;
+        btnReveal.textContent = revealed ? "隐藏" : "显示";
+        toast({
+          type: "success",
+          title: revealed ? "已显示（示例）" : "已隐藏",
+          message: revealed ? "注意：不要在截图/录屏中暴露敏感信息。" : "敏感字段已脱敏。"
+        });
+      });
+
+      document.getElementById("btnSearchHint").addEventListener("click", () => {
+        toast({ type: "success", title: "提示", message: "支持按名称/类型搜索；建议提供筛选：已测试/未测试/失败。" });
+      });
+    </script>
+  </body>
+</html>
+

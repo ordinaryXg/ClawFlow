@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClawFlow 原型 · Settings</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="sidebar">
+        <div class="brand">
+          <div class="brand-badge"></div>
+          <div>
+            <h1>ClawFlow</h1>
+            <p>桌面端工作助手 · 原型</p>
+          </div>
+        </div>
+        <div class="nav">
+          <a data-nav href="index.html">Dashboard <span class="hint">状态</span></a>
+          <a data-nav href="chat.html">Chat <span class="hint">对话</span></a>
+          <a data-nav href="skills.html">Skills <span class="hint">技能</span></a>
+          <a data-nav href="connectors.html">Connectors <span class="hint">连接器</span></a>
+          <a data-nav href="settings.html" class="active">Settings <span class="hint">偏好</span></a>
+          <a data-nav href="states.html">States <span class="hint">空/错/载</span></a>
+        </div>
+        <div class="side-footer">
+          <div class="meta">
+            <b>Gateway</b>
+            <span>stopped · 可启动</span>
+          </div>
+          <div class="dot" style="background: var(--subtle); box-shadow: 0 0 0 4px rgba(110, 118, 129, 0.18)"></div>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="topbar">
+          <div class="page-title">
+            <h2>Settings</h2>
+            <p>主题/语言 · OpenClaw 路径 · 超时与日志 · 自动启动。</p>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="btnSave">保存设置（示例）</button>
+          </div>
+        </div>
+
+        <section class="grid">
+          <div class="card col-6">
+            <h3>外观</h3>
+            <div class="divider"></div>
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <div>
+                <div class="sub"><strong style="color: var(--text)">主题</strong></div>
+                <div class="help">切换立即生效并持久化（P1）。</div>
+              </div>
+              <div class="pillbar">
+                <div class="pill active" id="themeDark">Dark</div>
+                <div class="pill" id="themeLight">Light</div>
+              </div>
+            </div>
+            <div style="height: 10px"></div>
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <div>
+                <div class="sub"><strong style="color: var(--text)">语言</strong></div>
+                <div class="help">zh/en 即时切换（P1）。</div>
+              </div>
+              <div class="pillbar">
+                <div class="pill active">中文</div>
+                <div class="pill">English</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-6">
+            <h3>OpenClaw 依赖</h3>
+            <div class="divider"></div>
+            <div class="field">
+              <label>OpenClaw 可执行路径</label>
+              <div class="row" style="gap: 10px; align-items: center">
+                <input class="input" id="path" placeholder="例如：C:\\Program Files\\openclaw\\openclaw.exe" />
+                <button class="btn" id="btnPick">选择</button>
+                <button class="btn" id="btnDetect">检测</button>
+              </div>
+              <div class="error" id="pathErr">未找到 openclaw，可执行文件路径无效</div>
+              <div class="help"><a href="states.html" style="color: var(--gold)">查看安装指引（示例）</a></div>
+            </div>
+            <div style="height: 10px"></div>
+            <div class="row" style="align-items: center; justify-content: space-between">
+              <div>
+                <div class="sub"><strong style="color: var(--text)">自动启动 Gateway</strong></div>
+                <div class="help">仅在依赖可用时启用。</div>
+              </div>
+              <span class="chip unknown">OFF</span>
+            </div>
+          </div>
+
+          <div class="card col-6">
+            <h3>执行参数</h3>
+            <div class="divider"></div>
+            <div class="grid">
+              <div class="field col-6">
+                <label>命令超时（ms）</label>
+                <input class="input" value="60000" />
+                <div class="help">超时要可恢复：提示原因 + 下一步。</div>
+              </div>
+              <div class="field col-6">
+                <label>日志级别</label>
+                <select class="select">
+                  <option>info</option>
+                  <option>warn</option>
+                  <option>error</option>
+                  <option>debug</option>
+                </select>
+                <div class="help">debug 仅用于排障。</div>
+              </div>
+              <div class="field col-12">
+                <label>附加参数（可选）</label>
+                <input class="input" placeholder="例如：--profile default" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card col-6">
+            <h3>安全与隐私</h3>
+            <div class="divider"></div>
+            <div class="sub">- Renderer 不直接拥有 Node 能力</div>
+            <div class="sub">- 只通过 preload 暴露最小 API</div>
+            <div class="sub">- 敏感字段默认脱敏，不写入日志明文</div>
+            <div style="height: 12px"></div>
+            <button class="btn gold" id="btnRevealHint">查看脱敏规则（示例）</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-wrap"></div>
+    <div class="overlay" id="overlay"></div>
+    <script src="shared.js"></script>
+    <script>
+      document.getElementById("btnSave").addEventListener("click", () => {
+        toast({ type: "success", title: "已保存（示例）", message: "设置已持久化，部分配置需重启生效。" });
+      });
+      document.getElementById("btnDetect").addEventListener("click", () => {
+        toast({ type: "error", title: "检测失败（示例）", message: "未找到 openclaw。请检查路径或安装。" });
+      });
+      document.getElementById("btnPick").addEventListener("click", () => {
+        toast({ type: "success", title: "选择文件（示例）", message: "真实应用中会弹出文件选择器。" });
+      });
+      document.getElementById("btnRevealHint").addEventListener("click", () => {
+        toast({ type: "success", title: "规则（示例）", message: "token/key/password 仅展示尾 4 位，其余用 •••• 替代。" });
+      });
+      document.getElementById("themeLight").addEventListener("click", () => {
+        toast({ type: "success", title: "切换主题（示例）", message: "真实应用中会即时切换 Light/Dark。" });
+      });
+    </script>
+  </body>
+</html>
+

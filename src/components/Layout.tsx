@@ -1,74 +1,85 @@
-import { FC } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { FC, useEffect } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useGatewayStore } from '../store/modules/gatewayStore';
+import ToastHost from './common/ToastHost';
+
+function navClass(isActive: boolean) {
+  return isActive ? 'cf-navLink cf-navLinkActive' : 'cf-navLink';
+}
 
 const Layout: FC = () => {
-  return (
-    <div style={{ display: 'flex', height: '100vh' }}>
-      {/* 左侧导航 */}
-      <nav style={{
-        width: 200,
-        background: '#f5f5f5',
-        borderRight: '1px solid #e0e0e0',
-        padding: 16,
-      }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>ClawFlow</h2>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          <li style={{ marginBottom: 8 }}>
-            <NavLink to="/dashboard" style={({ isActive }) => ({
-              display: 'block',
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: isActive ? '#e0e0e0' : 'transparent',
-              textDecoration: 'none',
-              color: '#333',
-            })}>
-              仪表盘
-            </NavLink>
-          </li>
-          <li style={{ marginBottom: 8 }}>
-            <NavLink to="/chat" style={({ isActive }) => ({
-              display: 'block',
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: isActive ? '#e0e0e0' : 'transparent',
-              textDecoration: 'none',
-              color: '#333',
-            })}>
-              对话
-            </NavLink>
-          </li>
-          <li style={{ marginBottom: 8 }}>
-            <NavLink to="/skills" style={({ isActive }) => ({
-              display: 'block',
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: isActive ? '#e0e0e0' : 'transparent',
-              textDecoration: 'none',
-              color: '#333',
-            })}>
-              技能管理
-            </NavLink>
-          </li>
-          <li style={{ marginBottom: 8 }}>
-            <NavLink to="/connectors" style={({ isActive }) => ({
-              display: 'block',
-              padding: '8px 12px',
-              borderRadius: 6,
-              background: isActive ? '#e0e0e0' : 'transparent',
-              textDecoration: 'none',
-              color: '#333',
-            })}>
-              连接器
-            </NavLink>
-          </li>
-        </ul>
-      </nav>
+  const location = useLocation();
+  const { status, fetchStatus } = useGatewayStore();
 
-      {/* 右侧内容区 */}
-      <main style={{ flex: 1, padding: 24, overflow: 'auto' }}>
-        <Outlet />
-      </main>
-    </div>
+  useEffect(() => {
+    // 原型一致：侧栏底部展示 Gateway 状态；切页时顺便刷新一次（轻量）
+    void fetchStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  const dotStyle =
+    status === 'running'
+      ? { background: 'var(--green)', boxShadow: '0 0 0 4px rgba(30, 91, 69, 0.18)' }
+      : status === 'stopped'
+        ? { background: 'var(--subtle)', boxShadow: '0 0 0 4px rgba(110, 118, 129, 0.18)' }
+        : undefined;
+
+  const statusText = status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'unknown';
+
+  return (
+    <>
+      <div className="cf-app">
+        <aside className="cf-sidebar">
+        <div className="cf-brand">
+          <div className="cf-brandBadge" />
+          <div>
+            <h1 className="cf-brandTitle">ClawFlow</h1>
+            <p className="cf-brandSub">桌面端工作助手</p>
+          </div>
+        </div>
+
+        <nav className="cf-nav">
+          <NavLink to="/dashboard" className={({ isActive }) => navClass(isActive)}>
+            <span>Dashboard</span>
+            <span className="cf-navHint">状态</span>
+          </NavLink>
+          <NavLink to="/chat" className={({ isActive }) => navClass(isActive)}>
+            <span>Chat</span>
+            <span className="cf-navHint">对话</span>
+          </NavLink>
+          <NavLink to="/skills" className={({ isActive }) => navClass(isActive)}>
+            <span>Skills</span>
+            <span className="cf-navHint">技能</span>
+          </NavLink>
+          <NavLink to="/connectors" className={({ isActive }) => navClass(isActive)}>
+            <span>Connectors</span>
+            <span className="cf-navHint">连接器</span>
+          </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => navClass(isActive)}>
+            <span>Settings</span>
+            <span className="cf-navHint">偏好</span>
+          </NavLink>
+          <NavLink to="/states" className={({ isActive }) => navClass(isActive)}>
+            <span>States</span>
+            <span className="cf-navHint">空/错/载</span>
+          </NavLink>
+        </nav>
+
+        <div className="cf-sideFooter" role="button" tabIndex={0} onClick={() => void fetchStatus()}>
+          <div className="cf-sideMeta">
+            <b>Gateway</b>
+            <span>{statusText} · 点击刷新</span>
+          </div>
+          <div className="cf-dot" style={dotStyle} />
+        </div>
+      </aside>
+
+        <main className="cf-main">
+          <Outlet />
+        </main>
+      </div>
+      <ToastHost />
+    </>
   );
 };
 
