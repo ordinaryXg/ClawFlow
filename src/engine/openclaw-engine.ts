@@ -633,6 +633,87 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   ipcMain.handle('openclaw:validateCLI', async () => {
     return await engine.validateCLI();
   });
+
+  // 对话相关 IPC 接口
+  ipcMain.handle('openclaw:sendMessage', async (_event, message: string) => {
+    // TODO: 实现发送消息到 OpenClaw 的逻辑
+    console.log('[OpenClawEngine] 发送消息:', message);
+    return { success: true, message: '消息已发送（模拟）' };
+  });
+
+  ipcMain.handle('openclaw:getConversations', async () => {
+    // TODO: 实现获取对话历史的逻辑
+    console.log('[OpenClawEngine] 获取对话历史');
+    return { conversations: [] };
+  });
+
+  ipcMain.handle('openclaw:deleteConversation', async (_event, conversationId: string) => {
+    // TODO: 实现删除对话的逻辑
+    console.log('[OpenClawEngine] 删除对话:', conversationId);
+    return { success: true };
+  });
+
+  // 技能管理 IPC 接口
+  ipcMain.handle('openclaw:getSkills', async () => {
+    // TODO: 实现获取技能列表的逻辑
+    console.log('[OpenClawEngine] 获取技能列表');
+    return { skills: [] };
+  });
+
+  ipcMain.handle('openclaw:installSkill', async (_event, skillName: string) => {
+    // TODO: 实现安装技能的逻辑
+    console.log('[OpenClawEngine] 安装技能:', skillName);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:uninstallSkill', async (_event, skillName: string) => {
+    // TODO: 实现卸载技能的逻辑
+    console.log('[OpenClawEngine] 卸载技能:', skillName);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:enableSkill', async (_event, skillName: string) => {
+    // TODO: 实现启用技能的逻辑
+    console.log('[OpenClawEngine] 启用技能:', skillName);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:disableSkill', async (_event, skillName: string) => {
+    // TODO: 实现禁用技能的逻辑
+    console.log('[OpenClawEngine] 禁用技能:', skillName);
+    return { success: true };
+  });
+
+  // 连接器管理 IPC 接口
+  ipcMain.handle('openclaw:getConnectors', async () => {
+    // TODO: 实现获取连接器列表的逻辑
+    console.log('[OpenClawEngine] 获取连接器列表');
+    return { connectors: [] };
+  });
+
+  ipcMain.handle('openclaw:addConnector', async (_event, config: any) => {
+    // TODO: 实现添加连接器的逻辑
+    console.log('[OpenClawEngine] 添加连接器:', config);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:updateConnector', async (_event, id: string, config: any) => {
+    // TODO: 实现更新连接器的逻辑
+    console.log('[OpenClawEngine] 更新连接器:', id, config);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:deleteConnector', async (_event, id: string) => {
+    // TODO: 实现删除连接器的逻辑
+    console.log('[OpenClawEngine] 删除连接器:', id);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:testConnector', async (_event, id: string) => {
+    // TODO: 实现测试连接器连接的逻辑
+    console.log('[OpenClawEngine] 测试连接器:', id);
+    return { success: true };
+  });
 }
 
 /**
