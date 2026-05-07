@@ -11,12 +11,17 @@
     "esModuleInterop": true,
     "noImplicitAny": false,
     "sourceMap": true,
-    "outDir": "dist",
+    "outDir": ".webpack",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", ".webpack"]
 }
