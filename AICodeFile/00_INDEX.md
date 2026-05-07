@@ -35,6 +35,7 @@
 ### 3) 产品与日志
 
 - `03_PRD.md`：PRD/产品策划
+- `prototype/`：**HTML 产品原型（静态可点击）**，路径为 `${REPO_ROOT}/AICodeFile/prototype/`（入口 `index.html`）
 - `90_LOGS/`：开发日志（按天/按主题记录变更与决策）
 
 ## 统一约定（AI 可读性关键）

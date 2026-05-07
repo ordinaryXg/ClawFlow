@@ -7,7 +7,7 @@ status: done
 
 ## 背景
 
-本次以 `${REPO_ROOT}/prototype/index.html` 为“交互与视觉的事实来源”，把项目 UI 重构为 **深色极简主题（灰 + 暗绿 + 暗金）**，并将关键规范回写到 PRD。
+本次以 `${REPO_ROOT}/AICodeFile/prototype/index.html` 为“交互与视觉的事实来源”，把项目 UI 重构为 **深色极简主题（灰 + 暗绿 + 暗金）**，并将关键规范回写到 PRD。
 
 ## 变更摘要
 

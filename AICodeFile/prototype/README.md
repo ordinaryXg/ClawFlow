@@ -2,7 +2,7 @@
 
 ### 打开方式
 
-- 直接用浏览器打开 `prototype/index.html`（推荐 Chrome / Edge）。
+- 直接用浏览器打开 `${REPO_ROOT}/AICodeFile/prototype/index.html`（推荐 Chrome / Edge）。
 - 若部分交互（如 `fetch`）被浏览器限制，可用本地静态服务器，但本原型不依赖网络与构建步骤。
 
 ### 覆盖范围

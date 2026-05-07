@@ -5,7 +5,7 @@
       {
         "type": "prompt",
         "timeout": 10,
-        "prompt": "本仓库启用了项目级流程钩子：\n\n- 在进行任何代码修改（文件写入/ApplyPatch）前，必须先读取 AICodeFile 的核心文档，至少包括：AICodeFile/00_INDEX.md、01_PROJECT_OVERVIEW.md、02_ARCHITECTURE.md、03_PRD.md、04_ROADMAP.md、05_DEV_PROCESS.md、06_TASKS.md，以及最近一条日志 AICodeFile/90_LOGS/*.md。\n- 在完成一次开发/测试阶段后，必须把进度回写到 AICodeFile/90_LOGS/YYYY-MM-DD.md，并在需要时同步更新 AICodeFile/06_TASKS.md 的完成记录。\n- 进行 git commit 前，应确保本次提交包含相应的日志改动（90_LOGS/）。\n\n请在本次会话开始时，先完成上述读取，再开始编码。"
+        "prompt": "本仓库启用了项目级流程钩子：\n\n- 在进行任何代码修改（文件写入/ApplyPatch）前，必须先读取 AICodeFile 的核心文档，至少包括：AICodeFile/00_INDEX.md、01_PROJECT_OVERVIEW.md、02_ARCHITECTURE.md、03_PRD.md、04_ROADMAP.md、05_DEV_PROCESS.md、06_TASKS.md，以及最近一条日志 AICodeFile/90_LOGS/*.md。\n- 在完成一次开发/测试阶段后，必须把进度回写到 AICodeFile/90_LOGS/YYYY-MM-DD.md（或同目录 `YYYY-MM-DD_<topic>.md`；不要写到 `docs/plans/`），并在需要时同步更新 AICodeFile/06_TASKS.md 的完成记录。\n- 进行 git commit 前，应确保本次提交包含相应的日志改动（90_LOGS/）。\n\n请在本次会话开始时，先完成上述读取，再开始编码。"
       }
     ],
     "postToolUse": [

@@ -187,9 +187,9 @@
 
 ### 7.1 可视化原型（Single Source of Truth）
 
-- **HTML 原型入口**：`${REPO_ROOT}/prototype/index.html`
+- **HTML 原型入口**：`${REPO_ROOT}/AICodeFile/prototype/index.html`
 - **覆盖范围**：主页面（Dashboard/Chat/Skills/Connectors/Settings）+ 关键弹窗/抽屉 + 空/加载/错误态 + Toast
-- **使用原则**：在 UI 重构与实现阶段，页面结构/组件样式/状态文案以 `prototype/` 为准；PRD 负责定义“做什么/为什么做/做到什么算成”，原型负责定义“长什么样/怎么交互”。
+- **使用原则**：在 UI 重构与实现阶段，页面结构/组件样式/状态文案以 `AICodeFile/prototype/` 为准；PRD 负责定义“做什么/为什么做/做到什么算成”，原型负责定义“长什么样/怎么交互”。
 
 ### 7.2 视觉与组件规范（极简深色主题）
 
