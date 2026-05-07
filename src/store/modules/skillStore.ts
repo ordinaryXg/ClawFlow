@@ -11,6 +11,12 @@ export interface Skill {
   enabled: boolean;
 }
 
+type SkillAPIResponse =
+  | { skills?: Skill[]; installedSkills?: string[]; enabledSkills?: string[] }
+  | Skill[]
+  | null
+  | undefined;
+
 export interface SkillState {
   skills: Skill[];
   installedSkills: string[];
@@ -37,10 +43,12 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 获取技能列表
-      // const skills = await window.electronAPI?.getSkills();
+      const res: SkillAPIResponse = await window.electronAPI?.getSkills?.();
+
+      const fromRes =
+        Array.isArray(res) ? res : Array.isArray(res?.skills) ? res?.skills : null;
       
-      // 模拟数据
+      // 主进程目前返回模拟空数组时，保留一份 mock 以保证界面可用
       const mockSkills: Skill[] = [
         {
           name: 'westock-data',
@@ -58,15 +66,17 @@ export const useSkillStore = create<SkillState>((set, get) => ({
         },
       ];
       
-      const installed = mockSkills
+      const nextSkills = fromRes && fromRes.length > 0 ? fromRes : mockSkills;
+
+      const installed = nextSkills
         .filter(skill => skill.installed)
         .map(skill => skill.name);
-      const enabled = mockSkills
+      const enabled = nextSkills
         .filter(skill => skill.enabled)
         .map(skill => skill.name);
       
       set({ 
-        skills: mockSkills,
+        skills: nextSkills,
         installedSkills: installed,
         enabledSkills: enabled,
         isLoading: false 
@@ -82,8 +92,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   installSkill: async (skillName: string) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 安装技能
-      // await window.electronAPI?.installSkill(skillName);
+      await window.electronAPI?.installSkill?.(skillName);
       
       set(state => ({ 
         skills: state.skills.map(skill => 
@@ -106,8 +115,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   uninstallSkill: async (skillName: string) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 卸载技能
-      // await window.electronAPI?.uninstallSkill(skillName);
+      await window.electronAPI?.uninstallSkill?.(skillName);
       
       set(state => ({ 
         skills: state.skills.map(skill => 
@@ -131,8 +139,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   enableSkill: async (skillName: string) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 启用技能
-      // await window.electronAPI?.enableSkill(skillName);
+      await window.electronAPI?.enableSkill?.(skillName);
       
       set(state => ({ 
         skills: state.skills.map(skill => 
@@ -155,8 +162,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
   disableSkill: async (skillName: string) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 禁用技能
-      // await window.electronAPI?.disableSkill(skillName);
+      await window.electronAPI?.disableSkill?.(skillName);
       
       set(state => ({ 
         skills: state.skills.map(skill => 

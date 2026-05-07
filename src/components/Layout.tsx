@@ -37,6 +37,18 @@ const Layout: FC = () => {
               对话
             </NavLink>
           </li>
+          <li style={{ marginBottom: 8 }}>
+            <NavLink to="/skills" style={({ isActive }) => ({
+              display: 'block',
+              padding: '8px 12px',
+              borderRadius: 6,
+              background: isActive ? '#e0e0e0' : 'transparent',
+              textDecoration: 'none',
+              color: '#333',
+            })}>
+              技能管理
+            </NavLink>
+          </li>
         </ul>
       </nav>
 

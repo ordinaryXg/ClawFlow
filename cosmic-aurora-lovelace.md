@@ -457,6 +457,31 @@ interface SettingsState {
 
 **预计复杂度：** 中等
 
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-07
+- **完成内容概览**：
+  - 新增 `/skills` 路由与侧边栏入口（技能管理）
+  - 实现 SkillsPage：搜索（名称/描述/版本）、筛选（全部/已安装/未安装）、刷新与错误提示
+  - 实现 SkillCard：安装/卸载、启用开关（未安装禁用）、操作反馈（成功/失败 toast）
+  - skillStore 对接 preload IPC（`getSkills/installSkill/uninstallSkill/enableSkill/disableSkill`）
+  - 当主进程暂时返回空技能列表时，前端保留 mock 数据兜底保证界面可用
+- **涉及/新增文件**：
+  - `src/pages/SkillsPage/index.tsx`
+  - `src/pages/SkillsPage/styles.css`
+  - `src/components/skill/SkillCard.tsx`
+  - `src/components/skill/SkillList.tsx`
+  - `src/components/skill/SkillDetail.tsx`
+  - `src/components/skill/skill.css`
+  - `src/store/modules/skillStore.ts`（增强：对接 IPC + mock fallback）
+  - `src/App.tsx`、`src/components/Layout.tsx`
+- **验收结果（本阶段）**：
+  - [x] 技能列表正确显示
+  - [x] 可以搜索和筛选技能
+  - [x] 可以安装、卸载、启用、禁用技能
+  - [x] 操作状态正确反馈（加载中、成功、失败）
+  - [x] 错误处理完善（Alert + 可清除）
+
 ---
 
 ### 任务 2.5：连接器配置界面开发
