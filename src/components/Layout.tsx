@@ -25,6 +25,18 @@ const Layout: FC = () => {
               仪表盘
             </NavLink>
           </li>
+          <li style={{ marginBottom: 8 }}>
+            <NavLink to="/chat" style={({ isActive }) => ({
+              display: 'block',
+              padding: '8px 12px',
+              borderRadius: 6,
+              background: isActive ? '#e0e0e0' : 'transparent',
+              textDecoration: 'none',
+              color: '#333',
+            })}>
+              对话
+            </NavLink>
+          </li>
         </ul>
       </nav>
 

@@ -1,0 +1,138 @@
+.cf-chatPage {
+  height: 100%;
+  display: flex;
+  gap: 12px;
+}
+
+.cf-chatPage__sidebar {
+  width: 320px;
+  min-width: 280px;
+  max-width: 360px;
+  height: 100%;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cf-chatPage__sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.cf-chatPage__sidebarSearch {
+  padding: 8px 12px 8px 12px;
+  border-bottom: 1px solid #f7f7f7;
+}
+
+.cf-chatPage__sidebarList {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 6px;
+}
+
+.cf-chatPage__sidebarEmpty {
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.cf-convItem {
+  cursor: pointer;
+  border-radius: 10px;
+  padding-left: 8px !important;
+}
+
+.cf-convItem:hover {
+  background: #fafafa;
+}
+
+.cf-convItem--active {
+  background: #f0f6ff;
+}
+
+.cf-convItem__content {
+  width: 100%;
+  min-width: 0;
+}
+
+.cf-convItem__title {
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-convItem__meta {
+  font-size: 12px;
+}
+
+.cf-chatPage__main {
+  flex: 1;
+  height: 100%;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cf-chatPage__mainHeader {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cf-chatPage__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cf-chatPage__error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cf-chatPage__messages {
+  flex: 1;
+  overflow: auto;
+  padding: 14px;
+}
+
+.cf-chatPage__emptyMain {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cf-chatPage__input {
+  padding: 12px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+@media (max-width: 900px) {
+  .cf-chatPage__sidebar {
+    width: 260px;
+    min-width: 240px;
+  }
+}
+
