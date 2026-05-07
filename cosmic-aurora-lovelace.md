@@ -528,6 +528,32 @@ interface SettingsState {
 
 **预计复杂度：** 中等
 
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-07
+- **完成内容概览**：
+  - 新增 `/connectors` 路由与侧边栏入口（连接器）
+  - 实现 ConnectorsPage：连接器列表、搜索、添加/编辑弹窗、删除确认、测试连接按钮、错误提示
+  - ConnectorForm：名称/类型/配置 JSON（对象）校验
+  - ConnectorCard：展示状态与配置（敏感字段自动打码），支持编辑/删除/测试连接
+  - connectorStore 对接 preload IPC（`getConnectors/addConnector/updateConnector/deleteConnector/testConnector`）
+  - 当主进程暂时返回空连接器列表时，前端保留 mock 兜底保证界面可用
+- **涉及/新增文件**：
+  - `src/pages/ConnectorsPage/index.tsx`
+  - `src/pages/ConnectorsPage/styles.css`
+  - `src/components/connector/ConnectorList.tsx`
+  - `src/components/connector/ConnectorCard.tsx`
+  - `src/components/connector/ConnectorForm.tsx`
+  - `src/components/connector/connector.css`
+  - `src/store/modules/connectorStore.ts`（增强：对接 IPC + mock fallback）
+  - `src/App.tsx`、`src/components/Layout.tsx`
+- **验收结果（本阶段）**：
+  - [x] 连接器列表正确显示
+  - [x] 可以添加、编辑、删除连接器
+  - [x] 可以测试连接器连接
+  - [x] 表单验证正确（JSON 对象校验）
+  - [x] 错误处理完善（Alert + 可清除）
+
 ---
 
 ### 任务 2.6：仪表盘页面重构

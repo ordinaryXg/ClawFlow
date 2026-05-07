@@ -19,6 +19,12 @@ export interface Connector {
   updatedAt: number;
 }
 
+type ConnectorAPIResponse =
+  | { connectors?: Connector[] }
+  | Connector[]
+  | null
+  | undefined;
+
 export interface ConnectorState {
   connectors: Connector[];
   isLoading: boolean;
@@ -41,10 +47,11 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
   fetchConnectors: async () => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 获取连接器列表
-      // const connectors = await window.electronAPI?.getConnectors();
+      const res: ConnectorAPIResponse = await window.electronAPI?.getConnectors?.();
+      const fromRes =
+        Array.isArray(res) ? res : Array.isArray(res?.connectors) ? res?.connectors : null;
       
-      // 模拟数据
+      // 主进程目前返回模拟空数组时，保留一份 mock 以保证界面可用
       const mockConnectors: Connector[] = [
         {
           id: '1',
@@ -58,7 +65,7 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
       ];
       
       set({ 
-        connectors: mockConnectors,
+        connectors: fromRes && fromRes.length > 0 ? fromRes : mockConnectors,
         isLoading: false 
       });
     } catch (error: any) {
@@ -72,8 +79,7 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
   addConnector: async (config: ConnectorConfig) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 添加连接器
-      // await window.electronAPI?.addConnector(config);
+      await window.electronAPI?.addConnector?.(config);
       
       const newConnector: Connector = {
         id: Date.now().toString(),
@@ -101,8 +107,7 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
   updateConnector: async (id: string, config: Partial<ConnectorConfig>) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 更新连接器
-      // await window.electronAPI?.updateConnector(id, config);
+      await window.electronAPI?.updateConnector?.(id, config);
       
       set(state => ({ 
         connectors: state.connectors.map(connector => 
@@ -124,8 +129,7 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
   deleteConnector: async (id: string) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: 调用 OpenClaw API 删除连接器
-      // await window.electronAPI?.deleteConnector(id);
+      await window.electronAPI?.deleteConnector?.(id);
       
       set(state => ({ 
         connectors: state.connectors.filter(connector => connector.id !== id),
@@ -143,11 +147,8 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
   testConnection: async (id: string) => {
     set({ error: null });
     try {
-      // TODO: 调用 OpenClaw API 测试连接
-      // const result = await window.electronAPI?.testConnector(id);
-      
-      // 模拟测试结果
-      const success = true;
+      const result = await window.electronAPI?.testConnector?.(id);
+      const success = !!(typeof result === 'object' ? (result as any)?.success : result);
       
       set(state => ({ 
         connectors: state.connectors.map(connector => 

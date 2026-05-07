@@ -49,6 +49,18 @@ const Layout: FC = () => {
               技能管理
             </NavLink>
           </li>
+          <li style={{ marginBottom: 8 }}>
+            <NavLink to="/connectors" style={({ isActive }) => ({
+              display: 'block',
+              padding: '8px 12px',
+              borderRadius: 6,
+              background: isActive ? '#e0e0e0' : 'transparent',
+              textDecoration: 'none',
+              color: '#333',
+            })}>
+              连接器
+            </NavLink>
+          </li>
         </ul>
       </nav>
 

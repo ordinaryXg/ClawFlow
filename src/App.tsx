@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import ChatPage from './pages/ChatPage';
 import SkillsPage from './pages/SkillsPage';
+import ConnectorsPage from './pages/ConnectorsPage';
 
 const App: FC = () => {
   return (
@@ -14,6 +15,7 @@ const App: FC = () => {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/skills" element={<SkillsPage />} />
+          <Route path="/connectors" element={<ConnectorsPage />} />
         </Route>
       </Routes>
     </HashRouter>
