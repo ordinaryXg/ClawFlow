@@ -180,15 +180,21 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
   /**
    * 获取可用于 exec 的完整命令前缀
    * 处理 .mjs 文件需要用 node/electron 运行的问题
+   * 生产环境中使用打包进去的 resources/node.exe
    */
   private getCommandPrefix(): string {
     const cliPath = this.config.cliPath;
-    
-    if (cliPath.endsWith('.mjs')) {
-      // 使用 Electron 可执行文件运行 ESM 文件
-      return `"${process.execPath}" --experimental-vm-modules "${cliPath}"`;
+
+    if (cliPath.endsWith('.mjs') || cliPath.endsWith('.mjs')) {
+      // 生产环境：使用打包进去的 node.exe
+      if (app.isPackaged) {
+        const nodeExe = path.join(process.resourcesPath, 'node.exe');
+        return `"${nodeExe}" --experimental-vm-modules "${cliPath}"`;
+      }
+      // 开发环境：依赖系统 PATH 中的 node
+      return `node --experimental-vm-modules "${cliPath}"`;
     }
-    
+
     return `"${cliPath}"`;
   }
 

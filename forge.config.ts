@@ -89,6 +89,18 @@ const config: ForgeConfig = {
         }
         
         console.log('[postPackage] OpenClaw CLI ready at:', openclawDest);
+        
+        // 3. 复制 node.exe 到 resources 目录（用于运行 .mjs 文件）
+        const nodeExeDest = path.join(resourcesPath, 'node.exe');
+        if (!await fs.pathExists(nodeExeDest)) {
+          const nodeExeSrc = process.execPath; // postPackage 运行时，这是 node.exe
+          try {
+            await fs.copy(nodeExeSrc, nodeExeDest);
+            console.log('[postPackage] node.exe copied to:', nodeExeDest);
+          } catch (err) {
+            console.warn('[postPackage] Failed to copy node.exe:', err);
+          }
+        }
       }
     }
   },
