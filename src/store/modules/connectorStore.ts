@@ -65,7 +65,8 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
       ];
       
       set({ 
-        connectors: fromRes && fromRes.length > 0 ? fromRes : mockConnectors,
+        // 若主进程明确返回数组（哪怕为空），就尊重它；仅在无返回/异常时才用 mock 兜底
+        connectors: fromRes ? fromRes : mockConnectors,
         isLoading: false 
       });
     } catch (error: any) {

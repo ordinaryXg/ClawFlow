@@ -45,8 +45,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
     try {
       const res: SkillAPIResponse = await window.electronAPI?.getSkills?.();
 
-      const fromRes =
-        Array.isArray(res) ? res : Array.isArray(res?.skills) ? res?.skills : null;
+      const fromRes = Array.isArray(res) ? res : Array.isArray(res?.skills) ? res?.skills : null;
       
       // 主进程目前返回模拟空数组时，保留一份 mock 以保证界面可用
       const mockSkills: Skill[] = [
@@ -66,7 +65,8 @@ export const useSkillStore = create<SkillState>((set, get) => ({
         },
       ];
       
-      const nextSkills = fromRes && fromRes.length > 0 ? fromRes : mockSkills;
+      // 若主进程明确返回数组（哪怕为空），就尊重它；仅在无返回/异常时才用 mock 兜底
+      const nextSkills = fromRes ? fromRes : mockSkills;
 
       const installed = nextSkills
         .filter(skill => skill.installed)

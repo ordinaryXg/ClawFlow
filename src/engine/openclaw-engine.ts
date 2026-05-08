@@ -78,6 +78,8 @@ interface CLIExecutionResult {
   exitCode: number | null;
 }
 
+type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue };
+
 /**
  * 解析 OpenClaw CLI 路径
  * 优先使用内置版本，回退到系统 PATH
@@ -264,6 +266,97 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
       throw execError;
     }
+  }
+
+  private extractJsonPayload(text: string): string | null {
+    const s = String(text ?? '').trim();
+    if (!s) return null;
+    if (s.startsWith('{') || s.startsWith('[')) return s;
+    const idxObj = s.indexOf('{');
+    const idxArr = s.indexOf('[');
+    const idx = idxObj === -1 ? idxArr : idxArr === -1 ? idxObj : Math.min(idxObj, idxArr);
+    if (idx === -1) return null;
+    return s.slice(idx).trim();
+  }
+
+  private parseJson(text: string): JsonValue | null {
+    const payload = this.extractJsonPayload(text);
+    if (!payload) return null;
+    try {
+      return JSON.parse(payload) as JsonValue;
+    } catch (e) {
+      this.logError('[OpenClawEngine] JSON 解析失败:', e);
+      return null;
+    }
+  }
+
+  private async runJsonCommand(args: string[]): Promise<JsonValue> {
+    const res = await this.executeCommand(args, { checkExitCode: true });
+    const parsed = this.parseJson(res.stdout);
+    if (parsed === null) {
+      throw new Error(`命令未返回可解析 JSON：openclaw ${args.join(' ')}`);
+    }
+    return parsed;
+  }
+
+  async getSkills(): Promise<any[]> {
+    const list = await this.runJsonCommand(['skills', 'list', '--json']);
+    const check = await this.runJsonCommand(['skills', 'check', '--json']).catch(() => null);
+
+    const listArr: any[] = Array.isArray(list) ? list : Array.isArray((list as any)?.skills) ? (list as any).skills : [];
+    const enabledNames = new Set<string>();
+
+    if (check && typeof check === 'object') {
+      const enabled = (check as any).enabledSkills ?? (check as any).skills ?? (check as any).visible ?? null;
+      if (Array.isArray(enabled)) {
+        for (const it of enabled) {
+          const name = typeof it === 'string' ? it : (it?.name ?? it?.slug ?? it?.id);
+          if (typeof name === 'string' && name) enabledNames.add(name);
+        }
+      }
+    }
+
+    return listArr
+      .map((it) => {
+        const name = String(it?.name ?? it?.slug ?? it?.id ?? '');
+        if (!name) return null;
+        const version = String(it?.version ?? it?.pkg?.version ?? it?.meta?.version ?? '');
+        const description = String(it?.description ?? it?.summary ?? it?.meta?.summary ?? '');
+        return {
+          name,
+          version,
+          description,
+          installed: true,
+          enabled: enabledNames.size ? enabledNames.has(name) : true,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  async installSkill(skillName: string): Promise<void> {
+    await this.executeCommand(['skills', 'install', `"${skillName}"`], { checkExitCode: true });
+  }
+
+  async uninstallSkill(skillName: string): Promise<void> {
+    // Note: not documented in CLI reference; attempt best-effort.
+    await this.executeCommand(['skills', 'uninstall', `"${skillName}"`], { checkExitCode: true });
+  }
+
+  async runAgentMessage(message: string): Promise<string> {
+    const json = await this.runJsonCommand(['agent', '--local', '--json', '--message', JSON.stringify(message)]);
+    const obj: any = json;
+    const candidates = [
+      obj?.reply?.text,
+      obj?.reply?.message,
+      obj?.message,
+      obj?.text,
+      obj?.output?.text,
+      obj?.result?.text,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return JSON.stringify(json);
   }
 
   /**
@@ -603,7 +696,7 @@ export function getOpenClawEngine(config?: OpenClawEngineConfig): OpenClawEngine
  * @param config 可选的配置参数
  */
 export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
-  const engine = getOpenClawEngine(config);
+  const engine = getOpenClawEngine(config) as unknown as OpenClawEngineImpl;
 
   ipcMain.handle('openclaw:getVersion', async () => {
     return await engine.getVersion();
@@ -655,9 +748,8 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
 
   // 对话相关 IPC 接口
   ipcMain.handle('openclaw:sendMessage', async (_event, message: string) => {
-    // TODO: 实现发送消息到 OpenClaw 的逻辑
-    console.log('[OpenClawEngine] 发送消息:', message);
-    return { success: true, message: '消息已发送（模拟）' };
+    const reply = await engine.runAgentMessage(message);
+    return { success: true, message: reply };
   });
 
   ipcMain.handle('openclaw:getConversations', async () => {
@@ -674,32 +766,28 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
 
   // 技能管理 IPC 接口
   ipcMain.handle('openclaw:getSkills', async () => {
-    // TODO: 实现获取技能列表的逻辑
-    console.log('[OpenClawEngine] 获取技能列表');
-    return { skills: [] };
+    const skills = await engine.getSkills();
+    return { skills };
   });
 
   ipcMain.handle('openclaw:installSkill', async (_event, skillName: string) => {
-    // TODO: 实现安装技能的逻辑
-    console.log('[OpenClawEngine] 安装技能:', skillName);
+    await engine.installSkill(skillName);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:uninstallSkill', async (_event, skillName: string) => {
-    // TODO: 实现卸载技能的逻辑
-    console.log('[OpenClawEngine] 卸载技能:', skillName);
+    await engine.uninstallSkill(skillName);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:enableSkill', async (_event, skillName: string) => {
-    // TODO: 实现启用技能的逻辑
-    console.log('[OpenClawEngine] 启用技能:', skillName);
+    // Enable/disable are not first-class in CLI; frontend treats this as a local capability flag for now.
+    console.log('[OpenClawEngine] enableSkill (no-op):', skillName);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:disableSkill', async (_event, skillName: string) => {
-    // TODO: 实现禁用技能的逻辑
-    console.log('[OpenClawEngine] 禁用技能:', skillName);
+    console.log('[OpenClawEngine] disableSkill (no-op):', skillName);
     return { success: true };
   });
 
