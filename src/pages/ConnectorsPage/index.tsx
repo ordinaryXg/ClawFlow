@@ -1,6 +1,8 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Connector, ConnectorConfig, useConnectorStore } from '../../store/modules/connectorStore';
+import EmptyState from '../../components/common/EmptyState';
+import Loading from '../../components/common/Loading';
 import './styles.css';
 
 type TestPhase = 'idle' | 'running' | 'ok' | 'fail';
@@ -196,15 +198,15 @@ const ConnectorsPage: FC = () => {
           />
           <div style={{ height: 10 }} />
 
-          {filtered.length === 0 ? (
-            <div className="cf-card">
-              <h3 style={{ marginBottom: 6 }}>{t('connectors.emptyTitle')}</h3>
-              <div className="cf-sub">{t('connectors.emptySub')}</div>
-              <div style={{ height: 12 }} />
-              <button className="cf-btn cf-btnPrimary" onClick={() => openDrawer('add')}>
-                {t('connectors.addFirst')}
-              </button>
-            </div>
+          {isLoading && connectors.length === 0 ? (
+            <Loading label={t('connectors.refreshing')} />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title={t('connectors.emptyTitle')}
+              description={t('connectors.emptySub')}
+              actionLabel={t('connectors.addFirst')}
+              onAction={() => openDrawer('add')}
+            />
           ) : (
             <div className="cf-connList">
               {filtered.map((c) => (

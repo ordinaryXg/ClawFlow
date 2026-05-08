@@ -16,6 +16,7 @@ import type { MenuProps } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useGatewayStore } from '../store/modules/gatewayStore';
 import { useSettingsStore } from '../store/modules/settingsStore';
+import ErrorBoundary from './common/ErrorBoundary';
 import ToastHost from './common/ToastHost';
 
 const MOBILE_BP = 980;
@@ -151,7 +152,9 @@ const Layout: FC = () => {
             </header>
           ) : null}
           <main className="cf-main">
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </div>
       </div>

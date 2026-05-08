@@ -71,7 +71,9 @@
     "sampleUninstallOkBody": "Skill removed.",
     "sampleEnableOkBody": "Available in Chat now.",
     "sampleDisableOkBody": "Skill disabled.",
-    "sampleOpFailBody": "Please try again."
+    "sampleOpFailBody": "Please try again.",
+    "unexpectedErrorTitle": "Something went wrong",
+    "unexpectedErrorBody": "The UI failed to render. Click Retry to recover; if it keeps happening, check logs and report it."
   },
   "dashboard": {
     "title": "Dashboard",

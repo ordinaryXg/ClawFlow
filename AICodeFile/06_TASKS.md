@@ -841,12 +841,33 @@ interface SettingsState {
 **前置任务：** 无
 
 **验收标准：**
-- [ ] Loading 状态正确显示
-- [ ] 错误信息友好、可读
-- [ ] 空数据状态引导清晰
-- [ ] 错误恢复机制可用（重试按钮）
+- [x] Loading 状态正确显示（全局/局部）
+- [x] 错误信息友好、可读（渲染错误由 ErrorBoundary 接管）
+- [x] 空数据状态引导清晰（EmptyState 主 CTA）
+- [x] 错误恢复机制可用（重试按钮）
 
 **预计复杂度：** 中等
+
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-08
+- **完成内容概览**：
+  - 新增 `Loading` / `EmptyState` / `ErrorBoundary` 三个通用组件，并配套 `ui.css` 基础样式（spinner、空态容器等）
+  - `Layout` 对 `Outlet` 进行 ErrorBoundary 包裹：捕获渲染错误并提供“重试”恢复
+  - `SkillsPage` / `ConnectorsPage` 接入 Loading + EmptyState：首次加载显示 loading，空结果显示可行动的 CTA
+  - 国际化：新增 `common.unexpectedErrorTitle` / `common.unexpectedErrorBody`（zh/en）
+  - 自测：`npx tsc --noEmit` 通过；`npm run lint` 无 error
+- **涉及文件**：
+  - `src/components/common/Loading.tsx`
+  - `src/components/common/EmptyState.tsx`
+  - `src/components/common/ErrorBoundary.tsx`
+  - `src/components/Layout.tsx`
+  - `src/pages/SkillsPage/index.tsx`
+  - `src/pages/ConnectorsPage/index.tsx`
+  - `src/styles/ui.css`
+  - `src/locales/zh.json`、`src/locales/en.json`
+- **验收结果**：
+  - [x] 核心页面加载/空态/渲染错误体验达标
 
 ---
 

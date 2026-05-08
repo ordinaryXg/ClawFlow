@@ -1,6 +1,8 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Skill, useSkillStore } from '../../store/modules/skillStore';
+import EmptyState from '../../components/common/EmptyState';
+import Loading from '../../components/common/Loading';
 import './styles.css';
 
 type FilterMode = 'all' | 'installed' | 'notInstalled';
@@ -100,15 +102,15 @@ const SkillsPage: FC = () => {
 
       <div style={{ height: 12 }} />
 
-      {filtered.length === 0 ? (
-        <div className="cf-card">
-          <h3>{t('skills.emptyTitle')}</h3>
-          <div className="cf-sub">{t('skills.emptySub')}</div>
-          <div style={{ height: 12 }} />
-          <button className="cf-btn cf-btnPrimary" onClick={() => setQuery('')}>
-            {t('skills.clearSearch')}
-          </button>
-        </div>
+      {isLoading && skills.length === 0 ? (
+        <Loading label={t('skills.refreshing')} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={t('skills.emptyTitle')}
+          description={t('skills.emptySub')}
+          actionLabel={t('skills.clearSearch')}
+          onAction={() => setQuery('')}
+        />
       ) : (
         <div className="cf-grid">
           {(filtered as Skill[]).map((s) => (

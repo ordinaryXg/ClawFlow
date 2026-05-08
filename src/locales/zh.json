@@ -71,7 +71,9 @@
     "sampleUninstallOkBody": "技能已移除。",
     "sampleEnableOkBody": "现在可在 Chat 中使用。",
     "sampleDisableOkBody": "技能已禁用。",
-    "sampleOpFailBody": "请稍后重试。"
+    "sampleOpFailBody": "请稍后重试。",
+    "unexpectedErrorTitle": "发生了一个渲染错误",
+    "unexpectedErrorBody": "页面渲染失败。你可以点击“重试”恢复；若持续出现，请查看日志并反馈。"
   },
   "dashboard": {
     "title": "Dashboard",
