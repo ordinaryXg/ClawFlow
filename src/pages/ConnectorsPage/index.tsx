@@ -50,8 +50,7 @@ const ConnectorsPage: FC = () => {
 
   useEffect(() => {
     void fetchConnectors();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchConnectors]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

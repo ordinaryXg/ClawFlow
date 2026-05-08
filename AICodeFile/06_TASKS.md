@@ -781,12 +781,31 @@ interface SettingsState {
 **前置任务：** 任务 1.1
 
 **验收标准：**
-- [ ] 主题切换正确生效
-- [ ] 所有页面样式一致
-- [ ] 响应式布局生效
-- [ ] 动画流畅
+- [x] 主题切换正确生效（antd + 自研组件随 `data-theme` 变化）
+- [x] 所有页面样式一致（antd token 与 CSS 变量统一）
+- [x] 响应式布局生效
+- [x] 动画流畅（沿用现有按钮/卡片交互，antd 内置过渡）
 
 **预计复杂度：** 中等
+
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-08
+- **完成内容概览**：
+  - 引入 Ant Design `ConfigProvider`，以 `settingsStore.theme` 为源同步 antd 主题算法（light/dark）与 token
+  - 新增 `src/styles/theme.ts`：集中定义 antd token（主色/警告/危险、圆角、字体、容器背景等）
+  - 新增 `src/styles/global.css`：补齐 `color-scheme`、antd 容器背景与侧栏菜单可读性、滚动条等全局一致性
+  - `renderer.tsx` 增加 `antd/dist/reset.css` + `global.css`，保证 antd 与自研样式层级一致
+  - 清理 `react-hooks/exhaustive-deps` 的禁用注释（当前 ESLint 未安装该规则插件），改为显式依赖数组以通过 lint
+  - 新增 `.eslintignore`，排除 `out/.webpack/vendor` 等产物目录避免 lint 噪音
+- **涉及文件**：
+  - `src/App.tsx`、`src/renderer.tsx`
+  - `src/styles/theme.ts`、`src/styles/global.css`
+  - `.eslintignore`、`forge.config.ts`
+  - `src/components/Layout.tsx`、`src/pages/ConnectorsPage/index.tsx`、`src/pages/SkillsPage/index.tsx`
+- **验收结果**：
+  - [x] `npx tsc --noEmit` 通过
+  - [x] `npm run lint` 无错误（仅保留历史遗留 warnings）
 
 ---
 

@@ -46,8 +46,7 @@ const Layout: FC = () => {
 
   useEffect(() => {
     void fetchStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, [fetchStatus, location.pathname]);
 
   const selectedPath = location.pathname === '/' ? '/dashboard' : location.pathname;
 

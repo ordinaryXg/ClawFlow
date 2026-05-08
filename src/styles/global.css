@@ -1,0 +1,40 @@
+:root{
+  color-scheme: dark;
+}
+
+:root[data-theme="light"]{
+  color-scheme: light;
+}
+
+/* Keep antd surfaces aligned with our CSS tokens. */
+.ant-layout,
+.ant-card,
+.ant-modal-content,
+.ant-drawer-content,
+.ant-dropdown-menu,
+.ant-popover-inner{
+  background: var(--panel);
+}
+
+:root[data-theme="light"] .ant-layout,
+:root[data-theme="light"] .ant-card,
+:root[data-theme="light"] .ant-modal-content,
+:root[data-theme="light"] .ant-drawer-content,
+:root[data-theme="light"] .ant-dropdown-menu,
+:root[data-theme="light"] .ant-popover-inner{
+  background: var(--panel);
+}
+
+/* Menu inside our sidebar uses transparent container; keep text readable. */
+.cf-sidebar .ant-menu{
+  color: var(--text);
+}
+
+/* Scrollbars (non-critical; safe default on Windows). */
+*{
+  scrollbar-color: rgba(255,255,255,.16) transparent;
+}
+:root[data-theme="light"] *{
+  scrollbar-color: rgba(0,0,0,.22) transparent;
+}
+

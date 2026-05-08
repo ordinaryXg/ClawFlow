@@ -3,13 +3,14 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
-import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
+import fs from 'fs-extra';
+import path from 'path';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -18,20 +19,19 @@ const config: ForgeConfig = {
     // 不在 asar 中打包 node_modules（webpack 已将其清空）
   },
   hooks: {
-    postPackage: async (_config: any, results: any) => {
-      const fs = require('fs-extra');
-      const path = require('path');
-      
+    postPackage: async (_config: unknown, results: unknown) => {
       // 获取输出路径
-      let outputPaths: string[] = [];
-      
+      const outputPaths: string[] = [];
+
       if (Array.isArray(results)) {
         for (const result of results) {
-          const paths = result.outputPaths || [result.outputPath];
+          const r = result as any;
+          const paths = r.outputPaths || [r.outputPath];
           outputPaths.push(...(Array.isArray(paths) ? paths : [paths]));
         }
       } else if (results && typeof results === 'object') {
-        const paths = results.outputPaths || [results.outputPath];
+        const r = results as any;
+        const paths = r.outputPaths || [r.outputPath];
         outputPaths.push(...(Array.isArray(paths) ? paths : [paths]));
       }
       
@@ -113,8 +113,6 @@ const config: ForgeConfig = {
     new MakerDeb({}),
   ],
   plugins: [
-    // 注意：不使用 AutoUnpackNativesPlugin，因为 OpenClaw 作为子进程运行
-    // 不需要为其重建原生模块
     new WebpackPlugin({
       port: 9001,
       mainConfig,

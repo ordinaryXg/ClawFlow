@@ -13,8 +13,7 @@ const SkillsPage: FC = () => {
 
   useEffect(() => {
     void fetchSkills();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchSkills]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
