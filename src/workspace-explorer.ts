@@ -1,0 +1,203 @@
+/**
+ * 工作空间内安全列目录 / 读文件（主进程，供 IPC 使用）。
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { WORKSPACE_IMAGE_PREVIEW_MAX_BYTES } from './workspace-preview-limits';
+
+const TEXT_PREVIEW_MAX = 256 * 1024;
+const FILE_HARD_MAX = 1024 * 1024;
+
+const IMAGE_EXT_TO_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.avif': 'image/avif',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+};
+
+const IMAGE_PREVIEW_TOO_LARGE = 'IMAGE_PREVIEW_TOO_LARGE';
+
+function tryDecodeUtf16Le(buf: Buffer): string | null {
+  if (buf.length % 2 !== 0 || buf.length === 0) return null;
+  try {
+    const dec = new TextDecoder('utf-16le', { fatal: true }).decode(buf);
+    const roundTrip = Buffer.from(dec, 'utf16le');
+    if (!roundTrip.equals(buf)) return null;
+    return dec;
+  } catch {
+    return null;
+  }
+}
+
+function tryDecodeUtf16Be(buf: Buffer): string | null {
+  if (buf.length % 2 !== 0 || buf.length === 0) return null;
+  const copy = Buffer.from(buf);
+  copy.swap16();
+  return tryDecodeUtf16Le(copy);
+}
+
+function isMostlyPrintableUtf8(s: string): boolean {
+  if (s.length === 0) return true;
+  let ok = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13) ok++;
+    else if (c >= 32 && c < 0xd800) ok++;
+    else if (c >= 0xd800 && c <= 0xdfff) ok++;
+    else if (c >= 0xe000 && c < 0xfffe) ok++;
+  }
+  return ok / s.length > 0.82;
+}
+
+// 预览解码：含 NUL 的 UTF-16（如 Windows 记事本「Unicode」）不再被误判为二进制。
+function decodePreviewBuffer(slice: Buffer): { text: string; isBinary: boolean } {
+  if (slice.length === 0) {
+    return { text: '', isBinary: false };
+  }
+
+  if (slice.length >= 3 && slice[0] === 0xef && slice[1] === 0xbb && slice[2] === 0xbf) {
+    return { text: slice.subarray(3).toString('utf8'), isBinary: false };
+  }
+  if (slice.length >= 2 && slice[0] === 0xff && slice[1] === 0xfe) {
+    const body = slice.subarray(2);
+    const dec = tryDecodeUtf16Le(body);
+    if (dec != null) return { text: dec, isBinary: false };
+    if (body.length % 2 === 0) return { text: body.toString('utf16le'), isBinary: false };
+    return { text: body.toString('utf8'), isBinary: false };
+  }
+  if (slice.length >= 2 && slice[0] === 0xfe && slice[1] === 0xff) {
+    const body = slice.subarray(2);
+    const dec = tryDecodeUtf16Be(body);
+    if (dec != null) return { text: dec, isBinary: false };
+    if (body.length % 2 === 0) {
+      const copy = Buffer.from(body);
+      copy.swap16();
+      return { text: copy.toString('utf16le'), isBinary: false };
+    }
+    return { text: body.toString('utf8'), isBinary: false };
+  }
+
+  const sampleLen = Math.min(8192, slice.length);
+  const hasNul = slice.subarray(0, sampleLen).indexOf(0) >= 0;
+
+  if (!hasNul) {
+    return { text: slice.toString('utf8'), isBinary: false };
+  }
+
+  if (slice.length % 2 === 0) {
+    const le = tryDecodeUtf16Le(slice);
+    if (le != null) return { text: le, isBinary: false };
+    const be = tryDecodeUtf16Be(slice);
+    if (be != null) return { text: be, isBinary: false };
+  }
+
+  const utf8Text = slice.toString('utf8');
+  if (isMostlyPrintableUtf8(utf8Text)) {
+    return { text: utf8Text, isBinary: false };
+  }
+
+  return { text: '', isBinary: true };
+}
+
+export function resolvePathInsideWorkspace(workspaceRoot: string, relativePath: string): string {
+  const root = path.resolve(workspaceRoot);
+  const parts = String(relativePath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((p) => p && p !== '.');
+  if (parts.some((p) => p === '..')) {
+    throw new Error('Invalid path');
+  }
+  const full = path.resolve(root, ...parts);
+  const relToRoot = path.relative(root, full);
+  if (relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) {
+    throw new Error('Path escapes workspace');
+  }
+  return full;
+}
+
+export async function listWorkspaceDirectory(
+  workspaceRoot: string,
+  relativePath: string
+): Promise<Array<{ name: string; kind: 'file' | 'dir' }>> {
+  const dir = resolvePathInsideWorkspace(workspaceRoot, relativePath);
+  const st = await fs.promises.stat(dir).catch(() => null);
+  if (!st?.isDirectory()) {
+    throw new Error('Not a directory');
+  }
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+
+  const rows = entries
+    .map((e) => ({
+      name: e.name,
+      kind: (e.isDirectory() ? 'dir' : 'file') as 'file' | 'dir',
+    }))
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+  return rows;
+}
+
+export type FilePreviewResult =
+  | {
+      ok: true;
+      content: string;
+      truncated: boolean;
+      isBinary: boolean;
+      /** 为 true 时 `content` 为原始 Base64（无 data: 前缀），与 `mimeType` 拼 data URL */
+      isImage?: boolean;
+      mimeType?: string;
+    }
+  | { ok: false; error: string };
+
+export async function readWorkspaceFilePreview(
+  workspaceRoot: string,
+  relativePath: string
+): Promise<FilePreviewResult> {
+  try {
+    const full = resolvePathInsideWorkspace(workspaceRoot, relativePath);
+    const st = await fs.promises.stat(full);
+    if (!st.isFile()) {
+      return { ok: false, error: 'Not a file' };
+    }
+
+    const ext = path.extname(full).toLowerCase();
+    const imageMime = IMAGE_EXT_TO_MIME[ext];
+    if (imageMime) {
+      if (st.size > WORKSPACE_IMAGE_PREVIEW_MAX_BYTES) {
+        return { ok: false, error: IMAGE_PREVIEW_TOO_LARGE };
+      }
+      const buf = await fs.promises.readFile(full);
+      return {
+        ok: true,
+        content: buf.toString('base64'),
+        truncated: false,
+        isBinary: false,
+        isImage: true,
+        mimeType: imageMime,
+      };
+    }
+
+    if (st.size > FILE_HARD_MAX) {
+      return { ok: false, error: 'File too large' };
+    }
+    const buf = await fs.promises.readFile(full);
+    const truncated = buf.length > TEXT_PREVIEW_MAX;
+    const slice = truncated ? buf.subarray(0, TEXT_PREVIEW_MAX) : buf;
+    const { text, isBinary } = decodePreviewBuffer(slice);
+    return { ok: true, content: text, truncated, isBinary };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+}

@@ -21,7 +21,7 @@ const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 520;
 const RIGHT_DEFAULT = 360;
 const RIGHT_MIN = 220;
-const RIGHT_MAX = 560;
+const RIGHT_MAX = 900;
 
 const Layout: FC = () => {
   const { t } = useTranslation();

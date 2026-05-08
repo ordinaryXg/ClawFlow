@@ -4,7 +4,8 @@
   },
   "layout": {
     "resizeSidebar": "拖动调整左侧会话栏宽度",
-    "resizeRightPanel": "拖动调整右侧信息栏宽度"
+    "resizeRightPanel": "拖动调整右侧信息栏宽度",
+    "resizeWorkspaceSplit": "拖动调整文件树与预览区宽度"
   },
   "workspace": {
     "title": "工作空间",
@@ -185,7 +186,31 @@
       "changeLog": "变更记录表",
       "workspacePath": "工作空间目录",
       "headlessBrowserHint": "（占位）用于无头浏览器任务与运行状态。",
-      "changeLogHint": "（占位）用于展示本工作空间的变更记录表。"
+      "changeLogHint": "（占位）用于展示本工作空间的变更记录表。",
+      "treeRoot": "工作区根目录",
+      "treeTitle": "文件树",
+      "previewTitle": "文件预览",
+      "mdPreview": "预览",
+      "mdSource": "源码",
+      "mdModeGroup": "Markdown 显示方式",
+      "previewEmpty": "在左侧选择文件以预览内容。",
+      "previewLoading": "正在加载预览…",
+      "previewBinary": "该文件为二进制或不可预览类型。",
+      "previewTruncated": "内容已截断，仅显示前若干字节。",
+      "previewImageTooLarge": "图片超过 {{maxMB}}MB，无法在此预览。",
+      "previewNoApi": "无法读取文件（API 不可用）。",
+      "treeLoading": "加载目录…",
+      "treeLoadFail": "目录加载失败",
+      "noWorkspaceForTree": "请先选择工作空间。",
+      "browserUrlPh": "输入 https:// 地址或域名",
+      "browserGo": "打开",
+      "browserReload": "刷新",
+      "changeLogNoWs": "请先选择工作空间以查看变更记录。",
+      "changeLogLoading": "加载变更记录…",
+      "changeLogEmpty": "尚无记录。完成一轮对话后，将在此显示摘要。",
+      "changeUser": "用户",
+      "changeAssistant": "助手",
+      "changeConvId": "会话 ID"
     },
     "streamLabel": "OpenClaw · 流式输出",
     "deletedTitle": "已删除对话",

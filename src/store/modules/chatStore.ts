@@ -175,6 +175,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           } catch {
             // best-effort
           }
+
+          void Promise.resolve(
+            window.electronAPI?.workspaceAppendChangeLog?.({
+              conversationId,
+              userPreview: content,
+              assistantExcerpt: fullText,
+            })
+          ).then((res) => {
+            if (res && typeof res === 'object' && 'ok' in res && res.ok) {
+              window.dispatchEvent(new CustomEvent('cf-workspace-changelog-updated'));
+            }
+          });
         }
       }, TYPING_INTERVAL_MS);
     };

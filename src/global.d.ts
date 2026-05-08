@@ -49,6 +49,38 @@ export interface IElectronAPI {
   workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
   workspacePickFolder: () => Promise<string | null>;
   workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  workspaceListDir: (
+    relativePath?: string
+  ) => Promise<{ ok: boolean; entries: Array<{ name: string; kind: 'file' | 'dir' }>; error?: string }>;
+  workspaceReadFilePreview: (
+    relativePath: string
+  ) => Promise<
+    | {
+        ok: true;
+        content: string;
+        truncated: boolean;
+        isBinary: boolean;
+        isImage?: boolean;
+        mimeType?: string;
+      }
+    | { ok: false; error: string }
+  >;
+  workspaceGetChangeLog: (limit?: number) => Promise<{
+    ok: boolean;
+    entries: Array<{
+      id: string;
+      at: number;
+      conversationId: string;
+      title: string;
+      userPreview: string;
+      assistantExcerpt: string;
+    }>;
+  }>;
+  workspaceAppendChangeLog: (payload: {
+    conversationId: string;
+    userPreview: string;
+    assistantExcerpt: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
 }
 

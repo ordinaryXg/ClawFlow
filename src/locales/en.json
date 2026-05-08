@@ -4,7 +4,8 @@
   },
   "layout": {
     "resizeSidebar": "Drag to resize the left sessions column",
-    "resizeRightPanel": "Drag to resize the right info column"
+    "resizeRightPanel": "Drag to resize the right info column",
+    "resizeWorkspaceSplit": "Drag to resize file tree and preview"
   },
   "workspace": {
     "title": "Workspace",
@@ -185,7 +186,31 @@
       "changeLog": "Change log",
       "workspacePath": "Workspace path",
       "headlessBrowserHint": "(placeholder) Headless browser tasks and status.",
-      "changeLogHint": "(placeholder) Workspace change log table."
+      "changeLogHint": "(placeholder) Workspace change log table.",
+      "treeRoot": "Workspace root",
+      "treeTitle": "Files",
+      "previewTitle": "Preview",
+      "mdPreview": "Preview",
+      "mdSource": "Source",
+      "mdModeGroup": "Markdown display mode",
+      "previewEmpty": "Select a file on the left to preview.",
+      "previewLoading": "Loading preview…",
+      "previewBinary": "Binary or non-previewable file.",
+      "previewTruncated": "Content truncated (size limit).",
+      "previewImageTooLarge": "Image exceeds {{maxMB}} MB preview limit.",
+      "previewNoApi": "Cannot read file (API unavailable).",
+      "treeLoading": "Loading directory…",
+      "treeLoadFail": "Failed to load directory",
+      "noWorkspaceForTree": "Pick a workspace first.",
+      "browserUrlPh": "https:// URL or domain",
+      "browserGo": "Go",
+      "browserReload": "Reload",
+      "changeLogNoWs": "Pick a workspace to view the change log.",
+      "changeLogLoading": "Loading change log…",
+      "changeLogEmpty": "No entries yet. After a reply completes, a summary appears here.",
+      "changeUser": "User",
+      "changeAssistant": "Assistant",
+      "changeConvId": "Conversation ID"
     },
     "streamLabel": "OpenClaw · streaming",
     "deletedTitle": "Deleted",

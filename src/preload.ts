@@ -51,6 +51,38 @@ export interface IElectronAPI {
   workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
   workspacePickFolder: () => Promise<string | null>;
   workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  workspaceListDir: (
+    relativePath?: string
+  ) => Promise<{ ok: boolean; entries: Array<{ name: string; kind: 'file' | 'dir' }>; error?: string }>;
+  workspaceReadFilePreview: (
+    relativePath: string
+  ) => Promise<
+    | {
+        ok: true;
+        content: string;
+        truncated: boolean;
+        isBinary: boolean;
+        isImage?: boolean;
+        mimeType?: string;
+      }
+    | { ok: false; error: string }
+  >;
+  workspaceGetChangeLog: (limit?: number) => Promise<{
+    ok: boolean;
+    entries: Array<{
+      id: string;
+      at: number;
+      conversationId: string;
+      title: string;
+      userPreview: string;
+      assistantExcerpt: string;
+    }>;
+  }>;
+  workspaceAppendChangeLog: (payload: {
+    conversationId: string;
+    userPreview: string;
+    assistantExcerpt: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
 }
 
@@ -114,6 +146,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceSetActive: (folderPath: string) => ipcRenderer.invoke('workspace:setActive', folderPath),
   workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
   workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),
+  workspaceListDir: (relativePath?: string) => ipcRenderer.invoke('workspace:listDir', relativePath),
+  workspaceReadFilePreview: (relativePath: string) => ipcRenderer.invoke('workspace:readFilePreview', relativePath),
+  workspaceGetChangeLog: (limit?: number) => ipcRenderer.invoke('workspace:getChangeLog', limit),
+  workspaceAppendChangeLog: (payload: { conversationId: string; userPreview: string; assistantExcerpt: string }) =>
+    ipcRenderer.invoke('workspace:appendChangeLog', payload),
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => {
     const handler = (_event: unknown, payload: unknown) => {
       if (payload && typeof payload === 'object' && typeof (payload as any).path === 'string') {

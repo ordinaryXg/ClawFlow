@@ -1,5 +1,8 @@
 import { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import ChangeHistoryPanel from './ChangeHistoryPanel';
+import SimpleEmbeddedBrowser from './SimpleEmbeddedBrowser';
+import WorkspaceFilesSplit from './WorkspaceFilesSplit';
 
 type Props = {
   workspacePath: string | null;
@@ -46,28 +49,9 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
       </div>
 
       <div className="cf-chatRight__body" role="tabpanel">
-        {active === 'workspace' ? (
-          <div className="cf-chatRight__section">
-            <div className="cf-chatRight__kv">
-              <span className="cf-chatRight__k">{t('chat.rightTabs.workspacePath')}</span>
-              <span className="cf-chatRight__v" title={workspacePath ?? ''}>
-                {workspacePath ?? t('workspace.default')}
-              </span>
-            </div>
-          </div>
-        ) : null}
-
-        {active === 'browser' ? (
-          <div className="cf-chatRight__section">
-            <div className="cf-sub">{t('chat.rightTabs.headlessBrowserHint')}</div>
-          </div>
-        ) : null}
-
-        {active === 'changes' ? (
-          <div className="cf-chatRight__section">
-            <div className="cf-sub">{t('chat.rightTabs.changeLogHint')}</div>
-          </div>
-        ) : null}
+        {active === 'workspace' ? <WorkspaceFilesSplit workspacePath={workspacePath} /> : null}
+        {active === 'browser' ? <SimpleEmbeddedBrowser /> : null}
+        {active === 'changes' ? <ChangeHistoryPanel workspacePath={workspacePath} /> : null}
       </div>
     </aside>
   );
