@@ -43,6 +43,12 @@ export interface IElectronAPI {
   windowPaste: () => Promise<void>;
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
+  workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
+  workspaceListRecent: () => Promise<string[]>;
+  workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspacePickFolder: () => Promise<string | null>;
+  workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
 }
 
 declare global {

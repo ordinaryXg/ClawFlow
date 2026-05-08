@@ -1,6 +1,7 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '../../store/modules/chatStore';
+import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
 import StreamingMessage from '../../components/chat/StreamingMessage';
@@ -25,10 +26,15 @@ const ChatPage: FC = () => {
 
   const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
+  const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
+  const workspaceMeta = useWorkspaceStore((s) => s.meta);
+  const workspaceRecent = useWorkspaceStore((s) => s.recent);
+  const pickWorkspaceFolder = useWorkspaceStore((s) => s.pickFolder);
+  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
   useEffect(() => {
     void fetchConversations();
-  }, [fetchConversations]);
+  }, [fetchConversations, activeWorkspacePath]);
 
   useEffect(() => {
     void (async () => {
@@ -50,12 +56,19 @@ const ChatPage: FC = () => {
         setModelId(null);
       }
     })();
-  }, []);
+  }, [activeWorkspacePath]);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) ?? null,
     [conversations, activeConversationId]
   );
+
+  const workspaceLabel =
+    (workspaceMeta?.name && String(workspaceMeta.name).trim()) ||
+    (activeWorkspacePath ? String(activeWorkspacePath).replace(/[/\\]+$/, '').split(/[/\\]/).pop() || '' : '') ||
+    t('workspace.default');
+
+  const workspaceLocked = (activeConversation?.messages?.length ?? 0) > 0;
 
   const onNewConversation = () => {
     createConversation();
@@ -178,6 +191,11 @@ const ChatPage: FC = () => {
             models={models}
             modelId={modelId}
             onModelChange={setModelId}
+            workspaceLabel={workspaceLabel}
+            workspaceRecent={workspaceRecent}
+            workspaceLocked={workspaceLocked}
+            onWorkspacePick={pickWorkspaceFolder}
+            onWorkspaceSelect={setWorkspace}
           />
         </footer>
       </section>

@@ -2,6 +2,11 @@
   "brand": {
     "tagline": "Desktop work assistant"
   },
+  "workspace": {
+    "title": "Workspace",
+    "default": "Default",
+    "openFolder": "Open folder…"
+  },
   "titlebar": {
     "file": "File",
     "edit": "Edit",
@@ -167,6 +172,7 @@
     "sending": "Sending…",
     "model": "Model",
     "modelAuto": "Auto (default)",
+    "workspaceLockedHint": "Workspace is locked after the conversation starts. Create a new session to switch.",
     "streamLabel": "OpenClaw · streaming",
     "deletedTitle": "Deleted",
     "deletedBody": "Conversation removed locally.",

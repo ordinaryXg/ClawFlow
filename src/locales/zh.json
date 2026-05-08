@@ -2,6 +2,11 @@
   "brand": {
     "tagline": "桌面端工作助手"
   },
+  "workspace": {
+    "title": "工作空间",
+    "default": "默认",
+    "openFolder": "打开文件夹…"
+  },
   "titlebar": {
     "file": "文件",
     "edit": "编辑",
@@ -167,6 +172,7 @@
     "sending": "发送中…",
     "model": "模型",
     "modelAuto": "自动（默认）",
+    "workspaceLockedHint": "对话开始后将锁定工作空间；请新建会话后再切换。",
     "streamLabel": "OpenClaw · 流式输出",
     "deletedTitle": "已删除对话",
     "deletedBody": "对话已从本地移除。",

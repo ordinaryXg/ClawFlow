@@ -85,9 +85,31 @@
   gap:8px;
   min-width:0;
 }
+.cf-chatInput__wsLabel{
+  margin-left:6px;
+}
+.cf-chatInput__wsBtn{
+  max-width:280px;
+  padding:6px 10px;
+  gap:6px;
+}
+.cf-chatInput__wsBtn--disabled{
+  opacity:.65;
+  cursor:not-allowed;
+}
+.cf-chatInput__wsName{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:220px;
+}
+.cf-chatInput__wsChev{
+  font-size:10px;
+  color:var(--muted);
+}
 .cf-select--compact{
   padding:6px 10px;
-  border-radius:12px;
+  border-radius:var(--radiusSm);
   font-size:12px;
 }
 

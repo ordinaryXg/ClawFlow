@@ -9,9 +9,9 @@ const BASE_TOKEN = {
   colorSuccess: '#1E5B45',
   colorWarning: '#8A6A2A',
   colorError: '#C24B4B',
-  borderRadius: 12,
-  borderRadiusLG: 14,
-  borderRadiusSM: 10,
+  borderRadius: 4,
+  borderRadiusLG: 4,
+  borderRadiusSM: 3,
   fontFamily:
     'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif',
   fontFamilyCode:
@@ -36,10 +36,10 @@ export function getAntdTheme(appTheme: AppTheme): ThemeConfig {
         paddingInline: 12,
       },
       Card: {
-        borderRadiusLG: 14,
+        borderRadiusLG: 4,
       },
       Menu: {
-        itemBorderRadius: 10,
+        itemBorderRadius: 3,
       },
       Drawer: {
         colorBgElevated: isLight ? '#ffffff' : '#1A1D21',

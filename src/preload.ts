@@ -45,6 +45,12 @@ export interface IElectronAPI {
   windowPaste: () => Promise<void>;
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
+  workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
+  workspaceListRecent: () => Promise<string[]>;
+  workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspacePickFolder: () => Promise<string | null>;
+  workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
 }
 
 // 通过 contextBridge 安全地暴露 API
@@ -100,4 +106,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowPaste: () => ipcRenderer.invoke('window:paste'),
   windowSelectAll: () => ipcRenderer.invoke('window:selectAll'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
+  workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
+  workspaceSetActive: (folderPath: string) => ipcRenderer.invoke('workspace:setActive', folderPath),
+  workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
+  workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),
+  onWorkspaceChanged: (cb: (payload: { path: string }) => void) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (payload && typeof payload === 'object' && typeof (payload as any).path === 'string') {
+        cb({ path: (payload as { path: string }).path });
+      }
+    };
+    ipcRenderer.on('workspace:changed', handler);
+    return () => ipcRenderer.removeListener('workspace:changed', handler);
+  },
 } as IElectronAPI);

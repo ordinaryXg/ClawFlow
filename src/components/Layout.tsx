@@ -2,6 +2,8 @@ import { FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useGatewayStore } from '../store/modules/gatewayStore';
+import { useWorkspaceStore } from '../store/modules/workspaceStore';
+import { useChatStore } from '../store/modules/chatStore';
 import ErrorBoundary from './common/ErrorBoundary';
 import ToastHost from './common/ToastHost';
 import Titlebar from './Titlebar';
@@ -12,6 +14,8 @@ const Layout: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { status, fetchStatus } = useGatewayStore();
+  const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
+  const fetchConversations = useChatStore((s) => s.fetchConversations);
 
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.matchMedia(`(max-width:${MOBILE_BP}px)`).matches : false
@@ -32,16 +36,21 @@ const Layout: FC = () => {
   }, [fetchStatus]);
 
   useEffect(() => {
+    void refreshWorkspace();
+  }, [refreshWorkspace]);
+
+  useEffect(() => {
+    const off = window.electronAPI?.onWorkspaceChanged?.(() => {
+      void refreshWorkspace();
+      void fetchConversations();
+    });
+    return () => off?.();
+  }, [refreshWorkspace, fetchConversations]);
+
+  useEffect(() => {
     const off = window.electronAPI?.onNavigate?.((path) => navigate(path));
     return () => off?.();
   }, [navigate]);
-
-  const dotStyle =
-    status === 'running'
-      ? { background: 'var(--green)', boxShadow: '0 0 0 4px rgba(30, 91, 69, 0.18)' }
-      : status === 'stopped'
-        ? { background: 'var(--subtle)', boxShadow: '0 0 0 4px rgba(110, 118, 129, 0.18)' }
-        : undefined;
 
   const statusKey = status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'unknown';
 

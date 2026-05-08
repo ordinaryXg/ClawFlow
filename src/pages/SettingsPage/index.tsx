@@ -4,6 +4,7 @@ import i18n from '../../i18n';
 import './styles.css';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
+import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 
 const SettingsPage: FC = () => {
   const { t } = useTranslation();
@@ -18,6 +19,8 @@ const SettingsPage: FC = () => {
     updateSettings,
     resetSettings,
   } = useSettingsStore();
+
+  const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
 
   const [cliPath, setCliPath] = useState(storeCliPath);
   const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
@@ -70,7 +73,7 @@ const SettingsPage: FC = () => {
         setConfiguredProviders([]);
       }
     })();
-  }, []);
+  }, [activeWorkspacePath]);
 
   useEffect(() => {
     void (async () => {
