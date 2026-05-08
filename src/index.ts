@@ -387,7 +387,13 @@ app.whenReady().then(async () => {
   registerWorkspaceIPC();
   registerOpenClawIPC();
   ipcMain.handle('skillMarket:getIndex', async (_e, opts?: { forceRefresh?: boolean }) => {
-    return await fetchSkillMarketIndex({ forceRefresh: Boolean(opts?.forceRefresh) });
+    try {
+      return await fetchSkillMarketIndex({ forceRefresh: Boolean(opts?.forceRefresh) });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[skillMarket:getIndex]', msg);
+      return { ok: false as const, error: msg || 'skill market handler failed' };
+    }
   });
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('app:setLanguage', (_event, lang: string) => {

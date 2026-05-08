@@ -87,12 +87,23 @@ export const useSkillStore = create<SkillState>((set) => ({
     set({ marketLoading: true, marketError: null });
     try {
       const res = await api.skillMarketGetIndex({ forceRefresh: Boolean(opts?.forceRefresh) });
+      if (!res || typeof res !== 'object' || !('ok' in res)) {
+        const err = '技能市场返回数据异常（请重启应用或更新到最新版本）';
+        set({
+          marketEntries: [],
+          marketSource: null,
+          marketWarning: null,
+          marketError: err,
+          marketLoading: false,
+        });
+        return { ok: false as const, error: err };
+      }
       if (!res.ok) {
         set({
           marketEntries: [],
           marketSource: null,
           marketWarning: null,
-          marketError: res.error,
+          marketError: res.error || '技能市场索引不可用',
           marketLoading: false,
         });
         return res;

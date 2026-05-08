@@ -147,12 +147,17 @@ const SkillsPage: FC = () => {
         <div style={{ marginTop: 16 }}>
           {isLoading && skills.length === 0 ? (
             <Loading label={t('skills.refreshing')} />
+          ) : skills.length === 0 ? (
+            <EmptyState title={t('skills.emptyLocalTitle')} description={t('skills.emptyLocalSub')} />
           ) : filtered.length === 0 ? (
             <EmptyState
               title={t('skills.emptyTitle')}
               description={t('skills.emptySub')}
               actionLabel={t('skills.clearSearch')}
-              onAction={() => setQuery('')}
+              onAction={() => {
+                setQuery('');
+                setFilter('all');
+              }}
             />
           ) : (
             <div className="cf-grid">
@@ -189,7 +194,8 @@ const SkillsPage: FC = () => {
         <div className="cf-row" style={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 280px', minWidth: 0 }}>
             <h3 style={{ margin: '0 0 4px' }}>{t('skills.marketSectionTitle')}</h3>
-            <p className="cf-sub" style={{ margin: '0 0 8px' }}>{t('skills.marketSectionSub')}</p>
+            <p className="cf-sub" style={{ margin: '0 0 6px' }}>{t('skills.marketSectionSub')}</p>
+            <p className="cf-sub" style={{ margin: '0 0 8px', lineHeight: 1.45 }}>{t('skills.marketSourceHint')}</p>
             {marketSource ? (
               <span className="cf-chip cf-chipStopped" title={marketSource}>
                 {marketSourceLabel(t, marketSource)}

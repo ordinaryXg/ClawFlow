@@ -37,11 +37,15 @@ const BUNDLED_FALLBACK: SkillMarketIndexFile = {
 export const DEFAULT_SKILL_MARKET_URL =
   'https://raw.githubusercontent.com/ordinaryXg/ClawFlow/master/assets/skill-market-index.json';
 
+/** GitHub Raw 不可达时尝试 jsDelivr（同仓库内容，国内网络往往更易访问）。 */
+const DEFAULT_SKILL_MARKET_JSDELIVR_URL =
+  'https://cdn.jsdelivr.net/gh/ordinaryXg/ClawFlow@master/assets/skill-market-index.json';
+
 const MAX_BODY_BYTES = 512 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;
 const REMOTE_CACHE_MS = 5 * 60 * 1000;
 
-const ALLOWED_HOSTNAMES = new Set(['raw.githubusercontent.com']);
+const ALLOWED_HOSTNAMES = new Set(['raw.githubusercontent.com', 'cdn.jsdelivr.net']);
 
 const SAFE_PACKAGE_RE = /^[a-zA-Z0-9@/_.-]{1,128}$/;
 const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
@@ -53,6 +57,16 @@ function getMarketUrlFromEnv(): string {
   return u || DEFAULT_SKILL_MARKET_URL;
 }
 
+function remoteUrlsToTry(): string[] {
+  const primary = getMarketUrlFromEnv();
+  const list = [primary];
+  const envCustom = Boolean(String(process.env.CLAWFLOW_SKILL_MARKET_URL || '').trim());
+  if (!envCustom && primary === DEFAULT_SKILL_MARKET_URL) {
+    list.push(DEFAULT_SKILL_MARKET_JSDELIVR_URL);
+  }
+  return list;
+}
+
 function assertMarketUrl(url: URL): void {
   if (url.protocol !== 'https:') throw new Error('Only HTTPS market URLs are allowed');
   if (!hostnameAllowed(url.hostname)) throw new Error('Market host not allowed');
@@ -60,8 +74,8 @@ function assertMarketUrl(url: URL): void {
 
 function parseAllowedExtraHosts(): Set<string> {
   const raw = String(process.env.CLAWFLOW_SKILL_MARKET_EXTRA_HOSTS || '').trim();
-  if (!raw) return new Set();
   const next = new Set(ALLOWED_HOSTNAMES);
+  if (!raw) return next;
   for (const h of raw.split(/[,;\s]+/)) {
     const x = h.trim().toLowerCase();
     if (x) next.add(x);
@@ -188,15 +202,27 @@ export async function fetchSkillMarketIndex(options?: { forceRefresh?: boolean }
     return { ok: true, index: remoteCache.index, source: 'remote+cached' };
   }
 
-  const url = getMarketUrlFromEnv();
-
   try {
-    const buf = await fetchHttpsJson(url);
-    const text = buf.toString('utf-8');
-    const parsed = JSON.parse(text) as unknown;
-    const index = validateAndNormalizeIndex(parsed);
-    remoteCache = { at: now, index };
-    return { ok: true, index, source: 'remote' };
+    const urls = remoteUrlsToTry();
+    const attemptErrors: string[] = [];
+    for (const url of urls) {
+      try {
+        const buf = await fetchHttpsJson(url);
+        const text = buf.toString('utf-8');
+        const parsed = JSON.parse(text) as unknown;
+        const index = validateAndNormalizeIndex(parsed);
+        remoteCache = { at: now, index };
+        const warning =
+          attemptErrors.length > 0
+            ? `Backup source used. ${attemptErrors.join(' | ').slice(0, 480)}`
+            : undefined;
+        return { ok: true, index, source: 'remote', ...(warning ? { warning } : {}) };
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        attemptErrors.push(`${url} → ${m}`);
+      }
+    }
+    throw new Error(attemptErrors.join(' | ') || 'Market fetch failed');
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     try {
