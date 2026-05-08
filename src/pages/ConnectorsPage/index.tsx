@@ -28,12 +28,8 @@ const ConnectorsPage: FC = () => {
   const [editing, setEditing] = useState<Connector | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const [fName, setFName] = useState('');
-  const [fType, setFType] = useState('github');
-  const [fHost, setFHost] = useState('');
-  const [fToken, setFToken] = useState('');
-  const [fNote, setFNote] = useState('');
-  const [tokenErr, setTokenErr] = useState<string | null>(null);
+  const [fSpec, setFSpec] = useState('');
+  const [specErr, setSpecErr] = useState<string | null>(null);
   const [testPhase, setTestPhase] = useState<TestPhase>('idle');
   const [reveal, setReveal] = useState(false);
 
@@ -81,42 +77,32 @@ const ConnectorsPage: FC = () => {
   }, [active?.id]);
 
   const openDrawer = (mode: 'add' | 'edit') => {
-    setTokenErr(null);
+    setSpecErr(null);
     setTestPhase('idle');
     setReveal(false);
     if (mode === 'edit' && active) {
       setEditing(active);
-      setFName(active.name);
-      setFType(active.type);
-      setFHost(String((active.config as any)?.host ?? (active.config as any)?.endpoint ?? ''));
-      setFToken(String((active.config as any)?.token ?? (active.config as any)?.apiKey ?? ''));
-      setFNote(String((active.config as any)?.note ?? ''));
+      setFSpec(active.id);
     } else {
       setEditing(null);
-      setFName('');
-      setFType('github');
-      setFHost('');
-      setFToken('');
-      setFNote('');
+      setFSpec('');
     }
     setDrawerOpen(true);
   };
 
   const submit = async () => {
-    const token = fToken.trim();
-    if (!token) {
-      setTokenErr(t('connectors.tokenRequired'));
+    const spec = fSpec.trim();
+    if (!spec) {
+      setSpecErr(t('connectors.tokenRequired'));
       (window as any).__cf_toast?.error?.(t('connectors.validateFailTitle'), t('connectors.validateFailBody'));
       return;
     }
 
     const payload: ConnectorConfig = {
-      name: fName.trim() || t('connectors.unnamed'),
-      type: fType,
+      name: spec,
+      type: 'plugin',
       config: {
-        host: fHost.trim(),
-        token,
-        note: fNote.trim(),
+        spec,
       },
     };
 
@@ -144,6 +130,18 @@ const ConnectorsPage: FC = () => {
     } else {
       setTestPhase('fail');
       (window as any).__cf_toast?.error?.(t('connectors.testFailTitle'), t('connectors.testFailBody'));
+    }
+  };
+
+  const setEnabled = async (id: string, enabled: boolean) => {
+    try {
+      await updateConnector(id, { action: enabled ? 'enable' : 'disable' } as any);
+      (window as any).__cf_toast?.success?.(
+        enabled ? t('connectors.enabledTitle') : t('connectors.disabledTitle'),
+        enabled ? t('connectors.enabledBody') : t('connectors.disabledBody')
+      );
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('connectors.opFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
@@ -289,19 +287,13 @@ const ConnectorsPage: FC = () => {
               </div>
               <div className="cf-card cf-col6">
                 <h3>{t('connectors.configMasked')}</h3>
-                <div className="cf-sub">
-                  {t('connectors.lineHost', { value: String((active.config as any)?.host ?? '-') })}
-                </div>
-                <div className="cf-sub">
-                  {t('connectors.token')}：
-                  {reveal
-                    ? String((active.config as any)?.token ?? '—')
-                    : '••••' + String((active.config as any)?.token ?? '0000').slice(-4)}
-                  <button className="cf-btn cf-btnGhost cf-btnSmall" style={{ marginLeft: 8 }} onClick={() => setReveal((v) => !v)}>
-                    {reveal ? t('connectors.hide') : t('connectors.reveal')}
-                  </button>
-                </div>
-                <div className="cf-help">{t('connectors.maskHint')}</div>
+                <pre className="cf-code" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                  {reveal ? JSON.stringify(active.config ?? {}, null, 2) : '{ … }'}
+                </pre>
+                <div style={{ height: 8 }} />
+                <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setReveal((v) => !v)}>
+                  {reveal ? t('connectors.hide') : t('connectors.reveal')}
+                </button>
               </div>
 
               <div className="cf-card cf-col12">
@@ -310,6 +302,15 @@ const ConnectorsPage: FC = () => {
                   <button className="cf-btn" onClick={() => openDrawer('edit')}>
                     {t('connectors.edit')}
                   </button>
+                  {active.status === 'connected' ? (
+                    <button className="cf-btn" disabled={isLoading} onClick={() => void setEnabled(active.id, false)}>
+                      {t('connectors.disable')}
+                    </button>
+                  ) : (
+                    <button className="cf-btn" disabled={isLoading} onClick={() => void setEnabled(active.id, true)}>
+                      {t('connectors.enable')}
+                    </button>
+                  )}
                   <button className="cf-btn cf-btnDanger" onClick={() => setDeleteOpen(true)}>
                     {t('common.delete')}
                   </button>
@@ -348,38 +349,17 @@ const ConnectorsPage: FC = () => {
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('connectors.fieldName')}
           </div>
-          <input className="cf-input" value={fName} onChange={(e) => setFName(e.target.value)} placeholder={t('connectors.fieldNamePh')} />
-
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('connectors.fieldType')}
-          </div>
-          <select className="cf-select" value={fType} onChange={(e) => setFType(e.target.value)}>
-            <option value="feishu">feishu</option>
-            <option value="github">github</option>
-            <option value="postgres">postgres</option>
-            <option value="custom">custom</option>
-          </select>
-
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('connectors.fieldHost')}
-          </div>
-          <input className="cf-input" value={fHost} onChange={(e) => setFHost(e.target.value)} placeholder={t('connectors.fieldHostPh')} />
-          <div className="cf-help">{t('connectors.fieldHostHint')}</div>
-
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('connectors.fieldToken')}
-          </div>
-          <input className="cf-input" value={fToken} onChange={(e) => setFToken(e.target.value)} placeholder="••••••••" />
-          {tokenErr ? <div className="cf-errorText" style={{ marginTop: 6 }}>{tokenErr}</div> : null}
-
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('connectors.fieldNote')}
-          </div>
-          <textarea className="cf-textarea" value={fNote} onChange={(e) => setFNote(e.target.value)} placeholder={t('connectors.fieldNotePh')} />
+          <input
+            className="cf-input"
+            value={fSpec}
+            onChange={(e) => setFSpec(e.target.value)}
+            placeholder={t('connectors.fieldNamePh')}
+          />
+          {specErr ? (
+            <div className="cf-errorText" style={{ marginTop: 6 }}>
+              {specErr}
+            </div>
+          ) : null}
 
           <div style={{ height: 12 }} />
           <div className="cf-card">

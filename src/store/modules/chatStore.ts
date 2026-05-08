@@ -29,7 +29,8 @@ export interface ChatState {
   error: string | null;
   
   // Actions
-  sendMessage: (content: string) => Promise<void>;
+  fetchConversations: () => Promise<void>;
+  sendMessage: (content: string, modelId?: string | null) => Promise<void>;
   createConversation: () => void;
   switchConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
@@ -49,7 +50,26 @@ export const useChatStore = create<ChatState>()(
       streamingMessage: null,
       error: null,
 
-      sendMessage: async (content: string) => {
+      fetchConversations: async () => {
+        try {
+          const res = await window.electronAPI?.getConversations?.();
+          const fromRes = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : null;
+          if (!fromRes) return;
+
+          const activeId = fromRes[0]?.id ?? null;
+          const active = activeId ? fromRes.find((c: any) => c.id === activeId) : null;
+          set({
+            conversations: fromRes,
+            activeConversationId: activeId,
+            messages: active?.messages ?? [],
+            error: null,
+          });
+        } catch (e: any) {
+          set({ error: e?.message || '获取对话历史失败' });
+        }
+      },
+
+      sendMessage: async (content: string, modelId?: string | null) => {
         const now = Date.now();
         const { activeConversationId } = get();
 
@@ -70,6 +90,7 @@ export const useChatStore = create<ChatState>()(
             messages: [],
             error: null,
           }));
+          void window.electronAPI?.upsertConversation?.(newConversation);
         }
 
         // 添加用户消息
@@ -100,6 +121,13 @@ export const useChatStore = create<ChatState>()(
             error: null,
           };
         });
+
+        try {
+          const conv = get().conversations.find((c) => c.id === conversationId);
+          if (conv) await window.electronAPI?.upsertConversation?.(conv);
+        } catch {
+          // best-effort
+        }
 
         const runTyping = (fullText: string) => {
           let i = 0;
@@ -135,13 +163,20 @@ export const useChatStore = create<ChatState>()(
                   streamingMessage: null,
                 };
               });
+
+              try {
+                const conv = get().conversations.find((c) => c.id === conversationId);
+                if (conv) void window.electronAPI?.upsertConversation?.(conv);
+              } catch {
+                // best-effort
+              }
             }
           }, TYPING_INTERVAL_MS);
         };
 
         try {
           // 通过 IPC 调用 OpenClaw（当前主进程仍是“模拟”实现）
-          const response = await window.electronAPI?.sendMessage?.(content);
+          const response = await window.electronAPI?.sendMessage?.(content, conversationId, modelId || undefined);
 
           const replyText =
             (typeof response?.message === 'string' && response.message) ||
@@ -174,6 +209,8 @@ export const useChatStore = create<ChatState>()(
           streamingMessage: null,
           error: null,
         }));
+
+        void window.electronAPI?.upsertConversation?.(newConversation);
       },
 
       switchConversation: (id: string) => {
@@ -210,6 +247,8 @@ export const useChatStore = create<ChatState>()(
             error: null,
           };
         });
+
+        void window.electronAPI?.deleteConversation?.(id);
       },
 
       clearMessages: () => {

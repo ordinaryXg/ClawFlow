@@ -1,4 +1,4 @@
-import { FC, useMemo } from 'react';
+import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '../../store/modules/chatStore';
 import MessageList from '../../components/chat/MessageList';
@@ -15,12 +15,42 @@ const ChatPage: FC = () => {
     isLoading,
     streamingMessage,
     error,
+    fetchConversations,
     createConversation,
     switchConversation,
     deleteConversation,
     sendMessage,
     setError,
   } = useChatStore();
+
+  const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
+  const [modelId, setModelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await window.electronAPI?.getModels?.();
+        const defaultId = typeof res?.defaultModelId === 'string' ? res.defaultModelId : null;
+        const list = Array.isArray(res?.models) ? res.models : [];
+        const opts = list
+          .map((m: any) => {
+            const id = String(m?.id ?? '').trim();
+            if (!id) return null;
+            return { id, label: id };
+          })
+          .filter(Boolean) as Array<{ id: string; label: string }>;
+        setModels(opts);
+        setModelId(defaultId);
+      } catch {
+        setModels([]);
+        setModelId(null);
+      }
+    })();
+  }, []);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) ?? null,
@@ -38,7 +68,7 @@ const ChatPage: FC = () => {
   };
 
   const onSend = async (content: string) => {
-    await sendMessage(content);
+    await sendMessage(content, modelId);
   };
 
   return (
@@ -142,7 +172,13 @@ const ChatPage: FC = () => {
         </div>
 
         <footer className="cf-chatPage__input">
-          <ChatInput disabled={isLoading} onSend={onSend} />
+          <ChatInput
+            disabled={isLoading}
+            onSend={onSend}
+            models={models}
+            modelId={modelId}
+            onModelChange={setModelId}
+          />
         </footer>
       </section>
     </div>

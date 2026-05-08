@@ -23,6 +23,12 @@ const SettingsPage: FC = () => {
   const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
   const [pathCheck, setPathCheck] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [appVersion, setAppVersion] = useState<string>('');
+  const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai'>('deepseek');
+  const [modelToken, setModelToken] = useState('');
+  const [defaultModelId, setDefaultModelId] = useState('deepseek/deepseek-chat');
+  const [modelSaving, setModelSaving] = useState(false);
+  const [configuredModels, setConfiguredModels] = useState<Array<{ id: string; available?: boolean; tags?: string[] }>>([]);
+  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
 
   useEffect(() => {
     setCliPath(storeCliPath);
@@ -41,6 +47,30 @@ const SettingsPage: FC = () => {
       }
     })();
   }, [fetchStatus, fetchVersion]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await window.electronAPI?.getModels?.();
+        const def = typeof res?.defaultModelId === 'string' ? res.defaultModelId : '';
+        if (def) setDefaultModelId(def);
+        const list = Array.isArray(res?.models) ? res.models : [];
+        setConfiguredModels(
+          list
+            .map((m: any) => {
+              const id = String(m?.id ?? '').trim();
+              if (!id) return null;
+              return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
+            })
+            .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
+        );
+        setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
+      } catch {
+        setConfiguredModels([]);
+        setConfiguredProviders([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -128,6 +158,46 @@ const SettingsPage: FC = () => {
     void i18n.changeLanguage(st.language);
     document.documentElement.dataset.theme = st.theme;
     (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
+  };
+
+  const onSaveModel = async () => {
+    const provider = modelProvider;
+    const token = modelToken.trim();
+    const modelId = defaultModelId.trim();
+    if (!token) {
+      (window as any).__cf_toast?.error?.(t('settings.modelTokenRequiredTitle'), t('settings.modelTokenRequiredBody'));
+      return;
+    }
+
+    setModelSaving(true);
+    try {
+      await window.electronAPI?.setModelAuthToken?.({ provider, token, profileId: `${provider}:manual` });
+      if (modelId) {
+        await window.electronAPI?.setDefaultModel?.({ modelId });
+      }
+      setModelToken('');
+      try {
+        const res = await window.electronAPI?.getModels?.();
+        const list = Array.isArray(res?.models) ? res.models : [];
+        setConfiguredModels(
+          list
+            .map((m: any) => {
+              const id = String(m?.id ?? '').trim();
+              if (!id) return null;
+              return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
+            })
+            .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
+        );
+        setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
+      } catch {
+        // ignore
+      }
+      (window as any).__cf_toast?.success?.(t('settings.modelSavedTitle'), t('settings.modelSavedBody'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.modelSaveFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setModelSaving(false);
+    }
   };
 
   return (
@@ -340,6 +410,99 @@ const SettingsPage: FC = () => {
             </div>
             <div className="cf-sub">{t('settings.license')}</div>
           </div>
+        </div>
+
+        <div className="cf-card cf-col12">
+          <h3>{t('settings.modelsTitle')}</h3>
+          <div className="cf-divider" />
+
+          <div className="cf-help">{t('settings.modelsHint')}</div>
+          <div style={{ height: 10 }} />
+
+          <div className="cf-row cf-settingsPage__row" style={{ alignItems: 'flex-start' }}>
+            <div>
+              <div className="cf-sub">
+                <strong style={{ color: 'var(--text)' }}>{t('settings.currentModel')}</strong>
+              </div>
+              <div className="cf-help">{defaultModelId || t('common.unknown')}</div>
+              {configuredProviders.length ? (
+                <div className="cf-help" style={{ marginTop: 6 }}>
+                  {t('settings.configuredProviders')}: {configuredProviders.join(', ')}
+                </div>
+              ) : null}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                <strong style={{ color: 'var(--text)' }}>{t('settings.configuredModels')}</strong>
+              </div>
+              {configuredModels.length === 0 ? (
+                <div className="cf-help">{t('settings.noConfiguredModels')}</div>
+              ) : (
+                <div className="cf-row" style={{ gap: 8 }}>
+                  {configuredModels.map((m) => (
+                    <span
+                      key={m.id}
+                      className="cf-badge"
+                      style={{
+                        border: '1px solid rgba(255,255,255,.08)',
+                        background: 'rgba(255,255,255,.02)',
+                        borderRadius: 999,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                      }}
+                      title={(m.tags ?? []).join(', ')}
+                    >
+                      {m.id}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="cf-row cf-settingsPage__row">
+            <div>
+              <div className="cf-sub">
+                <strong style={{ color: 'var(--text)' }}>{t('settings.modelProvider')}</strong>
+              </div>
+              <div className="cf-help">{t('settings.modelProviderHint')}</div>
+            </div>
+            <select className="cf-select" value={modelProvider} onChange={(e) => setModelProvider(e.target.value as any)}>
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+
+          <div style={{ height: 10 }} />
+
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.modelToken')}
+          </div>
+          <input
+            className="cf-input"
+            value={modelToken}
+            onChange={(e) => setModelToken(e.target.value)}
+            placeholder={t('settings.modelTokenPh')}
+          />
+          <div className="cf-help">{t('settings.modelTokenHint')}</div>
+
+          <div style={{ height: 10 }} />
+
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.defaultModel')}
+          </div>
+          <input
+            className="cf-input"
+            value={defaultModelId}
+            onChange={(e) => setDefaultModelId(e.target.value)}
+            placeholder="deepseek/deepseek-chat"
+          />
+          <div className="cf-help">{t('settings.defaultModelHint')}</div>
+
+          <div style={{ height: 12 }} />
+          <button className="cf-btn cf-btnPrimary" type="button" disabled={modelSaving} onClick={() => void onSaveModel()}>
+            {modelSaving ? t('settings.modelSaving') : t('settings.modelSave')}
+          </button>
         </div>
       </section>
     </>

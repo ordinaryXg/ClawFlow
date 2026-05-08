@@ -81,21 +81,8 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await window.electronAPI?.addConnector?.(config);
-      
-      const newConnector: Connector = {
-        id: Date.now().toString(),
-        name: config.name,
-        type: config.type,
-        config: config.config,
-        status: 'disconnected',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      
-      set(state => ({ 
-        connectors: [...state.connectors, newConnector],
-        isLoading: false 
-      }));
+      await get().fetchConnectors();
+      set({ isLoading: false });
     } catch (error: any) {
       set({ 
         error: error.message || '添加连接器失败',
@@ -109,15 +96,8 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await window.electronAPI?.updateConnector?.(id, config);
-      
-      set(state => ({ 
-        connectors: state.connectors.map(connector => 
-          connector.id === id 
-            ? { ...connector, ...config, updatedAt: Date.now() }
-            : connector
-        ),
-        isLoading: false 
-      }));
+      await get().fetchConnectors();
+      set({ isLoading: false });
     } catch (error: any) {
       set({ 
         error: error.message || '更新连接器失败',
@@ -131,11 +111,8 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await window.electronAPI?.deleteConnector?.(id);
-      
-      set(state => ({ 
-        connectors: state.connectors.filter(connector => connector.id !== id),
-        isLoading: false 
-      }));
+      await get().fetchConnectors();
+      set({ isLoading: false });
     } catch (error: any) {
       set({ 
         error: error.message || '删除连接器失败',

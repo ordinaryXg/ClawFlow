@@ -5,9 +5,12 @@ import './chat.css';
 interface Props {
   disabled?: boolean;
   onSend: (content: string) => Promise<void> | void;
+  models?: Array<{ id: string; label: string }>;
+  modelId?: string | null;
+  onModelChange?: (modelId: string | null) => void;
 }
 
-const ChatInput: FC<Props> = ({ disabled, onSend }) => {
+const ChatInput: FC<Props> = ({ disabled, onSend, models, modelId, onModelChange }) => {
   const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -48,14 +51,33 @@ const ChatInput: FC<Props> = ({ disabled, onSend }) => {
         }}
         rows={3}
       />
-      <div className="cf-chatInput__actions">
-        <button
-          className={canSend ? 'cf-btn cf-btnPrimary' : 'cf-btn'}
-          onClick={() => void submit()}
-          disabled={!canSend}
-        >
-          {isSending ? t('chat.sending') : t('chat.send')}
-        </button>
+      <div className="cf-chatInput__footer">
+        <div className="cf-chatInput__model">
+          <span className="cf-sub">{t('chat.model')}</span>
+          <select
+            className="cf-select cf-select--compact"
+            value={modelId ?? ''}
+            disabled={disabled || isSending || !models || models.length === 0}
+            onChange={(e) => onModelChange?.(e.target.value ? e.target.value : null)}
+            aria-label={t('chat.model')}
+          >
+            <option value="">{t('chat.modelAuto')}</option>
+            {(models ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="cf-chatInput__actions">
+          <button
+            className={canSend ? 'cf-btn cf-btnPrimary' : 'cf-btn'}
+            onClick={() => void submit()}
+            disabled={!canSend}
+          >
+            {isSending ? t('chat.sending') : t('chat.send')}
+          </button>
+        </div>
       </div>
     </div>
   );

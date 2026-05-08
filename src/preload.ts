@@ -11,10 +11,14 @@ export interface IElectronAPI {
   updateConfig: (config: any) => Promise<{ success: boolean }>;
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
+  setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
+  getModels: () => Promise<any>;
   // 对话相关
-  sendMessage: (message: string) => Promise<any>;
+  sendMessage: (message: string, sessionId?: string, modelId?: string) => Promise<any>;
   getConversations: () => Promise<any>;
   deleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
+  upsertConversation: (conversation: any) => Promise<{ success: boolean }>;
   // 技能管理
   getSkills: () => Promise<any>;
   installSkill: (skillName: string) => Promise<{ success: boolean }>;
@@ -40,10 +44,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: (config: any) => ipcRenderer.invoke('openclaw:updateConfig', config),
   pickCliPath: () => ipcRenderer.invoke('openclaw:pickCliPath'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) =>
+    ipcRenderer.invoke('openclaw:setModelAuthToken', params),
+  setDefaultModel: (params: { modelId: string }) => ipcRenderer.invoke('openclaw:setDefaultModel', params),
+  getModels: () => ipcRenderer.invoke('openclaw:getModels'),
   // 对话相关
-  sendMessage: (message: string) => ipcRenderer.invoke('openclaw:sendMessage', message),
+  sendMessage: (message: string, sessionId?: string, modelId?: string) =>
+    ipcRenderer.invoke('openclaw:sendMessage', message, sessionId, modelId),
   getConversations: () => ipcRenderer.invoke('openclaw:getConversations'),
   deleteConversation: (conversationId: string) => ipcRenderer.invoke('openclaw:deleteConversation', conversationId),
+  upsertConversation: (conversation: any) => ipcRenderer.invoke('openclaw:upsertConversation', conversation),
   // 技能管理
   getSkills: () => ipcRenderer.invoke('openclaw:getSkills'),
   installSkill: (skillName: string) => ipcRenderer.invoke('openclaw:installSkill', skillName),

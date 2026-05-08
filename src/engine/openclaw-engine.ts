@@ -80,6 +80,21 @@ interface CLIExecutionResult {
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue };
 
+type ConversationMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+};
+
+type ConversationRecord = {
+  id: string;
+  title: string;
+  messages: ConversationMessage[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 /**
  * 解析 OpenClaw CLI 路径
  * 优先使用内置版本，回退到系统 PATH
@@ -88,7 +103,20 @@ function resolveOpenClawPath(): string {
   const isDev = !app.isPackaged;
   
   if (isDev) {
-    // 开发模式：使用本地安装的 openclaw
+    // 开发模式：优先使用仓库内置的 vendor/openclaw-standalone
+    const vendorMjs = path.join(
+      process.cwd(),
+      'vendor',
+      'openclaw-standalone',
+      'node_modules',
+      'openclaw',
+      'openclaw.mjs'
+    );
+    if (fs.existsSync(vendorMjs)) {
+      return vendorMjs;
+    }
+
+    // 回退：使用系统 PATH 中的 openclaw
     return 'openclaw';
   }
   
@@ -130,6 +158,7 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
   private isStarting = false;
   private isStopping = false;
   private gatewayProcess: ChildProcess | null = null;
+  private readonly conversationStorePath: string;
 
   constructor(config: OpenClawEngineConfig = {}) {
     super();
@@ -143,6 +172,8 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       gatewayStartTimeout: config.gatewayStartTimeout ?? 30000, // 增加到 30 秒
       verbose: config.verbose ?? true, // 默认启用详细日志
     };
+
+    this.conversationStorePath = path.join(app.getPath('userData'), 'cf.conversations.v1.json');
     
     this.log('OpenClawEngine 初始化完成');
     this.log('  CLI 路径:', this.config.cliPath);
@@ -182,6 +213,41 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
    */
   private logError(...args: any[]): void {
     console.error('[OpenClawEngine]', ...args);
+  }
+
+  private async readConversations(): Promise<ConversationRecord[]> {
+    try {
+      const buf = await fs.promises.readFile(this.conversationStorePath);
+      const raw = JSON.parse(buf.toString('utf-8'));
+      const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.conversations) ? raw.conversations : [];
+      return (arr as ConversationRecord[]).filter((c) => c && typeof c.id === 'string');
+    } catch {
+      return [];
+    }
+  }
+
+  private async writeConversations(conversations: ConversationRecord[]): Promise<void> {
+    await fs.promises.mkdir(path.dirname(this.conversationStorePath), { recursive: true });
+    const payload = JSON.stringify({ conversations }, null, 2);
+    await fs.promises.writeFile(this.conversationStorePath, payload, 'utf-8');
+  }
+
+  async listConversations(): Promise<ConversationRecord[]> {
+    return await this.readConversations();
+  }
+
+  async upsertConversation(conversation: ConversationRecord): Promise<void> {
+    const list = await this.readConversations();
+    const next = list.some((c) => c.id === conversation.id)
+      ? list.map((c) => (c.id === conversation.id ? conversation : c))
+      : [...list, conversation];
+    await this.writeConversations(next);
+  }
+
+  async removeConversation(id: string): Promise<void> {
+    const list = await this.readConversations();
+    const next = list.filter((c) => c.id !== id);
+    await this.writeConversations(next);
   }
 
   /**
@@ -230,9 +296,15 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
         encoding: 'utf8',
       });
 
+      const trimForLog = (s: string, max = 4000) => {
+        const text = String(s ?? '');
+        if (text.length <= max) return text;
+        return `${text.slice(0, max)}\n... (truncated ${text.length - max} chars) ...`;
+      };
+
       this.log('命令执行成功');
-      this.log('  stdout:', stdout);
-      this.log('  stderr:', stderr);
+      this.log('  stdout:', trimForLog(stdout));
+      this.log('  stderr:', trimForLog(stderr));
       
       this.emit('command:executed', command, args);
 
@@ -266,6 +338,60 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
       throw execError;
     }
+  }
+
+  async pasteModelAuthToken(params: { agentId?: string; provider: string; token: string; profileId?: string }): Promise<void> {
+    const agentId = params.agentId ?? 'main';
+    const provider = params.provider.trim();
+    const token = params.token;
+    const profileId = (params.profileId ?? `${provider}:manual`).trim();
+
+    if (!provider) throw new Error('Missing provider');
+    if (!token) throw new Error('Missing token');
+
+    // Avoid running interactive OpenClaw helpers inside Electron (no TTY on Windows),
+    // write directly to OpenClaw auth store + config instead.
+    const stateRoot = path.join(os.homedir(), '.openclaw');
+    const agentDir = path.join(stateRoot, 'agents', agentId, 'agent');
+    const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
+    const openclawConfigPath = path.join(stateRoot, 'openclaw.json');
+
+    await fs.promises.mkdir(agentDir, { recursive: true });
+
+    // 1) Update per-agent auth-profiles.json (stores the actual token)
+    let authProfiles: any = { version: 1, profiles: {} };
+    try {
+      const raw = await fs.promises.readFile(authProfilesPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') authProfiles = parsed;
+    } catch {
+      // ignore missing/invalid
+    }
+    if (!authProfiles.profiles || typeof authProfiles.profiles !== 'object') authProfiles.profiles = {};
+    authProfiles.version = typeof authProfiles.version === 'number' ? authProfiles.version : 1;
+    authProfiles.profiles[profileId] = { type: 'token', provider, token };
+    await fs.promises.writeFile(authProfilesPath, JSON.stringify(authProfiles, null, 2), 'utf-8');
+
+    // 2) Update ~/.openclaw/openclaw.json to reference the profile (no token stored here)
+    try {
+      const raw = await fs.promises.readFile(openclawConfigPath, 'utf-8');
+      const cfg = JSON.parse(raw);
+      const next = cfg && typeof cfg === 'object' ? cfg : {};
+      if (!next.auth || typeof next.auth !== 'object') next.auth = {};
+      if (!next.auth.profiles || typeof next.auth.profiles !== 'object') next.auth.profiles = {};
+      next.auth.profiles[profileId] = { provider, mode: 'token' };
+      await fs.promises.writeFile(openclawConfigPath, JSON.stringify(next, null, 2), 'utf-8');
+    } catch {
+      // if config missing, do nothing (OpenClaw can regenerate via onboard/configure)
+    }
+  }
+
+  async setDefaultModel(params: { agentId?: string; modelId: string }): Promise<void> {
+    const modelId = params.modelId.trim();
+    if (!modelId) throw new Error('Missing model id');
+
+    // `openclaw models set` is global (no --agent flag).
+    await this.executeCommand(['models', 'set', JSON.stringify(modelId)], { checkExitCode: true });
   }
 
   private extractJsonPayload(text: string): string | null {
@@ -342,10 +468,21 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     await this.executeCommand(['skills', 'uninstall', `"${skillName}"`], { checkExitCode: true });
   }
 
-  async runAgentMessage(message: string): Promise<string> {
-    const json = await this.runJsonCommand(['agent', '--local', '--json', '--message', JSON.stringify(message)]);
+  async runAgentMessage(message: string, sessionId?: string, modelId?: string): Promise<string> {
+    const args = ['agent', '--local', '--json', '--agent', 'main'];
+    if (sessionId) {
+      args.push('--session-id', JSON.stringify(sessionId));
+    }
+    if (modelId && modelId.trim()) {
+      args.push('--model', JSON.stringify(modelId.trim()));
+    }
+    args.push('--message', JSON.stringify(message));
+
+    const json = await this.runJsonCommand(args);
     const obj: any = json;
     const candidates = [
+      obj?.payloads?.[0]?.text,
+      obj?.payloads?.[0]?.content,
       obj?.reply?.text,
       obj?.reply?.message,
       obj?.message,
@@ -357,6 +494,65 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       if (typeof c === 'string' && c.trim()) return c.trim();
     }
     return JSON.stringify(json);
+  }
+
+  async getModelsSummary(): Promise<{
+    defaultModelId: string | null;
+    models: Array<{ id: string; name?: string; available?: boolean; tags?: string[] }>;
+    configuredProviders: string[];
+  }> {
+    const status = await this.runJsonCommand(['models', 'status', '--json']).catch(() => null);
+    const list = await this.runJsonCommand(['models', 'list', '--json']).catch(() => null);
+
+    const defaultModelId =
+      typeof (status as any)?.defaultModel === 'string' && (status as any).defaultModel
+        ? String((status as any).defaultModel)
+        : null;
+
+    const modelsRaw: any[] = Array.isArray((list as any)?.models) ? (list as any).models : [];
+    const models = modelsRaw
+      .map((m) => {
+        const id = String(m?.key ?? m?.id ?? m?.model ?? '').trim();
+        if (!id) return null;
+        const name = typeof m?.name === 'string' ? m.name : undefined;
+        const available = typeof m?.available === 'boolean' ? m.available : undefined;
+        const tags = Array.isArray(m?.tags) ? m.tags.map((x: any) => String(x)) : undefined;
+        return { id, name, available, tags };
+      })
+      .filter(Boolean) as Array<{ id: string; name?: string; available?: boolean; tags?: string[] }>;
+
+    const providersRaw: any[] = Array.isArray((status as any)?.auth?.providers) ? (status as any).auth.providers : [];
+    const configuredProviders = providersRaw
+      .map((p) => String(p?.provider ?? '').trim())
+      .filter((p) => p);
+
+    return { defaultModelId, models, configuredProviders };
+  }
+
+  async getPlugins(): Promise<any[]> {
+    const list = await this.runJsonCommand(['plugins', 'list', '--json']);
+    const arr: any[] = Array.isArray(list) ? list : Array.isArray((list as any)?.plugins) ? (list as any).plugins : [];
+    return arr;
+  }
+
+  async installPlugin(spec: string): Promise<void> {
+    await this.executeCommand(['plugins', 'install', `"${spec}"`], { checkExitCode: true });
+  }
+
+  async uninstallPlugin(id: string): Promise<void> {
+    await this.executeCommand(['plugins', 'uninstall', `"${id}"`], { checkExitCode: true });
+  }
+
+  async enablePlugin(id: string): Promise<void> {
+    await this.executeCommand(['plugins', 'enable', `"${id}"`], { checkExitCode: true });
+  }
+
+  async disablePlugin(id: string): Promise<void> {
+    await this.executeCommand(['plugins', 'disable', `"${id}"`], { checkExitCode: true });
+  }
+
+  async inspectPlugin(id: string): Promise<any> {
+    return await this.runJsonCommand(['plugins', 'inspect', `"${id}"`, '--json']);
   }
 
   /**
@@ -390,6 +586,18 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       });
 
       const output = `${result.stdout} ${result.stderr}`.toLowerCase();
+
+      // OpenClaw gateway status 会输出 connectivity probe 结果（更可靠）
+      if (output.includes('connectivity probe: ok') || output.includes('probe: ok')) {
+        return 'running';
+      }
+      if (
+        output.includes('connectivity probe: failed') ||
+        output.includes('econnrefused') ||
+        output.includes('not running')
+      ) {
+        return 'stopped';
+      }
 
       // 多种语言支持
       if (
@@ -524,6 +732,31 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
       this.log('Gateway 进程已启动, PID:', this.gatewayProcess.pid);
 
+      // 早期失败检测：端口占用/权限问题等，避免一直等到超时
+      const earlyFailure = new Promise<never>((_resolve, reject) => {
+        const onData = (data: Buffer) => {
+          const text = data.toString().toLowerCase();
+          if (text.includes('already in use') || text.includes('eaddrinuse') || (text.includes('port') && text.includes('in use'))) {
+            reject(new Error('Gateway 端口被占用（请关闭旧进程或更换端口）'));
+            return;
+          }
+          if (text.includes('eperm') && text.includes('symlink')) {
+            reject(new Error('Gateway 启动受限：Windows 缺少创建 symlink 权限（建议开启开发者模式或管理员运行）'));
+          }
+        };
+
+        this.gatewayProcess?.stdout?.on('data', onData);
+        this.gatewayProcess?.stderr?.on('data', onData);
+
+        this.gatewayProcess?.once('close', (code) => {
+          reject(new Error(`Gateway 进程提前退出（code=${code ?? 'unknown'}）`));
+        });
+
+        this.gatewayProcess?.once('error', (err) => {
+          reject(new Error(`Gateway 进程启动失败：${err.message}`));
+        });
+      });
+
       // 监听输出
       if (this.gatewayProcess.stdout) {
         this.gatewayProcess.stdout.on('data', (data: Buffer) => {
@@ -552,7 +785,10 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
       // 等待 Gateway 真正启动（通过状态检查确认）
       this.log('等待 Gateway 启动确认...');
-      const started = await this.waitForGatewayStatus('running', this.config.gatewayStartTimeout);
+      const started = await Promise.race([
+        this.waitForGatewayStatus('running', this.config.gatewayStartTimeout),
+        earlyFailure,
+      ]);
 
       if (started) {
         this.log('Gateway 启动成功');
@@ -727,6 +963,16 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
     return await engine.validateCLI();
   });
 
+  ipcMain.handle('openclaw:setModelAuthToken', async (_event, params: { provider: string; token: string; profileId?: string }) => {
+    await engine.pasteModelAuthToken({ provider: params.provider, token: params.token, profileId: params.profileId, agentId: 'main' });
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:setDefaultModel', async (_event, params: { modelId: string }) => {
+    await engine.setDefaultModel({ modelId: params.modelId });
+    return { success: true };
+  });
+
   ipcMain.handle('openclaw:pickCliPath', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const dialogOpts: OpenDialogOptions = {
@@ -747,27 +993,69 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   });
 
   // 对话相关 IPC 接口
-  ipcMain.handle('openclaw:sendMessage', async (_event, message: string) => {
-    const reply = await engine.runAgentMessage(message);
-    return { success: true, message: reply };
+  ipcMain.handle('openclaw:sendMessage', async (_event, message: string, sessionId?: string, modelId?: string) => {
+    try {
+      const reply = await engine.runAgentMessage(message, sessionId, modelId);
+      return { success: true, message: reply };
+    } catch (e: any) {
+      const stderr = String(e?.stderr ?? '');
+      const msg = String(e?.message ?? e);
+
+      // Prefer actionable CLI stderr over generic invoke error
+      if (stderr.includes('No API key found for provider')) {
+        throw new Error(
+          [
+            'OpenClaw 未配置模型提供方的 API Key（例如 openai）。',
+            '请按提示配置：openclaw agents add main（或在 OpenClaw 配置中为 main agent 设置 auth）。',
+            '原始错误：' + stderr.trim(),
+          ].join('\n')
+        );
+      }
+
+      if (stderr.trim()) {
+        throw new Error(stderr.trim());
+      }
+
+      throw new Error(msg);
+    }
+  });
+
+  ipcMain.handle('openclaw:getModels', async () => {
+    try {
+      return await engine.getModelsSummary();
+    } catch (e: any) {
+      console.warn('[OpenClawEngine] getModels failed:', e?.message || e);
+      return { defaultModelId: null, models: [], configuredProviders: [], error: e?.message || String(e) };
+    }
   });
 
   ipcMain.handle('openclaw:getConversations', async () => {
-    // TODO: 实现获取对话历史的逻辑
-    console.log('[OpenClawEngine] 获取对话历史');
-    return { conversations: [] };
+    const conversations = await engine.listConversations();
+    return { conversations };
   });
 
   ipcMain.handle('openclaw:deleteConversation', async (_event, conversationId: string) => {
-    // TODO: 实现删除对话的逻辑
-    console.log('[OpenClawEngine] 删除对话:', conversationId);
+    await engine.removeConversation(conversationId);
+    return { success: true };
+  });
+
+  ipcMain.handle('openclaw:upsertConversation', async (_event, conversation: ConversationRecord) => {
+    if (!conversation || typeof conversation.id !== 'string') {
+      throw new Error('Invalid conversation payload');
+    }
+    await engine.upsertConversation(conversation);
     return { success: true };
   });
 
   // 技能管理 IPC 接口
   ipcMain.handle('openclaw:getSkills', async () => {
-    const skills = await engine.getSkills();
-    return { skills };
+    try {
+      const skills = await engine.getSkills();
+      return { skills };
+    } catch (e: any) {
+      console.warn('[OpenClawEngine] getSkills failed:', e?.message || e);
+      return { skills: [], error: e?.message || String(e) };
+    }
   });
 
   ipcMain.handle('openclaw:installSkill', async (_event, skillName: string) => {
@@ -793,32 +1081,55 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
 
   // 连接器管理 IPC 接口
   ipcMain.handle('openclaw:getConnectors', async () => {
-    // TODO: 实现获取连接器列表的逻辑
-    console.log('[OpenClawEngine] 获取连接器列表');
-    return { connectors: [] };
+    try {
+      const plugins = await engine.getPlugins();
+      const connectors = plugins.map((p: any) => {
+        const id = String(p?.id ?? p?.name ?? p?.pluginId ?? p?.package ?? '');
+        const name = String(p?.title ?? p?.displayName ?? p?.id ?? p?.name ?? id);
+        const type = String(p?.format ?? p?.bundleFormat ?? p?.source ?? p?.marketplace ?? 'plugin');
+        const enabled = Boolean(p?.enabled ?? p?.isEnabled ?? p?.active);
+        return {
+          id,
+          name,
+          type,
+          config: p,
+          status: enabled ? 'connected' : 'disconnected',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+      });
+      return { connectors };
+    } catch (e: any) {
+      console.warn('[OpenClawEngine] getConnectors failed:', e?.message || e);
+      return { connectors: [], error: e?.message || String(e) };
+    }
   });
 
   ipcMain.handle('openclaw:addConnector', async (_event, config: any) => {
-    // TODO: 实现添加连接器的逻辑
-    console.log('[OpenClawEngine] 添加连接器:', config);
+    const spec = String(config?.config?.spec ?? config?.spec ?? config?.name ?? '').trim();
+    if (!spec) throw new Error('Missing plugin spec');
+    await engine.installPlugin(spec);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:updateConnector', async (_event, id: string, config: any) => {
-    // TODO: 实现更新连接器的逻辑
-    console.log('[OpenClawEngine] 更新连接器:', id, config);
+    const action = String(config?.action ?? '').toLowerCase();
+    if (action === 'enable') await engine.enablePlugin(id);
+    else if (action === 'disable') await engine.disablePlugin(id);
+    else {
+      // Fallback: treat update as enable/disable only for now.
+      console.log('[OpenClawEngine] updateConnector unsupported action:', action);
+    }
     return { success: true };
   });
 
   ipcMain.handle('openclaw:deleteConnector', async (_event, id: string) => {
-    // TODO: 实现删除连接器的逻辑
-    console.log('[OpenClawEngine] 删除连接器:', id);
+    await engine.uninstallPlugin(id);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:testConnector', async (_event, id: string) => {
-    // TODO: 实现测试连接器连接的逻辑
-    console.log('[OpenClawEngine] 测试连接器:', id);
+    await engine.inspectPlugin(id);
     return { success: true };
   });
 }

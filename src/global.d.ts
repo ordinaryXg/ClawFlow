@@ -9,10 +9,14 @@ export interface IElectronAPI {
   updateConfig: (config: any) => Promise<{ success: boolean }>;
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
+  setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
+  getModels: () => Promise<any>;
   // 对话相关
-  sendMessage: (message: string) => Promise<any>;
+  sendMessage: (message: string, sessionId?: string, modelId?: string) => Promise<any>;
   getConversations: () => Promise<any>;
   deleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
+  upsertConversation: (conversation: any) => Promise<{ success: boolean }>;
   // 技能管理
   getSkills: () => Promise<any>;
   installSkill: (skillName: string) => Promise<{ success: boolean }>;

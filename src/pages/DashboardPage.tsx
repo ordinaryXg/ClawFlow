@@ -71,8 +71,13 @@ const DashboardPage: FC = () => {
 
   const handleStartGateway = async () => {
     if (!canOperateGateway) return;
-    await startGateway();
-    await fetchStatus();
+    try {
+      await startGateway();
+      await fetchStatus();
+      (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('gateway.startOkBody'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('gateway.startFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    }
   };
 
   const handleStopGateway = async () => {
