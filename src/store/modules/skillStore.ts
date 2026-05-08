@@ -2,6 +2,7 @@
 // 技能状态管理
 
 import { create } from 'zustand';
+import type { SkillMarketEntry, SkillMarketFetchResult, SkillMarketSource } from '../../skill-market-shared';
 
 export interface Skill {
   name: string;
@@ -23,9 +24,15 @@ export interface SkillState {
   enabledSkills: string[];
   isLoading: boolean;
   error: string | null;
-  
+  marketEntries: SkillMarketEntry[];
+  marketSource: SkillMarketSource | null;
+  marketWarning: string | null;
+  marketLoading: boolean;
+  marketError: string | null;
+
   // Actions
   fetchSkills: () => Promise<void>;
+  fetchSkillMarket: (opts?: { forceRefresh?: boolean }) => Promise<SkillMarketFetchResult | null>;
   installSkill: (skillName: string) => Promise<void>;
   uninstallSkill: (skillName: string) => Promise<void>;
   enableSkill: (skillName: string) => Promise<void>;
@@ -33,59 +40,75 @@ export interface SkillState {
   setError: (error: string | null) => void;
 }
 
-export const useSkillStore = create<SkillState>((set, get) => ({
+export const useSkillStore = create<SkillState>((set) => ({
   skills: [],
   installedSkills: [],
   enabledSkills: [],
   isLoading: false,
   error: null,
-    
+  marketEntries: [],
+  marketSource: null,
+  marketWarning: null,
+  marketLoading: false,
+  marketError: null,
+
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
     try {
       const res: SkillAPIResponse = await window.electronAPI?.getSkills?.();
 
       const fromRes = Array.isArray(res) ? res : Array.isArray(res?.skills) ? res?.skills : null;
-      
-      // 主进程目前返回模拟空数组时，保留一份 mock 以保证界面可用
-      const mockSkills: Skill[] = [
-        {
-          name: 'westock-data',
-          description: 'A股个股详情查询工具',
-          version: '1.0.0',
-          installed: true,
-          enabled: true,
-        },
-        {
-          name: 'westock-tool',
-          description: 'A股筛选策略工具',
-          version: '1.0.0',
-          installed: false,
-          enabled: false,
-        },
-      ];
-      
-      // 若主进程明确返回数组（哪怕为空），就尊重它；仅在无返回/异常时才用 mock 兜底
-      const nextSkills = fromRes ? fromRes : mockSkills;
 
-      const installed = nextSkills
-        .filter(skill => skill.installed)
-        .map(skill => skill.name);
-      const enabled = nextSkills
-        .filter(skill => skill.enabled)
-        .map(skill => skill.name);
-      
-      set({ 
+      const nextSkills: Skill[] = Array.isArray(fromRes) ? fromRes : [];
+
+      const installed = nextSkills.filter((skill) => skill.installed).map((skill) => skill.name);
+      const enabled = nextSkills.filter((skill) => skill.enabled).map((skill) => skill.name);
+
+      set({
         skills: nextSkills,
         installedSkills: installed,
         enabledSkills: enabled,
-        isLoading: false 
+        isLoading: false,
       });
     } catch (error: any) {
-      set({ 
+      set({
         error: error.message || '获取技能列表失败',
-        isLoading: false 
+        isLoading: false,
       });
+    }
+  },
+
+  fetchSkillMarket: async (opts) => {
+    const api = window.electronAPI;
+    if (!api?.skillMarketGetIndex) {
+      set({ marketError: 'skillMarketGetIndex unavailable', marketLoading: false });
+      return null;
+    }
+    set({ marketLoading: true, marketError: null });
+    try {
+      const res = await api.skillMarketGetIndex({ forceRefresh: Boolean(opts?.forceRefresh) });
+      if (!res.ok) {
+        set({
+          marketEntries: [],
+          marketSource: null,
+          marketWarning: null,
+          marketError: res.error,
+          marketLoading: false,
+        });
+        return res;
+      }
+      set({
+        marketEntries: res.index.skills,
+        marketSource: res.source,
+        marketWarning: res.warning ?? null,
+        marketError: null,
+        marketLoading: false,
+      });
+      return res;
+    } catch (e: any) {
+      const msg = e?.message || '技能市场加载失败';
+      set({ marketEntries: [], marketSource: null, marketWarning: null, marketError: msg, marketLoading: false });
+      return { ok: false as const, error: msg };
     }
   },
     

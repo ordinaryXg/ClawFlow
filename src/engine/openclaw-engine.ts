@@ -536,12 +536,16 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
   }
 
   async installSkill(skillName: string): Promise<void> {
-    await this.executeCommand(['skills', 'install', `"${skillName}"`], { checkExitCode: true });
+    const id = String(skillName ?? '').trim();
+    if (!id) throw new Error('Missing skill name');
+    await this.executeCommand(['skills', 'install', JSON.stringify(id)], { checkExitCode: true });
   }
 
   async uninstallSkill(skillName: string): Promise<void> {
     // Note: not documented in CLI reference; attempt best-effort.
-    await this.executeCommand(['skills', 'uninstall', `"${skillName}"`], { checkExitCode: true });
+    const id = String(skillName ?? '').trim();
+    if (!id) throw new Error('Missing skill name');
+    await this.executeCommand(['skills', 'uninstall', JSON.stringify(id)], { checkExitCode: true });
   }
 
   async runAgentMessage(message: string, sessionId?: string, modelId?: string): Promise<string> {

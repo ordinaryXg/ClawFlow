@@ -1,4 +1,6 @@
 // 全局类型声明
+import type { SkillMarketFetchResult } from './skill-market-shared';
+
 export interface IElectronAPI {
   getVersion: () => Promise<string>;
   getGatewayStatus: () => Promise<string>;
@@ -25,6 +27,7 @@ export interface IElectronAPI {
   uninstallSkill: (skillName: string) => Promise<{ success: boolean }>;
   enableSkill: (skillName: string) => Promise<{ success: boolean }>;
   disableSkill: (skillName: string) => Promise<{ success: boolean }>;
+  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => Promise<SkillMarketFetchResult>;
   // 连接器管理
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;

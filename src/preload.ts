@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { SkillMarketFetchResult } from './skill-market-shared';
 
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
@@ -27,6 +28,7 @@ export interface IElectronAPI {
   uninstallSkill: (skillName: string) => Promise<{ success: boolean }>;
   enableSkill: (skillName: string) => Promise<{ success: boolean }>;
   disableSkill: (skillName: string) => Promise<{ success: boolean }>;
+  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => Promise<SkillMarketFetchResult>;
   // 连接器管理
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
@@ -116,6 +118,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   uninstallSkill: (skillName: string) => ipcRenderer.invoke('openclaw:uninstallSkill', skillName),
   enableSkill: (skillName: string) => ipcRenderer.invoke('openclaw:enableSkill', skillName),
   disableSkill: (skillName: string) => ipcRenderer.invoke('openclaw:disableSkill', skillName),
+  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => ipcRenderer.invoke('skillMarket:getIndex', opts ?? {}),
   // 连接器管理
   getConnectors: () => ipcRenderer.invoke('openclaw:getConnectors'),
   addConnector: (config: any) => ipcRenderer.invoke('openclaw:addConnector', config),
