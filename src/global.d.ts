@@ -7,6 +7,8 @@ export interface IElectronAPI {
   validateCLI: () => Promise<boolean>;
   getConfig: () => Promise<any>;
   updateConfig: (config: any) => Promise<{ success: boolean }>;
+  pickCliPath: () => Promise<string | null>;
+  getAppVersion: () => Promise<string>;
   // 对话相关
   sendMessage: (message: string) => Promise<any>;
   getConversations: () => Promise<any>;

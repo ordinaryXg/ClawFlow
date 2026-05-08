@@ -8,6 +8,10 @@ export interface SettingsState {
   language: 'zh' | 'en';
   autoStartGateway: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /** OpenClaw 可执行文件路径，空字符串表示使用内置/PATH 解析 */
+  openclawCliPath: string;
+  /** 主进程命令超时（毫秒） */
+  commandTimeout: number;
 }
 
 export interface SettingsActions {
@@ -18,30 +22,39 @@ export interface SettingsActions {
 export type SettingsStore = SettingsState & SettingsActions;
 
 const DEFAULT_SETTINGS: SettingsState = {
-  theme: 'light',
+  theme: 'dark',
   language: 'zh',
   autoStartGateway: false,
   logLevel: 'info',
+  openclawCliPath: '',
+  commandTimeout: 60000,
 };
+
+function persistSlice(state: SettingsState) {
+  return {
+    theme: state.theme,
+    language: state.language,
+    autoStartGateway: state.autoStartGateway,
+    logLevel: state.logLevel,
+    openclawCliPath: state.openclawCliPath,
+    commandTimeout: state.commandTimeout,
+  };
+}
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   ...DEFAULT_SETTINGS,
-  
+
   updateSettings: (settings) => {
-    set({ ...get(), ...settings });
-    
-    // 保存到 localStorage
+    set((prev) => ({ ...prev, ...settings }));
     try {
-      localStorage.setItem('clawflow-settings', JSON.stringify({ ...get(), ...settings }));
+      localStorage.setItem('clawflow-settings', JSON.stringify(persistSlice(get())));
     } catch (error) {
       console.error('保存设置失败:', error);
     }
   },
-  
+
   resetSettings: () => {
     set(DEFAULT_SETTINGS);
-    
-    // 从 localStorage 移除
     try {
       localStorage.removeItem('clawflow-settings');
     } catch (error) {
@@ -50,12 +63,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 }));
 
-// 初始化时从 localStorage 加载设置
 try {
   const savedSettings = localStorage.getItem('clawflow-settings');
   if (savedSettings) {
-    const settings = JSON.parse(savedSettings);
-    useSettingsStore.setState(settings);
+    const p = JSON.parse(savedSettings) as Partial<SettingsState>;
+    useSettingsStore.setState({
+      theme: p.theme === 'light' ? 'light' : 'dark',
+      language: p.language === 'en' ? 'en' : 'zh',
+      autoStartGateway: !!p.autoStartGateway,
+      logLevel: ['debug', 'info', 'warn', 'error'].includes(String(p.logLevel))
+        ? (p.logLevel as SettingsState['logLevel'])
+        : 'info',
+      openclawCliPath: typeof p.openclawCliPath === 'string' ? p.openclawCliPath : '',
+      commandTimeout:
+        typeof p.commandTimeout === 'number' && Number.isFinite(p.commandTimeout)
+          ? p.commandTimeout
+          : DEFAULT_SETTINGS.commandTimeout,
+    });
   }
 } catch (error) {
   console.error('加载设置失败:', error);

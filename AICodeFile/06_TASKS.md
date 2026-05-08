@@ -667,13 +667,32 @@ interface SettingsState {
 **前置任务：** 任务 2.1、任务 1.1（i18next 依赖）
 
 **验收标准：**
-- [ ] 所有设置项可用
-- [ ] 设置正确保存（localStorage 或配置文件）
-- [ ] 主题切换立即生效
-- [ ] **语言切换生效（中文/英文）**
-- [ ] 所有界面文案都有中英文翻译
+- [x] 所有设置项可用
+- [x] 设置正确保存（localStorage 或配置文件）
+- [x] 主题切换立即生效
+- [x] **语言切换生效（中文/英文）**
+- [x] 主要界面文案具备中英文翻译（Layout、Dashboard、Chat、Skills、Connectors、States、Settings、Toast 等）
 
 **预计复杂度：** 中等
+
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-08
+- **完成内容概览**：
+  - `src/i18n.ts` + `locales/zh.json` / `en.json`，入口 `renderer.tsx` 预加载 i18n
+  - `settingsStore` 持久化语言与主题；`I18nThemeBootstrap` 同步 i18n / `data-theme` / 引擎 `updateConfig`
+  - Settings 页：`useTranslation`、CLI 路径选择（`pickCliPath`）、版本与重置等
+  - Connectors / States 页全面 `t()`；Connectors 测试结果用语义状态驱动以支持切换语言
+  - Chat：`ChatInput` / `StreamingMessage` 文案键；修复 ToastHost 中 `t` 与 map 变量遮蔽导致的类型错误
+  - 主进程 `openclaw:pickCliPath`：`showOpenDialog` 在无窗口时使用无宿主重载以通过 TS
+- **涉及文件（主要）**：
+  - `src/i18n.ts`、`src/locales/zh.json`、`src/locales/en.json`、`src/renderer.tsx`
+  - `src/components/I18nThemeBootstrap.tsx`、`src/store/modules/settingsStore.ts`
+  - `src/pages/SettingsPage/*`、`src/pages/ConnectorsPage/index.tsx`、`src/pages/StatesPage/index.tsx`
+  - `src/components/Layout.tsx`、`src/components/chat/ChatInput.tsx`、`src/components/chat/StreamingMessage.tsx`
+  - `src/components/common/ToastHost.tsx`、`src/engine/openclaw-engine.ts`、`src/preload.ts`、`src/global.d.ts`
+- **验收结果（本阶段）**：
+  - [x] 与任务相关的验收项已自测通过（`npx tsc --noEmit`）
 
 ---
 

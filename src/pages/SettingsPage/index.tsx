@@ -1,46 +1,148 @@
-import { FC, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import './styles.css';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
 
 const SettingsPage: FC = () => {
+  const { t } = useTranslation();
   const { version, fetchVersion, error: gatewayError, fetchStatus } = useGatewayStore();
-  const { theme, language, autoStartGateway, logLevel, updateSettings } = useSettingsStore();
+  const {
+    theme,
+    language,
+    autoStartGateway,
+    logLevel,
+    openclawCliPath: storeCliPath,
+    commandTimeout: storeTimeout,
+    updateSettings,
+    resetSettings,
+  } = useSettingsStore();
 
-  const [cliPath, setCliPath] = useState('');
-  const [timeoutMs, setTimeoutMs] = useState(60000);
+  const [cliPath, setCliPath] = useState(storeCliPath);
+  const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
+  const [pathCheck, setPathCheck] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    setCliPath(storeCliPath);
+    setTimeoutMs(storeTimeout);
+  }, [storeCliPath, storeTimeout]);
 
   useEffect(() => {
     void fetchVersion();
     void fetchStatus();
+    void (async () => {
+      try {
+        const v = await window.electronAPI?.getAppVersion?.();
+        if (v) setAppVersion(v);
+      } catch {
+        setAppVersion('');
+      }
+    })();
   }, [fetchStatus, fetchVersion]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    void (async () => {
+      try {
+        const cfg = await window.electronAPI?.getConfig?.();
+        if (cfg && typeof cfg === 'object' && 'cliPath' in cfg) {
+          const p = String((cfg as { cliPath?: string }).cliPath ?? '');
+          setCliPath((prev) => (prev.trim() ? prev : p));
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
 
-  const pathError = useMemo(() => {
-    // 这里只做原型式“错误态”，真实校验交给主进程 validateCLI / path 选择器
-    if (!cliPath) return '未找到 openclaw，可执行文件路径无效';
+  const pathHint = useMemo(() => {
+    if (pathCheck === 'ok') return t('settings.pathCheckOk');
+    if (pathCheck === 'fail') return t('settings.pathCheckFail');
     return null;
-  }, [cliPath]);
+  }, [pathCheck, t]);
+
+  const persistEngine = useCallback(async () => {
+    const path = cliPath.trim();
+    const payload: { cliPath?: string; commandTimeout: number } = { commandTimeout: timeoutMs };
+    if (path) payload.cliPath = path;
+    await window.electronAPI.updateConfig(payload);
+    useGatewayStore.getState().updateConfig({ cliPath: path || undefined, commandTimeout: timeoutMs });
+  }, [cliPath, timeoutMs]);
+
+  const onSave = async () => {
+    updateSettings({
+      openclawCliPath: cliPath,
+      commandTimeout: timeoutMs,
+      theme,
+      language,
+      autoStartGateway,
+      logLevel,
+    });
+    try {
+      await persistEngine();
+      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.savedBody'));
+    } catch {
+      (window as any).__cf_toast?.error?.(t('settings.savePartialTitle'), t('settings.savePartialBody'));
+    }
+  };
+
+  const onPick = async () => {
+    try {
+      const picked = await window.electronAPI?.pickCliPath?.();
+      if (picked) {
+        setCliPath(picked);
+        setPathCheck('idle');
+      } else {
+        (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.pickCancelled'));
+      }
+    } catch {
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), t('common.sampleDetectFailBody'));
+    }
+  };
+
+  const onDetect = async () => {
+    try {
+      await persistEngine();
+      const ok = await window.electronAPI?.validateCLI?.();
+      setPathCheck(ok ? 'ok' : 'fail');
+      if (ok) {
+        void fetchVersion();
+        (window as any).__cf_toast?.success?.(t('settings.pathCheckOk'), '');
+      } else {
+        (window as any).__cf_toast?.error?.(t('settings.pathCheckFail'), t('settings.pathInvalid'));
+      }
+    } catch {
+      setPathCheck('fail');
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), t('common.sampleDetectFailBody'));
+    }
+  };
+
+  const onReset = () => {
+    if (!window.confirm(t('settings.resetConfirm'))) return;
+    resetSettings();
+    const st = useSettingsStore.getState();
+    setCliPath(st.openclawCliPath);
+    setTimeoutMs(st.commandTimeout);
+    setPathCheck('idle');
+    void i18n.changeLanguage(st.language);
+    document.documentElement.dataset.theme = st.theme;
+    (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
+  };
 
   return (
     <>
       <div className="cf-topbar">
         <div className="cf-pageTitle">
-          <h2>Settings</h2>
-          <p>主题/语言 · OpenClaw 路径 · 超时与日志 · 自动启动。</p>
+          <h2>{t('settings.title')}</h2>
+          <p>{t('settings.subtitle')}</p>
         </div>
-        <div className="cf-row">
-          <button
-            className="cf-btn cf-btnPrimary"
-            onClick={() => {
-              updateSettings({ theme, language, autoStartGateway, logLevel });
-              // 静态提示：原型一致
-              (window as any).__cf_toast?.success?.('已保存（示例）', '设置已持久化，部分配置需重启生效。');
-            }}
-          >
-            保存设置（示例）
+        <div className="cf-row cf-settingsPage__actions">
+          <button className="cf-btn cf-btnGhost" type="button" onClick={onReset}>
+            {t('settings.reset')}
+          </button>
+          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => void onSave()}>
+            {t('settings.save')}
           </button>
         </div>
       </div>
@@ -48,165 +150,196 @@ const SettingsPage: FC = () => {
       {gatewayError ? (
         <div className="cf-banner" style={{ borderColor: 'rgba(194,75,75,.45)', background: 'rgba(194,75,75,.10)' }}>
           <div>
-            <b>检测失败</b>
+            <b>{t('settings.detectFailedTitle')}</b>
             <span>{gatewayError}</span>
           </div>
-          <button className="cf-btn cf-btnDanger" onClick={() => void fetchVersion()}>
-            重试
+          <button type="button" className="cf-btn cf-btnDanger" onClick={() => void fetchVersion()}>
+            {t('settings.retry')}
           </button>
         </div>
       ) : null}
 
-      <section className="cf-grid" style={{ marginTop: 12 }}>
+      <section className="cf-grid cf-settingsPage__grid">
         <div className="cf-card cf-col6">
-          <h3>外观</h3>
+          <h3>{t('settings.appearance')}</h3>
           <div className="cf-divider" />
 
-          <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="cf-row cf-settingsPage__row">
             <div>
               <div className="cf-sub">
-                <strong style={{ color: 'var(--text)' }}>主题</strong>
+                <strong style={{ color: 'var(--text)' }}>{t('settings.theme')}</strong>
               </div>
-              <div className="cf-help">切换立即生效并持久化（P1）。</div>
+              <div className="cf-help">{t('settings.themeHelp')}</div>
             </div>
             <div className="cf-row">
               <button
+                type="button"
                 className={theme === 'dark' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => updateSettings({ theme: 'dark' })}
               >
-                Dark
+                {t('common.dark')}
               </button>
               <button
+                type="button"
                 className={theme === 'light' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => updateSettings({ theme: 'light' })}
               >
-                Light
+                {t('common.light')}
               </button>
             </div>
           </div>
 
           <div style={{ height: 10 }} />
 
-          <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="cf-row cf-settingsPage__row">
             <div>
               <div className="cf-sub">
-                <strong style={{ color: 'var(--text)' }}>语言</strong>
+                <strong style={{ color: 'var(--text)' }}>{t('settings.language')}</strong>
               </div>
-              <div className="cf-help">zh/en 即时切换（P1）。</div>
+              <div className="cf-help">{t('settings.languageHelp')}</div>
             </div>
             <div className="cf-row">
               <button
+                type="button"
                 className={language === 'zh' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => updateSettings({ language: 'zh' })}
               >
-                中文
+                {t('common.chinese')}
               </button>
               <button
+                type="button"
                 className={language === 'en' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => updateSettings({ language: 'en' })}
               >
-                English
+                {t('common.english')}
               </button>
             </div>
           </div>
         </div>
 
         <div className="cf-card cf-col6">
-          <h3>OpenClaw 依赖</h3>
+          <h3>{t('settings.openclaw')}</h3>
           <div className="cf-divider" />
 
-          <div className="cf-sub">版本：{version || '未检测'}</div>
+          <div className="cf-sub">
+            {t('settings.versionLabel')}：{version || t('settings.notDetected')}
+          </div>
           <div style={{ height: 10 }} />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
-            OpenClaw 可执行路径
+            {t('settings.cliPath')}
           </div>
           <div className="cf-row" style={{ alignItems: 'center' }}>
             <input
               className="cf-input"
               value={cliPath}
-              onChange={(e) => setCliPath(e.target.value)}
-              placeholder="例如：C:\\Program Files\\openclaw\\openclaw.exe"
+              onChange={(e) => {
+                setCliPath(e.target.value);
+                setPathCheck('idle');
+              }}
+              placeholder={t('settings.cliPathPlaceholder')}
               style={{ flex: 1 }}
             />
-            <button
-              className="cf-btn"
-              onClick={() => (window as any).__cf_toast?.success?.('选择文件（示例）', '真实应用中会弹出文件选择器。')}
-            >
-              选择
+            <button type="button" className="cf-btn" onClick={() => void onPick()}>
+              {t('common.selectFile')}
             </button>
-            <button
-              className="cf-btn"
-              onClick={() => (window as any).__cf_toast?.error?.('检测失败（示例）', '未找到 openclaw。请检查路径或安装。')}
-            >
-              检测
+            <button type="button" className="cf-btn" onClick={() => void onDetect()}>
+              {t('common.detect')}
             </button>
           </div>
-          {pathError ? <div className="cf-errorText" style={{ marginTop: 6 }}>{pathError}</div> : null}
+          {pathHint ? (
+            <div className={pathCheck === 'fail' ? 'cf-errorText' : 'cf-help'} style={{ marginTop: 6 }}>
+              {pathHint}
+            </div>
+          ) : null}
+
           <div className="cf-help" style={{ marginTop: 6 }}>
-            <a href="#/states" style={{ color: 'var(--gold)' }}>查看安装指引（示例）</a>
+            <a href="#/states" style={{ color: 'var(--gold)' }}>
+              {t('common.viewGuide')}
+            </a>
           </div>
 
           <div className="cf-divider" />
 
-          <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="cf-row cf-settingsPage__row">
             <div>
               <div className="cf-sub">
-                <strong style={{ color: 'var(--text)' }}>自动启动 Gateway</strong>
+                <strong style={{ color: 'var(--text)' }}>{t('settings.autoStart')}</strong>
               </div>
-              <div className="cf-help">仅在依赖可用时启用。</div>
+              <div className="cf-help">{t('settings.autoStartHelp')}</div>
             </div>
             <button
+              type="button"
               className={autoStartGateway ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
               onClick={() => updateSettings({ autoStartGateway: !autoStartGateway })}
             >
-              {autoStartGateway ? 'ON' : 'OFF'}
+              {autoStartGateway ? t('common.on') : t('common.off')}
             </button>
           </div>
         </div>
 
         <div className="cf-card cf-col6">
-          <h3>执行参数</h3>
+          <h3>{t('settings.execution')}</h3>
           <div className="cf-divider" />
           <div className="cf-sub" style={{ marginBottom: 6 }}>
-            命令超时（ms）
+            {t('settings.timeout')}
           </div>
           <input
             className="cf-input"
+            type="number"
+            min={1000}
+            step={1000}
             value={timeoutMs}
             onChange={(e) => setTimeoutMs(Number(e.target.value || 0))}
           />
-          <div className="cf-help">超时要可恢复：提示原因 + 下一步。</div>
+          <div className="cf-help">{t('settings.timeoutHelp')}</div>
           <div style={{ height: 10 }} />
           <div className="cf-sub" style={{ marginBottom: 6 }}>
-            日志级别
+            {t('settings.logLevel')}
           </div>
           <select
             className="cf-select"
             value={logLevel}
-            onChange={(e) => updateSettings({ logLevel: e.target.value as any })}
+            onChange={(e) => updateSettings({ logLevel: e.target.value as typeof logLevel })}
           >
             <option value="debug">debug</option>
             <option value="info">info</option>
             <option value="warn">warn</option>
             <option value="error">error</option>
           </select>
-          <div className="cf-help">debug 仅用于排障。</div>
+          <div className="cf-help">{t('settings.logLevelHelp')}</div>
         </div>
 
         <div className="cf-card cf-col6">
-          <h3>安全与隐私</h3>
+          <h3>{t('settings.security')}</h3>
           <div className="cf-divider" />
-          <div className="cf-sub">- Renderer 不直接拥有 Node 能力</div>
-          <div className="cf-sub">- 只通过 preload 暴露最小 API</div>
-          <div className="cf-sub">- 敏感字段默认脱敏，不写入日志明文</div>
+          <div className="cf-sub">{t('settings.security1')}</div>
+          <div className="cf-sub">{t('settings.security2')}</div>
+          <div className="cf-sub">{t('settings.security3')}</div>
           <div style={{ height: 12 }} />
           <button
+            type="button"
             className="cf-btn cf-btnGold"
-            onClick={() => (window as any).__cf_toast?.success?.('规则（示例）', 'token/key/password 仅展示尾 4 位，其余用 •••• 替代。')}
+            onClick={() =>
+              (window as any).__cf_toast?.success?.(t('common.sampleRulesTitle'), t('common.sampleRulesBody'))
+            }
           >
-            查看脱敏规则（示例）
+            {t('settings.rulesBtn')}
           </button>
+        </div>
+
+        <div className="cf-card cf-col12">
+          <h3>{t('settings.about')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-row" style={{ gap: 24, flexWrap: 'wrap' }}>
+            <div className="cf-sub">
+              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>：{appVersion || '—'}
+            </div>
+            <div className="cf-sub">
+              <strong style={{ color: 'var(--text)' }}>{t('settings.versionLabel')}</strong>：{version || '—'}
+            </div>
+            <div className="cf-sub">{t('settings.license')}</div>
+          </div>
         </div>
       </section>
     </>
@@ -214,4 +347,3 @@ const SettingsPage: FC = () => {
 };
 
 export default SettingsPage;
-

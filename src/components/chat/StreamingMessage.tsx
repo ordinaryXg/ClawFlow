@@ -1,4 +1,5 @@
 import { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import './chat.css';
 
 interface Props {
@@ -6,13 +7,14 @@ interface Props {
 }
 
 const StreamingMessage: FC<Props> = ({ content }) => {
+  const { t } = useTranslation();
   if (!content) return null;
 
   return (
     <div className="cf-stream">
       <div className="cf-stream__bubble">
         <div className="cf-stream__meta">
-          <span className="cf-sub">OpenClaw · 流式输出</span>
+          <span className="cf-sub">{t('chat.streamLabel')}</span>
         </div>
         <div className="cf-stream__content">{content}</div>
       </div>

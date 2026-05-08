@@ -1,44 +1,50 @@
 import { FC } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 const StatesPage: FC = () => {
+  const { t } = useTranslation();
   return (
     <>
       <div className="cf-topbar">
         <div className="cf-pageTitle">
-          <h2>空 / 错 / 载 状态库</h2>
-          <p>把关键错误分层，并确保每条提示都可行动（下一步）。</p>
+          <h2>{t('states.title')}</h2>
+          <p>{t('states.subtitle')}</p>
         </div>
         <div className="cf-row">
           <button
             className="cf-btn cf-btnGhost"
-            onClick={() => (window as any).__cf_toast?.success?.('操作成功', '变更已应用，可继续下一步。')}
+            onClick={() => (window as any).__cf_toast?.success?.(t('states.toastOkTitle'), t('states.toastOkBody'))}
           >
-            成功 Toast
+            {t('states.toastOk')}
           </button>
           <button
             className="cf-btn cf-btnGhost"
-            onClick={() => (window as any).__cf_toast?.error?.('请求失败', '请检查依赖或网络后重试。')}
+            onClick={() => (window as any).__cf_toast?.error?.(t('states.toastErrTitle'), t('states.toastErrBody'))}
           >
-            错误 Toast
+            {t('states.toastErr')}
           </button>
         </div>
       </div>
 
       <section className="cf-grid">
         <div className="cf-card cf-col4">
-          <h3>1) Gateway Unknown</h3>
+          <h3>{t('states.card1Title')}</h3>
           <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-            <span className="cf-chip cf-chipUnknown">Unknown</span>
-            <button className="cf-btn cf-btnSmall">刷新</button>
+            <span className="cf-chip cf-chipUnknown">{t('gateway.statusUnknown')}</span>
+            <button type="button" className="cf-btn cf-btnSmall">
+              {t('common.refresh')}
+            </button>
           </div>
           <div className="cf-divider" />
-          <div className="cf-sub">原因可能是：依赖缺失 / 权限不足 / 命令超时。</div>
+          <div className="cf-sub">{t('states.card1Body')}</div>
           <div style={{ height: 10 }} />
           <div className="cf-row">
             <a className="cf-btn cf-btnSmall" href="#/settings">
-              去设置
+              {t('common.goSettings')}
             </a>
-            <button className="cf-btn cf-btnSmall">查看日志</button>
+            <button type="button" className="cf-btn cf-btnSmall">
+              {t('common.viewLogs')}
+            </button>
           </div>
         </div>
 
@@ -46,46 +52,59 @@ const StatesPage: FC = () => {
           className="cf-card cf-col4"
           style={{ borderColor: 'rgba(138,106,42,.35)', background: 'linear-gradient(135deg,rgba(138,106,42,.16),rgba(255,255,255,.02))' }}
         >
-          <h3>2) 依赖缺失（阻断）</h3>
+          <h3>{t('states.card2Title')}</h3>
           <div className="cf-sub">
-            未找到 <span style={{ fontFamily: 'var(--mono)' }}>openclaw</span>，无法执行命令。
+            <Trans
+              i18nKey="states.card2Body"
+              components={{ mono: <span style={{ fontFamily: 'var(--mono)' }} /> }}
+            />
           </div>
           <div className="cf-divider" />
           <div className="cf-row">
             <a className="cf-btn cf-btnGold" href="#/settings">
-              配置路径
+              {t('states.setPath')}
             </a>
-            <button className="cf-btn">安装指引</button>
+            <button type="button" className="cf-btn">
+              {t('states.installGuide')}
+            </button>
           </div>
-          <div className="cf-help">提示要明确：缺什么、去哪配、配完怎么验证。</div>
+          <div className="cf-help">{t('states.card2Hint')}</div>
         </div>
 
         <div className="cf-card cf-col4">
-          <h3>3) Skills 空状态</h3>
-          <div className="cf-sub">当前筛选条件下没有结果。</div>
+          <h3>{t('states.card3Title')}</h3>
+          <div className="cf-sub">{t('states.card3Body')}</div>
           <div className="cf-divider" />
-          <button className="cf-btn cf-btnPrimary">清空筛选</button>
-          <div className="cf-help">空状态不只是“空”，要给主 CTA。</div>
+          <button type="button" className="cf-btn cf-btnPrimary">
+            {t('states.clearFilter')}
+          </button>
+          <div className="cf-help">{t('states.card3Hint')}</div>
         </div>
 
         <div className="cf-card cf-col4">
-          <h3>4) 连接测试失败（可恢复）</h3>
-          <div className="cf-sub">失败：认证无效或权限不足。</div>
+          <h3>{t('states.card4Title')}</h3>
+          <div className="cf-sub">{t('states.card4Fail')}</div>
           <div className="cf-divider" />
-          <div className="cf-sub">下一步建议：</div>
-          <div className="cf-sub">- 检查 Token 是否过期</div>
-          <div className="cf-sub">- 检查网络/代理</div>
-          <div className="cf-sub">- 复制错误并查看日志</div>
+          <div className="cf-sub">{t('states.nextSteps')}</div>
+          <div className="cf-sub">{t('states.stepToken')}</div>
+          <div className="cf-sub">{t('states.stepNetwork')}</div>
+          <div className="cf-sub">{t('states.stepLog')}</div>
           <div style={{ height: 10 }} />
           <div className="cf-row">
-            <button className="cf-btn cf-btnPrimary cf-btnSmall">重试</button>
-            <button className="cf-btn cf-btnSmall">复制错误</button>
-            <button className="cf-btn cf-btnSmall">查看日志</button>
+            <button type="button" className="cf-btn cf-btnPrimary cf-btnSmall">
+              {t('common.retry')}
+            </button>
+            <button type="button" className="cf-btn cf-btnSmall">
+              {t('states.copyError')}
+            </button>
+            <button type="button" className="cf-btn cf-btnSmall">
+              {t('common.viewLogs')}
+            </button>
           </div>
         </div>
 
         <div className="cf-card cf-col4">
-          <h3>5) 全局加载骨架</h3>
+          <h3>{t('states.card5Title')}</h3>
           <div
             style={{
               height: 46,
@@ -101,16 +120,20 @@ const StatesPage: FC = () => {
           <div style={{ height: 8 }} />
           <div style={{ height: 12, width: '54%', borderRadius: 12, background: 'rgba(255,255,255,.05)' }} />
           <div style={{ height: 12 }} />
-          <div className="cf-help">避免“点击无反应”：操作必须有 loading。</div>
+          <div className="cf-help">{t('states.card5Hint')}</div>
         </div>
 
         <div className="cf-card cf-col4">
-          <h3>6) 网络/离线错误</h3>
-          <div className="cf-sub">当前网络不可用，部分连接器测试可能失败。</div>
+          <h3>{t('states.card6Title')}</h3>
+          <div className="cf-sub">{t('states.card6Body')}</div>
           <div className="cf-divider" />
-          <button className="cf-btn cf-btnPrimary">重试</button>
-          <button className="cf-btn">进入离线模式（可选）</button>
-          <div className="cf-help">提示要“可行动”，不要只给红字。</div>
+          <button type="button" className="cf-btn cf-btnPrimary">
+            {t('common.retry')}
+          </button>
+          <button type="button" className="cf-btn">
+            {t('states.offlineMode')}
+          </button>
+          <div className="cf-help">{t('states.card6Hint')}</div>
         </div>
       </section>
     </>
@@ -118,4 +141,3 @@ const StatesPage: FC = () => {
 };
 
 export default StatesPage;
-

@@ -1,5 +1,5 @@
 import { ExecException, exec, spawn, ChildProcess } from 'child_process';
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow, OpenDialogOptions } from 'electron';
 import { promisify } from 'util';
 import EventEmitter from 'events';
 import * as path from 'path';
@@ -632,6 +632,25 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
 
   ipcMain.handle('openclaw:validateCLI', async () => {
     return await engine.validateCLI();
+  });
+
+  ipcMain.handle('openclaw:pickCliPath', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const dialogOpts: OpenDialogOptions = {
+      title: '选择 OpenClaw 可执行文件',
+      properties: ['openFile'],
+      filters:
+        process.platform === 'win32'
+          ? [
+              { name: 'Executable', extensions: ['exe', 'cmd', 'bat'] },
+              { name: 'Node script', extensions: ['mjs', 'js', 'cjs'] },
+              { name: 'All files', extensions: ['*'] },
+            ]
+          : [{ name: 'All files', extensions: ['*'] }],
+    };
+    const res = win ? await dialog.showOpenDialog(win, dialogOpts) : await dialog.showOpenDialog(dialogOpts);
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
   });
 
   // 对话相关 IPC 接口

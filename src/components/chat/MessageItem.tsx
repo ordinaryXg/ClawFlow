@@ -1,4 +1,5 @@
 import { FC, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
@@ -19,6 +20,7 @@ function safeTextToHtml(text: string): string {
 }
 
 const MessageItem: FC<Props> = ({ message }) => {
+  const { t } = useTranslation();
   const isUser = message.role === 'user';
 
   const time = useMemo(() => {
@@ -32,9 +34,9 @@ const MessageItem: FC<Props> = ({ message }) => {
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
-      (window as any).__cf_toast?.success?.('已复制', '内容已复制到剪贴板。');
+      (window as any).__cf_toast?.success?.(t('common.copiedTitle'), t('common.copiedBody'));
     } catch {
-      (window as any).__cf_toast?.error?.('复制失败', '请稍后重试。');
+      (window as any).__cf_toast?.error?.(t('common.copyFailedTitle'), t('common.copyFailedBody'));
     }
   };
 
@@ -42,12 +44,12 @@ const MessageItem: FC<Props> = ({ message }) => {
     <div className={isUser ? 'cf-msgItem cf-msgItem--user' : 'cf-msgItem cf-msgItem--assistant'}>
       <div className="cf-msgItem__bubble">
         <div className="cf-msgItem__meta">
-          <span className="cf-sub">{isUser ? '你' : 'OpenClaw'}</span>
+          <span className="cf-sub">{isUser ? t('chat.roleYou') : t('chat.roleAssistant')}</span>
           <span className="cf-sub">·</span>
           <span className="cf-sub">{time}</span>
           <div className="cf-msgItem__actions">
             <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={onCopy}>
-              复制
+              {t('common.copy')}
             </button>
           </div>
         </div>

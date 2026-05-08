@@ -1,10 +1,12 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Skill, useSkillStore } from '../../store/modules/skillStore';
 import './styles.css';
 
 type FilterMode = 'all' | 'installed' | 'notInstalled';
 
 const SkillsPage: FC = () => {
+  const { t } = useTranslation();
   const { skills, isLoading, error, fetchSkills, setError } = useSkillStore();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -31,7 +33,6 @@ const SkillsPage: FC = () => {
         );
       })
       .sort((a, b) => {
-        // 已安装优先，其次按名称
         if (a.installed !== b.installed) return a.installed ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
@@ -41,12 +42,12 @@ const SkillsPage: FC = () => {
     <div className="cf-skillsPage">
       <div className="cf-topbar">
         <div className="cf-pageTitle">
-          <h2>Skills</h2>
-          <p>搜索/筛选 · 安装/卸载 · 启用/禁用 · 统一反馈。</p>
+          <h2>{t('skills.title')}</h2>
+          <p>{t('skills.subtitle')}</p>
         </div>
         <div className="cf-row">
           <button className="cf-btn cf-btnGhost" onClick={() => void fetchSkills()}>
-            {isLoading ? '刷新中…' : '刷新'}
+            {isLoading ? t('skills.refreshing') : t('common.refresh')}
           </button>
         </div>
       </div>
@@ -54,11 +55,11 @@ const SkillsPage: FC = () => {
       {error ? (
         <div className="cf-banner" style={{ borderColor: 'rgba(194,75,75,.45)', background: 'rgba(194,75,75,.10)' }}>
           <div>
-            <b>加载失败</b>
+            <b>{t('skills.loadFailed')}</b>
             <span>{error}</span>
           </div>
           <button className="cf-btn cf-btnGhost" onClick={() => setError(null)}>
-            清除
+            {t('common.clear')}
           </button>
         </div>
       ) : null}
@@ -69,7 +70,7 @@ const SkillsPage: FC = () => {
             <input
               className="cf-input"
               style={{ width: 320 }}
-              placeholder="搜索技能（名称/描述/版本）"
+              placeholder={t('skills.searchPlaceholder')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -78,23 +79,23 @@ const SkillsPage: FC = () => {
                 className={filter === 'all' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => setFilter('all')}
               >
-                全部
+                {t('skills.filterAll')}
               </button>
               <button
                 className={filter === 'installed' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => setFilter('installed')}
               >
-                已安装
+                {t('skills.filterInstalled')}
               </button>
               <button
                 className={filter === 'notInstalled' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
                 onClick={() => setFilter('notInstalled')}
               >
-                未安装
+                {t('skills.filterNotInstalled')}
               </button>
             </div>
           </div>
-          <span className="cf-sub">共 {filtered.length} 项</span>
+          <span className="cf-sub">{t('skills.count', { count: filtered.length })}</span>
         </div>
       </div>
 
@@ -102,11 +103,11 @@ const SkillsPage: FC = () => {
 
       {filtered.length === 0 ? (
         <div className="cf-card">
-          <h3>无匹配技能</h3>
-          <div className="cf-sub">尝试清空搜索条件或切换筛选。</div>
+          <h3>{t('skills.emptyTitle')}</h3>
+          <div className="cf-sub">{t('skills.emptySub')}</div>
           <div style={{ height: 12 }} />
           <button className="cf-btn cf-btnPrimary" onClick={() => setQuery('')}>
-            清空搜索
+            {t('skills.clearSearch')}
           </button>
         </div>
       ) : (
@@ -123,23 +124,24 @@ const SkillsPage: FC = () => {
 export default SkillsPage;
 
 const SkillCard: FC<{ skill: Skill }> = ({ skill }) => {
+  const { t } = useTranslation();
   const { installSkill, uninstallSkill, enableSkill, disableSkill, isLoading } = useSkillStore();
 
   const onInstall = async () => {
     try {
       await installSkill(skill.name);
-      (window as any).__cf_toast?.success?.('安装成功', `技能 ${skill.name} 已安装。`);
+      (window as any).__cf_toast?.success?.(t('skills.installOkTitle'), t('skills.installOkBody', { name: skill.name }));
     } catch (e: any) {
-      (window as any).__cf_toast?.error?.('安装失败', e?.message || '请稍后重试。');
+      (window as any).__cf_toast?.error?.(t('skills.installFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
   const onUninstall = async () => {
     try {
       await uninstallSkill(skill.name);
-      (window as any).__cf_toast?.success?.('已卸载', `技能 ${skill.name} 已移除。`);
+      (window as any).__cf_toast?.success?.(t('skills.uninstallOkTitle'), t('skills.uninstallOkBody', { name: skill.name }));
     } catch (e: any) {
-      (window as any).__cf_toast?.error?.('卸载失败', e?.message || '请稍后重试。');
+      (window as any).__cf_toast?.error?.(t('skills.uninstallFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
@@ -148,13 +150,13 @@ const SkillCard: FC<{ skill: Skill }> = ({ skill }) => {
     try {
       if (skill.enabled) {
         await disableSkill(skill.name);
-        (window as any).__cf_toast?.success?.('已禁用', `技能 ${skill.name} 已禁用。`);
+        (window as any).__cf_toast?.success?.(t('skills.disabledTitle'), t('skills.disabledBody', { name: skill.name }));
       } else {
         await enableSkill(skill.name);
-        (window as any).__cf_toast?.success?.('已启用', `技能 ${skill.name} 现在可在 Chat 中使用。`);
+        (window as any).__cf_toast?.success?.(t('skills.enabledTitle'), t('skills.enabledBody', { name: skill.name }));
       }
     } catch (e: any) {
-      (window as any).__cf_toast?.error?.('操作失败', e?.message || '请稍后重试。');
+      (window as any).__cf_toast?.error?.(t('skills.opFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
@@ -163,7 +165,7 @@ const SkillCard: FC<{ skill: Skill }> = ({ skill }) => {
       <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <h3 style={{ margin: 0 }}>{skill.name}</h3>
         <span className={skill.installed ? 'cf-chip cf-chipRunning' : 'cf-chip cf-chipStopped'}>
-          {skill.installed ? 'Installed' : 'Not Installed'}
+          {skill.installed ? t('skills.installed') : t('skills.notInstalled')}
         </span>
       </div>
       <div className="cf-sub">{skill.description}</div>
@@ -171,36 +173,37 @@ const SkillCard: FC<{ skill: Skill }> = ({ skill }) => {
       <div className="cf-divider" />
       <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
         <div className="cf-row" style={{ alignItems: 'center', gap: 8 }}>
-          <span className="cf-sub">启用</span>
+          <span className="cf-sub">{t('skills.enable')}</span>
           <button
             className={skill.enabled ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
             onClick={() => void onToggle()}
             disabled={!skill.installed || isLoading}
-            title={!skill.installed ? '未安装时不可启用' : ''}
+            title={!skill.installed ? t('skills.enableHint') : ''}
           >
-            {skill.enabled ? 'ON' : 'OFF'}
+            {skill.enabled ? t('common.on') : t('common.off')}
           </button>
         </div>
         <div className="cf-row">
           {skill.installed ? (
             <button className="cf-btn cf-btnSmall" onClick={() => void onUninstall()} disabled={isLoading}>
-              卸载
+              {t('common.uninstall')}
             </button>
           ) : (
             <button className="cf-btn cf-btnPrimary cf-btnSmall" onClick={() => void onInstall()} disabled={isLoading}>
-              安装
+              {t('common.install')}
             </button>
           )}
           <button
             className="cf-btn cf-btnGhost cf-btnSmall"
-            onClick={() => (window as any).__cf_toast?.success?.('详情（示例）', '真实产品中可跳转到技能详情页。')}
+            onClick={() =>
+              (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('common.sampleDetailBody'))
+            }
           >
-            详情
+            {t('common.details')}
           </button>
         </div>
       </div>
-      {!skill.installed ? <div className="cf-help">未安装时“启用”不可用，并给出解释。</div> : null}
+      {!skill.installed ? <div className="cf-help">{t('skills.enableHintNote')}</div> : null}
     </div>
   );
 };
-

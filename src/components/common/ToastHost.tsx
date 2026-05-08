@@ -1,4 +1,5 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type ToastType = 'success' | 'error';
 
@@ -14,6 +15,7 @@ function uid() {
 }
 
 export const ToastHost: FC = () => {
+  const { t } = useTranslation();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const api = useMemo(() => {
@@ -40,14 +42,14 @@ export const ToastHost: FC = () => {
 
   return (
     <div style={{ position: 'fixed', right: 18, bottom: 18, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 60 }}>
-      {toasts.map((t) => (
+      {toasts.map((toast) => (
         <div
-          key={t.id}
+          key={toast.id}
           style={{
             minWidth: 320,
             maxWidth: 420,
             borderRadius: 14,
-            border: `1px solid ${t.type === 'success' ? 'rgba(30,91,69,.5)' : 'rgba(194,75,75,.5)'}`,
+            border: `1px solid ${toast.type === 'success' ? 'rgba(30,91,69,.5)' : 'rgba(194,75,75,.5)'}`,
             background: 'rgba(26,29,33,.92)',
             boxShadow: 'var(--shadow)',
             padding: '10px 12px',
@@ -58,11 +60,11 @@ export const ToastHost: FC = () => {
           }}
         >
           <div>
-            <b style={{ fontSize: 12 }}>{t.title}</b>
-            {t.message ? <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--muted)' }}>{t.message}</p> : null}
+            <b style={{ fontSize: 12 }}>{toast.title}</b>
+            {toast.message ? <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--muted)' }}>{toast.message}</p> : null}
           </div>
-          <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => api.dismiss(t.id)}>
-            关闭
+          <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => api.dismiss(toast.id)}>
+            {t('common.close')}
           </button>
         </div>
       ))}

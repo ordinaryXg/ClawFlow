@@ -1,8 +1,12 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Connector, ConnectorConfig, useConnectorStore } from '../../store/modules/connectorStore';
 import './styles.css';
 
+type TestPhase = 'idle' | 'running' | 'ok' | 'fail';
+
 const ConnectorsPage: FC = () => {
+  const { t } = useTranslation();
   const {
     connectors,
     isLoading,
@@ -28,8 +32,21 @@ const ConnectorsPage: FC = () => {
   const [fToken, setFToken] = useState('');
   const [fNote, setFNote] = useState('');
   const [tokenErr, setTokenErr] = useState<string | null>(null);
-  const [testText, setTestText] = useState('未测试。');
+  const [testPhase, setTestPhase] = useState<TestPhase>('idle');
   const [reveal, setReveal] = useState(false);
+
+  const testText = useMemo(() => {
+    switch (testPhase) {
+      case 'running':
+        return t('connectors.testRunning');
+      case 'ok':
+        return t('connectors.testOkResult');
+      case 'fail':
+        return t('connectors.testFailResult');
+      default:
+        return t('connectors.drawerTestIdle');
+    }
+  }, [t, testPhase]);
 
   useEffect(() => {
     void fetchConnectors();
@@ -58,9 +75,13 @@ const ConnectorsPage: FC = () => {
     if (active?.id) setActiveId(active.id);
   }, [active?.id]);
 
+  useEffect(() => {
+    if (active?.id) setTestPhase('idle');
+  }, [active?.id]);
+
   const openDrawer = (mode: 'add' | 'edit') => {
     setTokenErr(null);
-    setTestText('未测试。');
+    setTestPhase('idle');
     setReveal(false);
     if (mode === 'edit' && active) {
       setEditing(active);
@@ -83,13 +104,13 @@ const ConnectorsPage: FC = () => {
   const submit = async () => {
     const token = fToken.trim();
     if (!token) {
-      setTokenErr('Token 不能为空');
-      (window as any).__cf_toast?.error?.('校验失败', '请补全必填项后再保存。');
+      setTokenErr(t('connectors.tokenRequired'));
+      (window as any).__cf_toast?.error?.(t('connectors.validateFailTitle'), t('connectors.validateFailBody'));
       return;
     }
 
     const payload: ConnectorConfig = {
-      name: fName.trim() || '未命名连接器',
+      name: fName.trim() || t('connectors.unnamed'),
       type: fType,
       config: {
         host: fHost.trim(),
@@ -101,27 +122,27 @@ const ConnectorsPage: FC = () => {
     try {
       if (editing) {
         await updateConnector(editing.id, payload);
-        (window as any).__cf_toast?.success?.('已保存', '连接器已更新，建议立即测试连接。');
+        (window as any).__cf_toast?.success?.(t('connectors.saveOkTitle'), t('connectors.saveOkBody'));
       } else {
         await addConnector(payload);
-        (window as any).__cf_toast?.success?.('已新增', '连接器已创建，建议立即测试连接。');
+        (window as any).__cf_toast?.success?.(t('connectors.addOkTitle'), t('connectors.addOkBody'));
       }
       setDrawerOpen(false);
       setEditing(null);
     } catch (e: any) {
-      (window as any).__cf_toast?.error?.('保存失败', e?.message || '请稍后重试。');
+      (window as any).__cf_toast?.error?.(t('connectors.saveFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
   const runTest = async (id: string) => {
-    setTestText('测试中…');
+    setTestPhase('running');
     const ok = await testConnection(id);
     if (ok) {
-      setTestText('成功：认证通过，权限正常。');
-      (window as any).__cf_toast?.success?.('测试成功', '连接器可用于技能调用。');
+      setTestPhase('ok');
+      (window as any).__cf_toast?.success?.(t('connectors.testOkTitle'), t('connectors.testOkBody'));
     } else {
-      setTestText('失败：Token 无效或权限不足。下一步：检查 Token → 重新测试 → 查看日志。');
-      (window as any).__cf_toast?.error?.('测试失败', '请检查 Token/网络，或前往日志查看详细错误。');
+      setTestPhase('fail');
+      (window as any).__cf_toast?.error?.(t('connectors.testFailTitle'), t('connectors.testFailBody'));
     }
   };
 
@@ -129,46 +150,61 @@ const ConnectorsPage: FC = () => {
     <div className="cf-connectorsPage">
       <div className="cf-topbar">
         <div className="cf-pageTitle">
-          <h2>Connectors</h2>
-          <p>新增/编辑/删除 · 测试连接 · 敏感字段脱敏展示。</p>
+          <h2>{t('connectors.title')}</h2>
+          <p>{t('connectors.subtitle')}</p>
         </div>
         <div className="cf-row">
-          <button className="cf-btn cf-btnGhost" onClick={() => void fetchConnectors()}>{isLoading ? '刷新中…' : '刷新'}</button>
-          <button className="cf-btn cf-btnPrimary" onClick={() => openDrawer('add')}>新增连接器</button>
+          <button className="cf-btn cf-btnGhost" onClick={() => void fetchConnectors()}>
+            {isLoading ? t('connectors.refreshing') : t('common.refresh')}
+          </button>
+          <button className="cf-btn cf-btnPrimary" onClick={() => openDrawer('add')}>
+            {t('connectors.add')}
+          </button>
         </div>
       </div>
 
       {error ? (
         <div className="cf-banner" style={{ borderColor: 'rgba(194,75,75,.45)', background: 'rgba(194,75,75,.10)' }}>
           <div>
-            <b>操作失败</b>
+            <b>{t('connectors.opFailed')}</b>
             <span>{error}</span>
           </div>
-          <button className="cf-btn cf-btnGhost" onClick={() => setError(null)}>清除</button>
+          <button className="cf-btn cf-btnGhost" onClick={() => setError(null)}>
+            {t('common.clear')}
+          </button>
         </div>
       ) : null}
 
       <section className="cf-connectorsSplit" style={{ marginTop: 12 }}>
         <div className="cf-card">
           <div className="cf-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0 }}>列表</h3>
+            <h3 style={{ margin: 0 }}>{t('connectors.listTitle')}</h3>
             <button
               className="cf-btn cf-btnSmall"
-              onClick={() => (window as any).__cf_toast?.success?.('提示', '支持按名称/类型搜索；建议提供筛选：已测试/未测试/失败。')}
+              onClick={() =>
+                (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('connectors.searchToastBody'))
+              }
             >
-              搜索提示
+              {t('connectors.searchHintBtn')}
             </button>
           </div>
           <div style={{ height: 10 }} />
-          <input className="cf-input" placeholder="搜索连接器（名称/类型/配置）…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            className="cf-input"
+            placeholder={t('connectors.searchPlaceholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <div style={{ height: 10 }} />
 
           {filtered.length === 0 ? (
             <div className="cf-card">
-              <h3 style={{ marginBottom: 6 }}>暂无连接器</h3>
-              <div className="cf-sub">添加一个连接器，让技能获得外部能力。</div>
+              <h3 style={{ marginBottom: 6 }}>{t('connectors.emptyTitle')}</h3>
+              <div className="cf-sub">{t('connectors.emptySub')}</div>
               <div style={{ height: 12 }} />
-              <button className="cf-btn cf-btnPrimary" onClick={() => openDrawer('add')}>添加第一个连接器</button>
+              <button className="cf-btn cf-btnPrimary" onClick={() => openDrawer('add')}>
+                {t('connectors.addFirst')}
+              </button>
             </div>
           ) : (
             <div className="cf-connList">
@@ -182,7 +218,7 @@ const ConnectorsPage: FC = () => {
                 >
                   <div style={{ minWidth: 0 }}>
                     <b style={{ fontSize: 12 }}>{c.name}</b>
-                    <div className="cf-sub">type: {c.type}</div>
+                    <div className="cf-sub">{t('connectors.lineType', { type: c.type })}</div>
                   </div>
                   <span
                     className={
@@ -198,7 +234,11 @@ const ConnectorsPage: FC = () => {
                         : undefined
                     }
                   >
-                    {c.status === 'connected' ? 'OK' : c.status === 'error' ? 'FAIL' : '?'}
+                    {c.status === 'connected'
+                      ? t('connectors.okChip')
+                      : c.status === 'error'
+                        ? t('connectors.failChip')
+                        : t('connectors.unknownChip')}
                   </span>
                 </div>
               ))}
@@ -206,16 +246,31 @@ const ConnectorsPage: FC = () => {
           )}
 
           <div className="cf-divider" />
-          <div className="cf-help">敏感字段默认脱敏；可在详情面板临时“显示/隐藏”。</div>
+          <div className="cf-help">{t('connectors.sensitiveHint')}</div>
         </div>
 
         <div className="cf-card">
           <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={{ margin: 0 }}>详情：{active?.name ?? '-'}</h3>
-            <span className={active?.status === 'connected' ? 'cf-chip cf-chipRunning' : active?.status === 'error' ? 'cf-chip' : 'cf-chip cf-chipUnknown'}
-              style={active?.status === 'error' ? { borderColor: 'rgba(194,75,75,.5)', background: 'rgba(194,75,75,.12)', color: '#F0B4B4' } : undefined}
+            <h3 style={{ margin: 0 }}>{t('connectors.detailTitle', { name: active?.name ?? '-' })}</h3>
+            <span
+              className={
+                active?.status === 'connected'
+                  ? 'cf-chip cf-chipRunning'
+                  : active?.status === 'error'
+                    ? 'cf-chip'
+                    : 'cf-chip cf-chipUnknown'
+              }
+              style={
+                active?.status === 'error'
+                  ? { borderColor: 'rgba(194,75,75,.5)', background: 'rgba(194,75,75,.12)', color: '#F0B4B4' }
+                  : undefined
+              }
             >
-              {active?.status === 'connected' ? '已连接' : active?.status === 'error' ? '异常' : '未测试'}
+              {active?.status === 'connected'
+                ? t('connectors.connected')
+                : active?.status === 'error'
+                  ? t('connectors.abnormal')
+                  : t('connectors.untested')}
             </span>
           </div>
 
@@ -224,40 +279,53 @@ const ConnectorsPage: FC = () => {
           {active ? (
             <div className="cf-grid">
               <div className="cf-card cf-col6">
-                <h3>基础信息</h3>
-                <div className="cf-sub">名称：{active.name}</div>
-                <div className="cf-sub">类型：{active.type}</div>
-                <div className="cf-sub">更新时间：{new Date(active.updatedAt).toLocaleString()}</div>
+                <h3>{t('connectors.basicInfo')}</h3>
+                <div className="cf-sub">{t('connectors.lineName', { name: active.name })}</div>
+                <div className="cf-sub">{t('connectors.lineType', { type: active.type })}</div>
+                <div className="cf-sub">
+                  {t('connectors.lineUpdated', { value: new Date(active.updatedAt).toLocaleString() })}
+                </div>
               </div>
               <div className="cf-card cf-col6">
-                <h3>配置（脱敏）</h3>
-                <div className="cf-sub">Host：{String((active.config as any)?.host ?? '-')}</div>
+                <h3>{t('connectors.configMasked')}</h3>
                 <div className="cf-sub">
-                  Token：{reveal ? String((active.config as any)?.token ?? '—') : '••••' + String((active.config as any)?.token ?? '0000').slice(-4)}
+                  {t('connectors.lineHost', { value: String((active.config as any)?.host ?? '-') })}
+                </div>
+                <div className="cf-sub">
+                  {t('connectors.token')}：
+                  {reveal
+                    ? String((active.config as any)?.token ?? '—')
+                    : '••••' + String((active.config as any)?.token ?? '0000').slice(-4)}
                   <button className="cf-btn cf-btnGhost cf-btnSmall" style={{ marginLeft: 8 }} onClick={() => setReveal((v) => !v)}>
-                    {reveal ? '隐藏' : '显示'}
+                    {reveal ? t('connectors.hide') : t('connectors.reveal')}
                   </button>
                 </div>
-                <div className="cf-help">仅临时显示，不在列表与日志中明文输出。</div>
+                <div className="cf-help">{t('connectors.maskHint')}</div>
               </div>
 
               <div className="cf-card cf-col12">
-                <h3>操作</h3>
+                <h3>{t('connectors.actions')}</h3>
                 <div className="cf-row">
-                  <button className="cf-btn" onClick={() => openDrawer('edit')}>编辑</button>
-                  <button className="cf-btn cf-btnDanger" onClick={() => setDeleteOpen(true)}>删除</button>
-                  <button className="cf-btn cf-btnPrimary" onClick={() => void runTest(active.id)}>测试连接</button>
+                  <button className="cf-btn" onClick={() => openDrawer('edit')}>
+                    {t('connectors.edit')}
+                  </button>
+                  <button className="cf-btn cf-btnDanger" onClick={() => setDeleteOpen(true)}>
+                    {t('common.delete')}
+                  </button>
+                  <button className="cf-btn cf-btnPrimary" onClick={() => void runTest(active.id)}>
+                    {t('connectors.testConn')}
+                  </button>
                 </div>
                 <div style={{ height: 10 }} />
                 <div className="cf-card">
-                  <h3>测试结果</h3>
+                  <h3>{t('connectors.testResult')}</h3>
                   <div className="cf-sub">{testText}</div>
-                  <div className="cf-help">失败时必须给出原因 + 下一步（例如：检查 Token、检查网络、查看日志）。</div>
+                  <div className="cf-help">{t('connectors.testFailHint')}</div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="cf-sub">请选择一个连接器查看详情。</div>
+            <div className="cf-sub">{t('connectors.selectFirst')}</div>
           )}
         </div>
       </section>
@@ -266,17 +334,25 @@ const ConnectorsPage: FC = () => {
       <aside className={drawerOpen ? 'cf-drawer cf-drawer--show' : 'cf-drawer'} aria-hidden={!drawerOpen}>
         <div className="cf-drawerHead">
           <div>
-            <h3 style={{ margin: 0 }}>{editing ? '编辑连接器' : '新增连接器'}</h3>
-            <p className="cf-sub" style={{ margin: '6px 0 0 0' }}>配置完成后可点击“测试连接”，确保技能可用。</p>
+            <h3 style={{ margin: 0 }}>{editing ? t('connectors.drawerEdit') : t('connectors.drawerAdd')}</h3>
+            <p className="cf-sub" style={{ margin: '6px 0 0 0' }}>
+              {t('connectors.drawerSub')}
+            </p>
           </div>
-          <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setDrawerOpen(false)}>关闭</button>
+          <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setDrawerOpen(false)}>
+            {t('connectors.drawerClose')}
+          </button>
         </div>
         <div className="cf-drawerBody">
-          <div className="cf-sub" style={{ marginBottom: 6 }}>名称</div>
-          <input className="cf-input" value={fName} onChange={(e) => setFName(e.target.value)} placeholder="例如：Feishu / Supabase" />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('connectors.fieldName')}
+          </div>
+          <input className="cf-input" value={fName} onChange={(e) => setFName(e.target.value)} placeholder={t('connectors.fieldNamePh')} />
 
           <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>类型</div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('connectors.fieldType')}
+          </div>
           <select className="cf-select" value={fType} onChange={(e) => setFType(e.target.value)}>
             <option value="feishu">feishu</option>
             <option value="github">github</option>
@@ -285,59 +361,71 @@ const ConnectorsPage: FC = () => {
           </select>
 
           <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>端点 / 主机</div>
-          <input className="cf-input" value={fHost} onChange={(e) => setFHost(e.target.value)} placeholder="https://... 或 host:port" />
-          <div className="cf-help">不同类型可映射不同字段，此处只做原型示意。</div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('connectors.fieldHost')}
+          </div>
+          <input className="cf-input" value={fHost} onChange={(e) => setFHost(e.target.value)} placeholder={t('connectors.fieldHostPh')} />
+          <div className="cf-help">{t('connectors.fieldHostHint')}</div>
 
           <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>API Key / Token</div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('connectors.fieldToken')}
+          </div>
           <input className="cf-input" value={fToken} onChange={(e) => setFToken(e.target.value)} placeholder="••••••••" />
           {tokenErr ? <div className="cf-errorText" style={{ marginTop: 6 }}>{tokenErr}</div> : null}
 
           <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>备注</div>
-          <textarea className="cf-textarea" value={fNote} onChange={(e) => setFNote(e.target.value)} placeholder="可选：用途、权限范围、失效时间等" />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('connectors.fieldNote')}
+          </div>
+          <textarea className="cf-textarea" value={fNote} onChange={(e) => setFNote(e.target.value)} placeholder={t('connectors.fieldNotePh')} />
 
           <div style={{ height: 12 }} />
           <div className="cf-card">
-            <h3>测试连接</h3>
+            <h3>{t('connectors.drawerTestTitle')}</h3>
             <div className="cf-sub">{testText}</div>
             <div style={{ height: 10 }} />
             <button
               className="cf-btn"
               onClick={() => {
                 if (editing?.id) void runTest(editing.id);
-                else (window as any).__cf_toast?.error?.('无法测试', '请先保存连接器后再测试。');
+                else (window as any).__cf_toast?.error?.(t('connectors.cannotTestTitle'), t('connectors.cannotTestBody'));
               }}
             >
-              测试连接
+              {t('connectors.testConn')}
             </button>
           </div>
         </div>
         <div className="cf-drawerFoot">
-          <button className="cf-btn" onClick={() => setDrawerOpen(false)}>取消</button>
+          <button className="cf-btn" onClick={() => setDrawerOpen(false)}>
+            {t('connectors.drawerCancel')}
+          </button>
           <button className="cf-btn cf-btnPrimary" disabled={isLoading} onClick={() => void submit()}>
-            保存
+            {t('connectors.drawerSave')}
           </button>
         </div>
       </aside>
 
       {deleteOpen ? <div className="cf-overlay" onClick={() => setDeleteOpen(false)} /> : null}
       <div className={deleteOpen ? 'cf-modal cf-modal--show' : 'cf-modal'} aria-hidden={!deleteOpen}>
-        <h3 style={{ margin: '0 0 6px 0', fontSize: 14 }}>确认删除连接器？</h3>
-        <p className="cf-sub" style={{ margin: 0 }}>该操作不可恢复。建议先确认没有技能依赖此连接器。</p>
+        <h3 style={{ margin: '0 0 6px 0', fontSize: 14 }}>{t('connectors.deleteConfirmTitle')}</h3>
+        <p className="cf-sub" style={{ margin: 0 }}>
+          {t('connectors.deleteConfirmSub')}
+        </p>
         <div className="cf-modalActions">
-          <button className="cf-btn" onClick={() => setDeleteOpen(false)}>取消</button>
+          <button className="cf-btn" onClick={() => setDeleteOpen(false)}>
+            {t('connectors.drawerCancel')}
+          </button>
           <button
             className="cf-btn cf-btnDanger"
             onClick={async () => {
               if (!active) return;
               setDeleteOpen(false);
               await deleteConnector(active.id);
-              (window as any).__cf_toast?.success?.('已删除', '列表将刷新并移除该项。');
+              (window as any).__cf_toast?.success?.(t('connectors.deletedOkTitle'), t('connectors.deletedOkBody'));
             }}
           >
-            删除
+            {t('common.delete')}
           </button>
         </div>
       </div>
@@ -346,4 +434,3 @@ const ConnectorsPage: FC = () => {
 };
 
 export default ConnectorsPage;
-

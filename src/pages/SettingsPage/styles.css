@@ -1,0 +1,12 @@
+.cf-settingsPage__actions {
+  align-items: center;
+}
+
+.cf-settingsPage__grid {
+  margin-top: 12px;
+}
+
+.cf-settingsPage__row {
+  align-items: center;
+  justify-content: space-between;
+}

@@ -1,4 +1,5 @@
 import { FC, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import './chat.css';
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 const ChatInput: FC<Props> = ({ disabled, onSend }) => {
+  const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [isSending, setIsSending] = useState(false);
 
@@ -36,7 +38,7 @@ const ChatInput: FC<Props> = ({ disabled, onSend }) => {
         className="cf-textarea"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+        placeholder={t('chat.inputPlaceholder')}
         disabled={disabled || isSending}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
@@ -52,7 +54,7 @@ const ChatInput: FC<Props> = ({ disabled, onSend }) => {
           onClick={() => void submit()}
           disabled={!canSend}
         >
-          {isSending ? '发送中…' : '发送'}
+          {isSending ? t('chat.sending') : t('chat.send')}
         </button>
       </div>
     </div>

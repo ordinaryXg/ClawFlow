@@ -9,6 +9,8 @@ export interface IElectronAPI {
   validateCLI: () => Promise<boolean>;
   getConfig: () => Promise<any>;
   updateConfig: (config: any) => Promise<{ success: boolean }>;
+  pickCliPath: () => Promise<string | null>;
+  getAppVersion: () => Promise<string>;
   // 对话相关
   sendMessage: (message: string) => Promise<any>;
   getConversations: () => Promise<any>;
@@ -36,6 +38,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   validateCLI: () => ipcRenderer.invoke('openclaw:validateCLI'),
   getConfig: () => ipcRenderer.invoke('openclaw:getConfig'),
   updateConfig: (config: any) => ipcRenderer.invoke('openclaw:updateConfig', config),
+  pickCliPath: () => ipcRenderer.invoke('openclaw:pickCliPath'),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   // 对话相关
   sendMessage: (message: string) => ipcRenderer.invoke('openclaw:sendMessage', message),
   getConversations: () => ipcRenderer.invoke('openclaw:getConversations'),
