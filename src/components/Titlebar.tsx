@@ -49,7 +49,6 @@ const Titlebar: FC<Props> = ({ visible = true }) => {
         { key: 'skills', label: t('nav.skills'), onClick: () => navigate('/skills') },
         { key: 'connectors', label: t('nav.connectors'), onClick: () => navigate('/connectors') },
         { key: 'settings', label: t('nav.settings'), onClick: () => navigate('/settings') },
-        { key: 'states', label: t('nav.states'), onClick: () => navigate('/states') },
         { type: 'divider' },
         { key: 'reload', label: t('titlebar.reload'), onClick: () => void window.electronAPI?.windowReload?.() },
         { key: 'devtools', label: t('titlebar.toggleDevTools'), onClick: () => void window.electronAPI?.windowToggleDevTools?.() },

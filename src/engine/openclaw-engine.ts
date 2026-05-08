@@ -368,11 +368,12 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     }
   }
 
-  async pasteModelAuthToken(params: { agentId?: string; provider: string; token: string; profileId?: string }): Promise<void> {
+  async pasteModelAuthToken(params: { agentId?: string; provider: string; token: string; profileId?: string; label?: string }): Promise<void> {
     const agentId = params.agentId ?? 'main';
     const provider = params.provider.trim();
     const token = params.token;
     const profileId = (params.profileId ?? `${provider}:manual`).trim();
+    const label = typeof params.label === 'string' ? params.label.trim() : '';
 
     if (!provider) throw new Error('Missing provider');
     if (!token) throw new Error('Missing token');
@@ -397,7 +398,7 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     }
     if (!authProfiles.profiles || typeof authProfiles.profiles !== 'object') authProfiles.profiles = {};
     authProfiles.version = typeof authProfiles.version === 'number' ? authProfiles.version : 1;
-    authProfiles.profiles[profileId] = { type: 'token', provider, token };
+    authProfiles.profiles[profileId] = { type: 'token', provider, token, ...(label ? { label } : {}) };
     await fs.promises.writeFile(authProfilesPath, JSON.stringify(authProfiles, null, 2), 'utf-8');
 
     // 2) Update ~/.openclaw/openclaw.json to reference the profile (no token stored here)
@@ -412,6 +413,53 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     } catch {
       // if config missing, do nothing (OpenClaw can regenerate via onboard/configure)
     }
+  }
+
+  async removeModelAuthToken(params: { agentId?: string; provider: string; profileId?: string }): Promise<{ removed: boolean }> {
+    const agentId = params.agentId ?? 'main';
+    const provider = params.provider.trim();
+    const profileId = (params.profileId ?? `${provider}:manual`).trim();
+
+    if (!provider) throw new Error('Missing provider');
+    if (!profileId) throw new Error('Missing profile id');
+
+    const stateRoot = this.openclawStateDir;
+    const agentDir = path.join(stateRoot, 'agents', agentId, 'agent');
+    const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
+    const openclawConfigPath = this.openclawConfigFile;
+
+    let removed = false;
+
+    // 1) Remove token from per-agent auth-profiles.json
+    try {
+      const raw = await fs.promises.readFile(authProfilesPath, 'utf-8');
+      const parsed: any = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.profiles && typeof parsed.profiles === 'object') {
+        if (profileId in parsed.profiles) {
+          delete parsed.profiles[profileId];
+          removed = true;
+          await fs.promises.writeFile(authProfilesPath, JSON.stringify(parsed, null, 2), 'utf-8');
+        }
+      }
+    } catch {
+      // ignore missing/invalid
+    }
+
+    // 2) Remove reference from openclaw.json (best effort)
+    try {
+      const raw = await fs.promises.readFile(openclawConfigPath, 'utf-8');
+      const cfg: any = JSON.parse(raw);
+      if (cfg && typeof cfg === 'object' && cfg.auth && typeof cfg.auth === 'object' && cfg.auth.profiles && typeof cfg.auth.profiles === 'object') {
+        if (profileId in cfg.auth.profiles) {
+          delete cfg.auth.profiles[profileId];
+          await fs.promises.writeFile(openclawConfigPath, JSON.stringify(cfg, null, 2), 'utf-8');
+        }
+      }
+    } catch {
+      // ignore missing/invalid
+    }
+
+    return { removed };
   }
 
   async setDefaultModel(params: { agentId?: string; modelId: string }): Promise<void> {
@@ -528,6 +576,7 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     defaultModelId: string | null;
     models: Array<{ id: string; name?: string; available?: boolean; tags?: string[] }>;
     configuredProviders: string[];
+    providerProfiles: Record<string, { profileId: string; label?: string }>;
   }> {
     const status = await this.runJsonCommand(['models', 'status', '--json']).catch(() => null);
     const list = await this.runJsonCommand(['models', 'list', '--json']).catch(() => null);
@@ -554,7 +603,34 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       .map((p) => String(p?.provider ?? '').trim())
       .filter((p) => p);
 
-    return { defaultModelId, models, configuredProviders };
+    // Best-effort: read per-agent auth-profiles.json (actual saved provider tokens + optional user label)
+    const providerProfiles: Record<string, { profileId: string; label?: string }> = {};
+    try {
+      const agentDir = path.join(this.openclawStateDir, 'agents', 'main', 'agent');
+      const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
+      const raw = await fs.promises.readFile(authProfilesPath, 'utf-8');
+      const parsed: any = JSON.parse(raw);
+      const profiles = parsed?.profiles && typeof parsed.profiles === 'object' ? parsed.profiles : null;
+      if (profiles) {
+        for (const [pid, entry] of Object.entries(profiles)) {
+          if (!entry || typeof entry !== 'object') continue;
+          const provider = String((entry as any).provider ?? '').trim();
+          const type = String((entry as any).type ?? '').trim();
+          if (!provider || (type && type !== 'token')) continue;
+          const lbl = typeof (entry as any).label === 'string' ? String((entry as any).label).trim() : '';
+          providerProfiles[provider] = { profileId: String(pid), ...(lbl ? { label: lbl } : {}) };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // Some CLIs may not report providers via models status, but we still want "configuredProviders"
+    // to reflect what's saved locally.
+    const configuredProvidersFromProfiles = Object.keys(providerProfiles);
+    const mergedConfiguredProviders = Array.from(new Set([...configuredProviders, ...configuredProvidersFromProfiles]));
+
+    return { defaultModelId, models, configuredProviders: mergedConfiguredProviders, providerProfiles };
   }
 
   async getPlugins(): Promise<any[]> {
@@ -1013,14 +1089,26 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
     return await getActiveEngine().validateCLI();
   });
 
-  ipcMain.handle('openclaw:setModelAuthToken', async (_event, params: { provider: string; token: string; profileId?: string }) => {
+  ipcMain.handle(
+    'openclaw:setModelAuthToken',
+    async (_event, params: { provider: string; token: string; profileId?: string; label?: string }) => {
     await getActiveEngine().pasteModelAuthToken({
       provider: params.provider,
       token: params.token,
       profileId: params.profileId,
+      label: params.label,
       agentId: 'main',
     });
     return { success: true };
+    }
+  );
+
+  ipcMain.handle('openclaw:removeModelAuthToken', async (_event, params: { provider: string; profileId?: string }) => {
+    return await getActiveEngine().removeModelAuthToken({
+      provider: params.provider,
+      profileId: params.profileId,
+      agentId: 'main',
+    });
   });
 
   ipcMain.handle('openclaw:setDefaultModel', async (_event, params: { modelId: string }) => {

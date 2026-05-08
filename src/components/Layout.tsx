@@ -7,6 +7,9 @@ import { useChatStore } from '../store/modules/chatStore';
 import ErrorBoundary from './common/ErrorBoundary';
 import ToastHost from './common/ToastHost';
 import Titlebar from './Titlebar';
+import ChatRightTabs from './chat/ChatRightTabs';
+import WorkspaceSidebar from './WorkspaceSidebar';
+import './layoutShell.css';
 
 const MOBILE_BP = 980;
 
@@ -16,6 +19,7 @@ const Layout: FC = () => {
   const { status, fetchStatus } = useGatewayStore();
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
+  const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
 
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.matchMedia(`(max-width:${MOBILE_BP}px)`).matches : false
@@ -72,9 +76,20 @@ const Layout: FC = () => {
           ) : null}
 
           <main className="cf-main">
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
+            <div className="cf-shell">
+              <WorkspaceSidebar />
+
+              <section className="cf-shell__main">
+                <div className="cf-shell__mainGrid">
+                  <div className="cf-shell__center">
+                    <ErrorBoundary>
+                      <Outlet />
+                    </ErrorBoundary>
+                  </div>
+                  <ChatRightTabs workspacePath={activeWorkspacePath} />
+                </div>
+              </section>
+            </div>
           </main>
         </div>
       </div>

@@ -12,7 +12,8 @@ export interface IElectronAPI {
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) => Promise<{ success: boolean }>;
+  removeModelAuthToken: (params: { provider: string; profileId?: string }) => Promise<{ removed: boolean }>;
   setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
   getModels: () => Promise<any>;
   // 对话相关
@@ -65,8 +66,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickCliPath: () => ipcRenderer.invoke('openclaw:pickCliPath'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) =>
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) =>
     ipcRenderer.invoke('openclaw:setModelAuthToken', params),
+  removeModelAuthToken: (params: { provider: string; profileId?: string }) =>
+    ipcRenderer.invoke('openclaw:removeModelAuthToken', params),
   setDefaultModel: (params: { modelId: string }) => ipcRenderer.invoke('openclaw:setDefaultModel', params),
   getModels: () => ipcRenderer.invoke('openclaw:getModels'),
   // 对话相关

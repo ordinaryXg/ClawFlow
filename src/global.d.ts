@@ -10,7 +10,8 @@ export interface IElectronAPI {
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
+  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) => Promise<{ success: boolean }>;
+  removeModelAuthToken: (params: { provider: string; profileId?: string }) => Promise<{ removed: boolean }>;
   setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
   getModels: () => Promise<any>;
   // 对话相关
