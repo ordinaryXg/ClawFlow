@@ -11,8 +11,100 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+type AppLang = 'zh' | 'en';
+let currentLang: AppLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
+
+const I18N: Record<AppLang, Record<string, string>> = {
+  zh: {
+    file: '文件',
+    edit: '编辑',
+    view: '视图',
+    window: '窗口',
+    help: '帮助',
+    about: '关于',
+    services: '服务',
+    hide: '隐藏',
+    hideOthers: '隐藏其他',
+    unhide: '显示全部',
+    quit: '退出',
+    undo: '撤销',
+    redo: '重做',
+    cut: '剪切',
+    copy: '复制',
+    paste: '粘贴',
+    pasteAndMatchStyle: '粘贴并匹配样式',
+    delete: '删除',
+    selectAll: '全选',
+    speech: '朗读',
+    reload: '重新加载',
+    forceReload: '强制重新加载',
+    toggleDevTools: '切换开发者工具',
+    resetZoom: '重置缩放',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    togglefullscreen: '切换全屏',
+    minimize: '最小化',
+    zoom: '缩放',
+    close: '关闭',
+    front: '全部置于前台',
+    learnMore: '了解更多',
+    navChat: '对话',
+    navDashboard: '仪表盘',
+    navSkills: '技能',
+    navConnectors: '连接器',
+    navSettings: '设置',
+    navStates: '状态',
+  },
+  en: {
+    file: 'File',
+    edit: 'Edit',
+    view: 'View',
+    window: 'Window',
+    help: 'Help',
+    about: 'About',
+    services: 'Services',
+    hide: 'Hide',
+    hideOthers: 'Hide Others',
+    unhide: 'Show All',
+    quit: 'Quit',
+    undo: 'Undo',
+    redo: 'Redo',
+    cut: 'Cut',
+    copy: 'Copy',
+    paste: 'Paste',
+    pasteAndMatchStyle: 'Paste and Match Style',
+    delete: 'Delete',
+    selectAll: 'Select All',
+    speech: 'Speech',
+    reload: 'Reload',
+    forceReload: 'Force Reload',
+    toggleDevTools: 'Toggle DevTools',
+    resetZoom: 'Reset Zoom',
+    zoomIn: 'Zoom In',
+    zoomOut: 'Zoom Out',
+    togglefullscreen: 'Toggle Full Screen',
+    minimize: 'Minimize',
+    zoom: 'Zoom',
+    close: 'Close',
+    front: 'Bring All to Front',
+    learnMore: 'Learn More',
+    navChat: 'Chat',
+    navDashboard: 'Dashboard',
+    navSkills: 'Skills',
+    navConnectors: 'Connectors',
+    navSettings: 'Settings',
+    navStates: 'States',
+  },
+};
+
 const setupApplicationMenu = () => {
   const isMac = process.platform === 'darwin';
+  const nav = (path: string) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    win.webContents.send('app:navigate', path);
+  };
+  const t = (k: string) => I18N[currentLang][k] ?? k;
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac
@@ -20,91 +112,98 @@ const setupApplicationMenu = () => {
           {
             label: app.name,
             submenu: [
-              { role: 'about', label: `关于 ${app.name}` },
+              { role: 'about', label: `${t('about')} ${app.name}` },
               { type: 'separator' },
-              { role: 'services', label: '服务' },
+              { role: 'services', label: t('services') },
               { type: 'separator' },
-              { role: 'hide', label: `隐藏 ${app.name}` },
-              { role: 'hideOthers', label: '隐藏其他' },
-              { role: 'unhide', label: '显示全部' },
+              { role: 'hide', label: `${t('hide')} ${app.name}` },
+              { role: 'hideOthers', label: t('hideOthers') },
+              { role: 'unhide', label: t('unhide') },
               { type: 'separator' },
-              { role: 'quit', label: `退出 ${app.name}` },
+              { role: 'quit', label: `${t('quit')} ${app.name}` },
             ],
           },
         ] as Electron.MenuItemConstructorOptions[])
       : []),
     {
-      label: '文件',
+      label: t('file'),
       submenu: [
         ...(isMac
           ? ([] as Electron.MenuItemConstructorOptions[])
           : ([
-              { role: 'quit', label: '退出' },
+              { role: 'quit', label: t('quit') },
             ] as Electron.MenuItemConstructorOptions[])),
       ],
     },
     {
-      label: '编辑',
+      label: t('edit'),
       submenu: [
-        { role: 'undo', label: '撤销' },
-        { role: 'redo', label: '重做' },
+        { role: 'undo', label: t('undo') },
+        { role: 'redo', label: t('redo') },
         { type: 'separator' },
-        { role: 'cut', label: '剪切' },
-        { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' },
+        { role: 'cut', label: t('cut') },
+        { role: 'copy', label: t('copy') },
+        { role: 'paste', label: t('paste') },
         ...(isMac
           ? ([
-              { role: 'pasteAndMatchStyle', label: '粘贴并匹配样式' },
-              { role: 'delete', label: '删除' },
-              { role: 'selectAll', label: '全选' },
+              { role: 'pasteAndMatchStyle', label: t('pasteAndMatchStyle') },
+              { role: 'delete', label: t('delete') },
+              { role: 'selectAll', label: t('selectAll') },
               { type: 'separator' },
-              { role: 'speech', label: '朗读' },
+              { role: 'speech', label: t('speech') },
             ] as Electron.MenuItemConstructorOptions[])
           : ([
-              { role: 'delete', label: '删除' },
+              { role: 'delete', label: t('delete') },
               { type: 'separator' },
-              { role: 'selectAll', label: '全选' },
+              { role: 'selectAll', label: t('selectAll') },
             ] as Electron.MenuItemConstructorOptions[])),
       ],
     },
     {
-      label: '视图',
+      label: t('view'),
       submenu: [
-        { role: 'reload', label: '重新加载' },
-        { role: 'forceReload', label: '强制重新加载' },
-        { role: 'toggleDevTools', label: '切换开发者工具' },
+        { label: t('navChat'), click: () => nav('/chat') },
+        { label: t('navDashboard'), click: () => nav('/dashboard') },
+        { label: t('navSkills'), click: () => nav('/skills') },
+        { label: t('navConnectors'), click: () => nav('/connectors') },
+        { label: t('navSettings'), click: () => nav('/settings') },
+        { label: t('navStates'), click: () => nav('/states') },
         { type: 'separator' },
-        { role: 'resetZoom', label: '重置缩放' },
-        { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' },
+        { role: 'reload', label: t('reload') },
+        { role: 'forceReload', label: t('forceReload') },
+        { role: 'toggleDevTools', label: t('toggleDevTools') },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: '切换全屏' },
+        { role: 'resetZoom', label: t('resetZoom') },
+        { role: 'zoomIn', label: t('zoomIn') },
+        { role: 'zoomOut', label: t('zoomOut') },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: t('togglefullscreen') },
       ],
     },
     {
-      label: '窗口',
+      label: t('window'),
       role: 'window',
       submenu: [
-        { role: 'minimize', label: '最小化' },
-        { role: 'zoom', label: '缩放' },
+        { role: 'minimize', label: t('minimize') },
+        { role: 'zoom', label: t('zoom') },
         ...(isMac
           ? ([
               { type: 'separator' },
-              { role: 'front', label: '全部置于前台' },
+              { role: 'front', label: t('front') },
               { type: 'separator' },
-              { role: 'window', label: '窗口' },
+              { role: 'window', label: t('window') },
             ] as Electron.MenuItemConstructorOptions[])
           : ([
-              { role: 'close', label: '关闭' },
+              { role: 'close', label: t('close') },
             ] as Electron.MenuItemConstructorOptions[])),
       ],
     },
     {
-      label: '帮助',
+      label: t('help'),
       role: 'help',
       submenu: [
         {
-          label: '了解更多',
+          label: t('learnMore'),
           click: async () => {
             const { shell } = await import('electron');
             await shell.openExternal('https://electronjs.org');
@@ -123,6 +222,17 @@ const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
     height: 800,
     width: 1200,
+    // Use a custom titlebar overlay so app icon and menus share one row (Windows).
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden',
+          titleBarOverlay: {
+            color: '#111315',
+            symbolColor: '#c9d1d9',
+            height: 44,
+          },
+        }
+      : {}),
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
@@ -133,8 +243,38 @@ const createWindow = (): void => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // On Windows we hide the native menu bar row (we draw our own menus in the overlay).
+  if (process.platform === 'win32') {
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.removeMenu();
+    mainWindow.setAutoHideMenuBar(true);
+  }
+
+  // window controls for custom titlebar
+  ipcMain.handle('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
+  ipcMain.handle('window:toggleMaximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.handle('window:close', (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+
+  // common actions (for custom titlebar menus)
+  ipcMain.handle('window:reload', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.reload());
+  ipcMain.handle('window:toggleDevTools', (event) => {
+    const wc = BrowserWindow.fromWebContents(event.sender)?.webContents;
+    if (!wc) return;
+    if (wc.isDevToolsOpened()) wc.closeDevTools();
+    else wc.openDevTools({ mode: 'detach' });
+  });
+  ipcMain.handle('window:undo', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.undo());
+  ipcMain.handle('window:redo', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.redo());
+  ipcMain.handle('window:cut', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.cut());
+  ipcMain.handle('window:copy', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.copy());
+  ipcMain.handle('window:paste', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.paste());
+  ipcMain.handle('window:selectAll', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.selectAll());
+  ipcMain.handle('app:quit', () => app.quit());
 };
 
 // This method will be called when Electron has finished
@@ -143,6 +283,11 @@ const createWindow = (): void => {
 app.whenReady().then(() => {
   registerOpenClawIPC();
   ipcMain.handle('app:getVersion', () => app.getVersion());
+  ipcMain.handle('app:setLanguage', (_event, lang: string) => {
+    currentLang = String(lang).toLowerCase().startsWith('en') ? 'en' : 'zh';
+    setupApplicationMenu();
+    return { success: true };
+  });
   setupApplicationMenu();
   createWindow();
 });

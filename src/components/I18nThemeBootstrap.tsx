@@ -12,6 +12,7 @@ export const I18nThemeBootstrap: FC = () => {
 
   useEffect(() => {
     void i18n.changeLanguage(language);
+    void window.electronAPI?.setAppLanguage?.(language);
   }, [language]);
 
   useEffect(() => {

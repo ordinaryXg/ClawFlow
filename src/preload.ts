@@ -11,6 +11,7 @@ export interface IElectronAPI {
   updateConfig: (config: any) => Promise<{ success: boolean }>;
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
+  setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
   setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
   getModels: () => Promise<any>;
@@ -31,6 +32,19 @@ export interface IElectronAPI {
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
   deleteConnector: (id: string) => Promise<{ success: boolean }>;
   testConnector: (id: string) => Promise<{ success: boolean }>;
+  onNavigate: (cb: (path: string) => void) => () => void;
+  windowMinimize: () => Promise<void>;
+  windowToggleMaximize: () => Promise<void>;
+  windowClose: () => Promise<void>;
+  windowReload: () => Promise<void>;
+  windowToggleDevTools: () => Promise<void>;
+  windowUndo: () => Promise<void>;
+  windowRedo: () => Promise<void>;
+  windowCut: () => Promise<void>;
+  windowCopy: () => Promise<void>;
+  windowPaste: () => Promise<void>;
+  windowSelectAll: () => Promise<void>;
+  quitApp: () => Promise<void>;
 }
 
 // 通过 contextBridge 安全地暴露 API
@@ -44,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: (config: any) => ipcRenderer.invoke('openclaw:updateConfig', config),
   pickCliPath: () => ipcRenderer.invoke('openclaw:pickCliPath'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
   setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) =>
     ipcRenderer.invoke('openclaw:setModelAuthToken', params),
   setDefaultModel: (params: { modelId: string }) => ipcRenderer.invoke('openclaw:setDefaultModel', params),
@@ -66,4 +81,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConnector: (id: string, config: any) => ipcRenderer.invoke('openclaw:updateConnector', id, config),
   deleteConnector: (id: string) => ipcRenderer.invoke('openclaw:deleteConnector', id),
   testConnector: (id: string) => ipcRenderer.invoke('openclaw:testConnector', id),
+  onNavigate: (cb: (path: string) => void) => {
+    const handler = (_event: unknown, path: unknown) => {
+      if (typeof path === 'string') cb(path);
+    };
+    ipcRenderer.on('app:navigate', handler);
+    return () => ipcRenderer.removeListener('app:navigate', handler);
+  },
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowReload: () => ipcRenderer.invoke('window:reload'),
+  windowToggleDevTools: () => ipcRenderer.invoke('window:toggleDevTools'),
+  windowUndo: () => ipcRenderer.invoke('window:undo'),
+  windowRedo: () => ipcRenderer.invoke('window:redo'),
+  windowCut: () => ipcRenderer.invoke('window:cut'),
+  windowCopy: () => ipcRenderer.invoke('window:copy'),
+  windowPaste: () => ipcRenderer.invoke('window:paste'),
+  windowSelectAll: () => ipcRenderer.invoke('window:selectAll'),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
 } as IElectronAPI);

@@ -9,6 +9,7 @@ export interface IElectronAPI {
   updateConfig: (config: any) => Promise<{ success: boolean }>;
   pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
+  setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   setModelAuthToken: (params: { provider: string; token: string; profileId?: string }) => Promise<{ success: boolean }>;
   setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
   getModels: () => Promise<any>;
@@ -29,6 +30,19 @@ export interface IElectronAPI {
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
   deleteConnector: (id: string) => Promise<{ success: boolean }>;
   testConnector: (id: string) => Promise<{ success: boolean }>;
+  onNavigate: (cb: (path: string) => void) => () => void;
+  windowMinimize: () => Promise<void>;
+  windowToggleMaximize: () => Promise<void>;
+  windowClose: () => Promise<void>;
+  windowReload: () => Promise<void>;
+  windowToggleDevTools: () => Promise<void>;
+  windowUndo: () => Promise<void>;
+  windowRedo: () => Promise<void>;
+  windowCut: () => Promise<void>;
+  windowCopy: () => Promise<void>;
+  windowPaste: () => Promise<void>;
+  windowSelectAll: () => Promise<void>;
+  quitApp: () => Promise<void>;
 }
 
 declare global {

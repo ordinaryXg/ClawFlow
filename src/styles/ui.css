@@ -3,6 +3,9 @@
   grid-template-columns:260px 1fr;
   height:100vh;
 }
+.cf-app--noSidebar{
+  grid-template-columns:1fr;
+}
 .cf-app--navCollapsed{
   grid-template-columns:80px 1fr;
 }
@@ -13,6 +16,83 @@
   flex-direction:column;
   height:100vh;
 }
+
+.cf-titlebar{
+  height:44px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 10px;
+  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  -webkit-app-region: drag;
+  flex-shrink:0;
+}
+:root[data-theme="light"] .cf-titlebar{
+  background:var(--panel);
+}
+.cf-titlebar__left,
+.cf-titlebar__menus,
+.cf-titlebar__winBtns,
+.cf-titlebar__brand,
+.cf-titlebar__menuBtn,
+.cf-titlebar__winBtn{
+  -webkit-app-region: no-drag;
+}
+.cf-titlebar__brand{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:4px 6px;
+  border-radius:12px;
+  cursor:pointer;
+  user-select:none;
+}
+.cf-titlebar__brand:hover{
+  background:rgba(255,255,255,.04);
+}
+.cf-titlebar__name{
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.3px;
+}
+.cf-titlebar__menus{
+  display:flex;
+  align-items:center;
+  gap:2px;
+}
+.cf-titlebar__menuBtn{
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--text);
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:12px;
+  cursor:pointer;
+}
+.cf-titlebar__menuBtn:hover{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(255,255,255,.06);
+}
+.cf-titlebar__spacer{flex:1}
+.cf-titlebar__winBtns{
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.cf-titlebar__winBtn{
+  width:38px;
+  height:28px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.06);
+  background:rgba(255,255,255,.02);
+  color:var(--text);
+  cursor:pointer;
+  font-size:12px;
+  line-height:1;
+}
+.cf-titlebar__winBtn:hover{background:rgba(255,255,255,.05)}
+.cf-titlebar__winBtn--danger:hover{background:rgba(194,75,75,.16);border-color:rgba(194,75,75,.35)}
 
 .cf-mobileBar{
   display:none;

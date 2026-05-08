@@ -2,6 +2,26 @@
   "brand": {
     "tagline": "Desktop work assistant"
   },
+  "titlebar": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "window": "Window",
+    "help": "Help",
+    "quit": "Quit",
+    "reload": "Reload",
+    "toggleDevTools": "Toggle DevTools",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
+    "minimize": "Minimize",
+    "toggleMaximize": "Maximize / Restore",
+    "closeWindow": "Close window",
+    "helpDocs": "Learn more"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "dashboardHint": "Status",
