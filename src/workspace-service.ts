@@ -20,6 +20,8 @@ export interface WorkspaceMeta {
 export interface WorkspaceRegistry {
   activeWorkspacePath: string | null;
   recentWorkspacePaths: string[];
+  /** 兼容迁移标记：旧版本会把 active 置顶到 recent[0] */
+  unpinActiveMigrated?: boolean;
 }
 
 const REGISTRY_FILENAME = 'cf.workspace.v1.json';
@@ -69,10 +71,18 @@ export function loadRegistry(): WorkspaceRegistry {
     const rawList: unknown[] = Array.isArray(j?.recentWorkspacePaths) ? j.recentWorkspacePaths : [];
     const recentRaw = rawList.filter((x: unknown): x is string => typeof x === 'string' && Boolean(x.trim()));
     const recent = recentRaw.map((x) => path.resolve(x.trim()));
-    const uniq = Array.from(new Set(recent)) as string[];
-    return { activeWorkspacePath: active, recentWorkspacePaths: uniq };
+    let uniq = Array.from(new Set(recent)) as string[];
+    const migratedFlag = Boolean(j?.unpinActiveMigrated);
+
+    // 一次性迁移：旧逻辑会把 active 总是放到 recent[0]，导致“切换会置顶”的观感。
+    // 这里把 active 从头部移到末尾（仅第一次），之后切换仅更新选中态不改顺序。
+    if (!migratedFlag && active && uniq.length > 1 && path.resolve(uniq[0]) === path.resolve(active)) {
+      uniq = [...uniq.slice(1), uniq[0]];
+    }
+
+    return { activeWorkspacePath: active, recentWorkspacePaths: uniq, unpinActiveMigrated: migratedFlag };
   } catch {
-    return { activeWorkspacePath: null, recentWorkspacePaths: [] };
+    return { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
   }
 }
 
@@ -83,6 +93,7 @@ export function saveRegistry(reg: WorkspaceRegistry): void {
     {
       activeWorkspacePath: reg.activeWorkspacePath,
       recentWorkspacePaths: reg.recentWorkspacePaths.slice(0, 12),
+      unpinActiveMigrated: reg.unpinActiveMigrated ?? true,
     },
     null,
     2
@@ -92,10 +103,13 @@ export function saveRegistry(reg: WorkspaceRegistry): void {
 
 function bumpRecent(reg: WorkspaceRegistry, workspacePath: string): WorkspaceRegistry {
   const abs = path.resolve(workspacePath);
-  const rest = reg.recentWorkspacePaths.filter((p) => path.resolve(p) !== abs);
+  const list = (reg.recentWorkspacePaths ?? []).map((p) => path.resolve(p));
+  const exists = list.some((p) => p === abs);
+  // 关键：切换 workspace 不置顶（保持原顺序）。仅当首次出现时追加到末尾。
+  const nextRecent = (exists ? list : [...list, abs]).slice(-12);
   return {
     activeWorkspacePath: abs,
-    recentWorkspacePaths: [abs, ...rest].slice(0, 12),
+    recentWorkspacePaths: nextRecent,
   };
 }
 
@@ -162,6 +176,7 @@ export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise
 export function setActiveWorkspace(workspacePath: string): WorkspaceRegistry {
   const reg = loadRegistry();
   const next = bumpRecent(reg, workspacePath);
+  next.unpinActiveMigrated = true;
   saveRegistry(next);
   return next;
 }

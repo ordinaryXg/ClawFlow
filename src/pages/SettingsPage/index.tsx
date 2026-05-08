@@ -327,9 +327,7 @@ const SettingsPage: FC = () => {
           ) : null}
 
           <div className="cf-help" style={{ marginTop: 6 }}>
-            <a href="#/states" style={{ color: 'var(--gold)' }}>
-              {t('common.viewGuide')}
-            </a>
+            <span style={{ color: 'var(--muted)' }}>{t('common.viewGuide')}</span>
           </div>
 
           <div className="cf-divider" />

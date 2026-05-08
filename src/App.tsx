@@ -8,7 +8,6 @@ import ChatPage from './pages/ChatPage';
 import SkillsPage from './pages/SkillsPage';
 import ConnectorsPage from './pages/ConnectorsPage';
 import SettingsPage from './pages/SettingsPage';
-import StatesPage from './pages/StatesPage';
 import { getAntdTheme } from './styles/theme';
 import { useSettingsStore } from './store/modules/settingsStore';
 
@@ -26,7 +25,6 @@ const App: FC = () => {
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/connectors" element={<ConnectorsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/states" element={<StatesPage />} />
           </Route>
         </Routes>
       </HashRouter>

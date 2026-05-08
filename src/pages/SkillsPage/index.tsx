@@ -65,7 +65,7 @@ const SkillsPage: FC = () => {
         </div>
       ) : null}
 
-      <div className="cf-card" style={{ marginTop: 12 }}>
+      <div className="cf-card">
         <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="cf-row" style={{ alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <input
@@ -99,8 +99,6 @@ const SkillsPage: FC = () => {
           <span className="cf-sub">{t('skills.count', { count: filtered.length })}</span>
         </div>
       </div>
-
-      <div style={{ height: 12 }} />
 
       {isLoading && skills.length === 0 ? (
         <Loading label={t('skills.refreshing')} />

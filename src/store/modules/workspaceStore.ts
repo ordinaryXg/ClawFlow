@@ -45,14 +45,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setWorkspace: async (folderPath: string) => {
-    await window.electronAPI?.workspaceSetActive?.(folderPath);
-    await get().refresh();
+    set({ loading: true });
+    try {
+      await window.electronAPI?.workspaceSetActive?.(folderPath);
+      await get().refresh();
+    } finally {
+      set({ loading: false });
+    }
   },
 
   pickFolder: async () => {
     const picked = await window.electronAPI?.workspacePickFolder?.();
     if (!picked) return;
-    await window.electronAPI?.workspaceEnsureInitialized?.(picked);
-    await get().setWorkspace(picked);
+    set({ loading: true });
+    try {
+      await window.electronAPI?.workspaceEnsureInitialized?.(picked);
+      await get().setWorkspace(picked);
+    } finally {
+      set({ loading: false });
+    }
   },
 }));

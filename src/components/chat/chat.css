@@ -1,7 +1,7 @@
 .cf-msgList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .cf-msgItem {
@@ -19,7 +19,7 @@
 .cf-msgItem__bubble {
   max-width: 860px;
   width: fit-content;
-  border-radius: 14px;
+  border-radius: 0;
   padding: 10px 12px;
   border: 1px solid rgba(255,255,255,.08);
   background: rgba(255,255,255,.02);
@@ -57,7 +57,7 @@
   background: rgba(0,0,0,.35);
   color: var(--text);
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 0;
   overflow: auto;
   border: 1px solid rgba(255,255,255,.06);
 }
@@ -65,7 +65,7 @@
 .cf-chatInput {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .cf-chatInput__actions {
@@ -77,35 +77,25 @@
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:10px;
+  gap:0;
 }
 .cf-chatInput__model{
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:0;
   min-width:0;
 }
-.cf-chatInput__wsLabel{
-  margin-left:6px;
-}
-.cf-chatInput__wsBtn{
-  max-width:280px;
-  padding:6px 10px;
-  gap:6px;
-}
-.cf-chatInput__wsBtn--disabled{
-  opacity:.65;
-  cursor:not-allowed;
-}
-.cf-chatInput__wsName{
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  max-width:220px;
-}
-.cf-chatInput__wsChev{
-  font-size:10px;
+.cf-ico{
+  width:24px;
+  height:24px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--border);
   color:var(--muted);
+  background:transparent;
+  font-size:12px;
+  line-height:1;
 }
 .cf-select--compact{
   padding:6px 10px;
@@ -121,7 +111,7 @@
 
 .cf-stream__bubble {
   max-width: 860px;
-  border-radius: 14px;
+  border-radius: 0;
   padding: 10px 12px;
   border: 1px solid rgba(30,91,69,.45);
   background: rgba(30,91,69,.10);
@@ -144,7 +134,7 @@
   background:rgba(255,255,255,.03);
   border:1px solid rgba(255,255,255,.08);
   color:var(--text);
-  border-radius:12px;
+  border-radius:0;
   padding:10px 12px;
   outline:none;
   font-size:12px;

@@ -55,7 +55,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     navSkills: '技能',
     navConnectors: '连接器',
     navSettings: '设置',
-    navStates: '状态',
   },
   en: {
     file: 'File',
@@ -95,7 +94,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     navSkills: 'Skills',
     navConnectors: 'Connectors',
     navSettings: 'Settings',
-    navStates: 'States',
   },
 };
 
@@ -169,7 +167,6 @@ const setupApplicationMenu = () => {
         { label: t('navSkills'), click: () => nav('/skills') },
         { label: t('navConnectors'), click: () => nav('/connectors') },
         { label: t('navSettings'), click: () => nav('/settings') },
-        { label: t('navStates'), click: () => nav('/states') },
         { type: 'separator' },
         { role: 'reload', label: t('reload') },
         { role: 'forceReload', label: t('forceReload') },
@@ -232,11 +229,15 @@ function registerWorkspaceIPC(): void {
 
   ipcMain.handle('workspace:setActive', async (_event, nextPath: string) => {
     const resolved = path.resolve(String(nextPath || ''));
-    await getActiveEngine().stopGateway().catch(() => {});
-    await workspaceService.ensureWorkspaceInitialized(resolved);
+    // Fast path: switch active workspace first (UI can update immediately).
+    // Heavy operations (gateway stop, fs init) run best-effort in background.
     workspaceService.setActiveWorkspace(resolved);
     setActiveWorkspaceRoot(resolved);
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('workspace:changed', { path: resolved }));
+    void workspaceService.ensureWorkspaceInitialized(resolved);
+    void getActiveEngine()
+      .stopGateway()
+      .catch((e) => console.warn('[workspace] stopGateway (best-effort) failed:', e?.message || e));
     return { success: true, path: resolved };
   });
 
@@ -316,6 +317,10 @@ const createWindow = (): void => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   const reg = workspaceService.loadRegistry();
+  // 如果刚执行了“取消置顶 active”的一次性迁移，这里需要写回磁盘
+  if (!reg.unpinActiveMigrated && reg.activeWorkspacePath) {
+    workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
+  }
   const active = reg.activeWorkspacePath ?? workspaceService.getDefaultWorkspacePath();
   await workspaceService.ensureWorkspaceInitialized(active);
   workspaceService.setActiveWorkspace(active);

@@ -4,7 +4,7 @@
 
 .cf-connectorCard {
   width: 100%;
-  border-radius: 12px;
+  border-radius: 0;
 }
 
 .cf-connectorCard__meta {
@@ -16,7 +16,7 @@
 .cf-connectorCard__config {
   margin: 0;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 0;
   background: #0b1020;
   color: #eef2ff;
   overflow: auto;

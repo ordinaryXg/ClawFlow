@@ -11,8 +11,8 @@
   --gold:#8A6A2A;
   --goldH:#9B7A33;
   --danger:#C24B4B;
-  --radius:4px;
-  --radiusSm:3px;
+  --radius:0px;
+  --radiusSm:0px;
   --shadow:0 1px 0 rgba(0,0,0,.25);
   --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
   --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;

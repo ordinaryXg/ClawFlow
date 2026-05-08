@@ -2,27 +2,28 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .cf-connectorsSplit{
   display:grid;
   grid-template-columns: 340px 1fr;
-  gap:12px;
+  gap:0;
   min-height: 560px;
 }
 
 .cf-connList{
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:0;
 }
 
 .cf-connItem{
   padding:10px 10px;
-  border-radius:var(--radiusSm);
-  border:1px solid rgba(255,255,255,.06);
-  background:rgba(255,255,255,.02);
+  border-radius:0;
+  border:0;
+  border-bottom:1px solid var(--border);
+  background:transparent;
   cursor:pointer;
   display:flex;
   align-items:center;
@@ -46,7 +47,7 @@
   height:100vh;
   width:min(520px, calc(100vw - 24px));
   background:rgba(26,29,33,.98);
-  border-left:1px solid rgba(255,255,255,.10);
+  border-left:1px solid var(--border);
   box-shadow:var(--shadow);
   z-index:85;
   padding:14px;
@@ -79,7 +80,7 @@
   top:50%;
   transform:translate(-50%,-50%);
   width:min(520px, calc(100vw - 32px));
-  border-radius:16px;
+  border-radius:0;
   border:1px solid rgba(255,255,255,.12);
   background:rgba(26,29,33,.96);
   box-shadow:var(--shadow);
