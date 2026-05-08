@@ -226,6 +226,22 @@ function registerWorkspaceIPC(): void {
     return workspaceService.loadRegistry().recentWorkspacePaths;
   });
 
+  ipcMain.handle('workspace:getDefaultPath', async () => workspaceService.getDefaultWorkspacePath());
+
+  ipcMain.handle('workspace:remove', async (_event, folderPath: string) => {
+    const res = await workspaceService.removeWorkspaceForUser(String(folderPath || ''));
+    if (!res.ok) return res;
+    setActiveWorkspaceRoot(res.newActivePath);
+    BrowserWindow.getAllWindows().forEach((w) =>
+      w.webContents.send('workspace:changed', { path: res.newActivePath })
+    );
+    void workspaceService.ensureWorkspaceInitialized(res.newActivePath);
+    void getActiveEngine()
+      .stopGateway()
+      .catch((e) => console.warn('[workspace] stopGateway after remove (best-effort) failed:', e?.message || e));
+    return res;
+  });
+
   ipcMain.handle('workspace:setActive', async (_event, nextPath: string) => {
     const resolved = path.resolve(String(nextPath || ''));
     // Fast path: switch active workspace first (UI can update immediately).

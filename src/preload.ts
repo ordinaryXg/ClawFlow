@@ -143,6 +143,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.invoke('app:quit'),
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
+  workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
+  workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),
   workspaceSetActive: (folderPath: string) => ipcRenderer.invoke('workspace:setActive', folderPath),
   workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
   workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),

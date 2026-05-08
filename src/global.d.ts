@@ -46,6 +46,13 @@ export interface IElectronAPI {
   quitApp: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   workspaceListRecent: () => Promise<string[]>;
+  workspaceGetDefaultPath: () => Promise<string>;
+  workspaceRemove: (
+    folderPath: string
+  ) => Promise<
+    | { ok: true; newActivePath: string; deletedFromDisk: boolean }
+    | { ok: false; error: string }
+  >;
   workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
   workspacePickFolder: () => Promise<string | null>;
   workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;

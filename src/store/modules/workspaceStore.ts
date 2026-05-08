@@ -15,6 +15,7 @@ interface WorkspaceState {
   refresh: () => Promise<void>;
   setWorkspace: (folderPath: string) => Promise<void>;
   pickFolder: () => Promise<void>;
+  removeWorkspace: (folderPath: string) => Promise<{ ok: true; deletedFromDisk: boolean } | { ok: false; error: string }>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -61,6 +62,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       await window.electronAPI?.workspaceEnsureInitialized?.(picked);
       await get().setWorkspace(picked);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  removeWorkspace: async (folderPath: string) => {
+    const api = window.electronAPI;
+    if (!api?.workspaceRemove) {
+      return { ok: false as const, error: 'workspaceRemove unavailable' };
+    }
+    set({ loading: true });
+    try {
+      const res = await api.workspaceRemove(folderPath);
+      if (!res.ok) {
+        return res;
+      }
+      await get().refresh();
+      return { ok: true as const, deletedFromDisk: res.deletedFromDisk };
     } finally {
       set({ loading: false });
     }

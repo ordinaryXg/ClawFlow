@@ -35,6 +35,14 @@ export function getDefaultWorkspacePath(): string {
   return path.join(app.getPath('userData'), 'Default Workspace');
 }
 
+/** 比较两个 workspace 根路径是否相同（Windows 忽略大小写）。 */
+export function isSameWorkspacePath(a: string, b: string): boolean {
+  const ra = path.resolve(a);
+  const rb = path.resolve(b);
+  if (process.platform === 'win32') return ra.toLowerCase() === rb.toLowerCase();
+  return ra === rb;
+}
+
 export function clawflowDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, CLAWFLOW_DIR);
 }
@@ -205,4 +213,72 @@ export async function pickWorkspaceFolder(senderWindow: BrowserWindow | null): P
   const res = senderWindow ? await dialog.showOpenDialog(senderWindow, opts) : await dialog.showOpenDialog(opts);
   if (res.canceled || res.filePaths.length === 0) return null;
   return path.resolve(res.filePaths[0]);
+}
+
+function isWorkspaceKnownInRegistry(abs: string, reg: WorkspaceRegistry): boolean {
+  const recent = (reg.recentWorkspacePaths ?? []).map((p) => path.resolve(p));
+  const active = reg.activeWorkspacePath ? path.resolve(reg.activeWorkspacePath) : null;
+  return recent.some((p) => isSameWorkspacePath(p, abs)) || (active != null && isSameWorkspacePath(active, abs));
+}
+
+/**
+ * 从注册表移除路径；若曾为 active 则切到最近一项或默认工作区。
+ * 不删除磁盘。
+ */
+export function detachWorkspaceFromRegistry(workspacePath: string): { newActivePath: string } {
+  const abs = path.resolve(workspacePath);
+  const def = path.resolve(getDefaultWorkspacePath());
+  const reg = loadRegistry();
+  if (!isWorkspaceKnownInRegistry(abs, reg)) {
+    throw new Error('Workspace is not in registry');
+  }
+
+  let recent = (reg.recentWorkspacePaths ?? []).map((p) => path.resolve(p));
+  recent = recent.filter((p) => !isSameWorkspacePath(p, abs));
+
+  const curActive = reg.activeWorkspacePath ? path.resolve(reg.activeWorkspacePath) : null;
+  const wasActive = curActive != null && isSameWorkspacePath(curActive, abs);
+
+  let newActive: string;
+  if (wasActive) {
+    newActive = recent.length > 0 ? recent[recent.length - 1] : def;
+  } else {
+    newActive = curActive ?? def;
+  }
+
+  if (!recent.some((p) => isSameWorkspacePath(p, newActive))) {
+    recent = [...recent, newActive];
+  }
+  const uniq = Array.from(new Set(recent)).slice(-12);
+
+  saveRegistry({
+    activeWorkspacePath: newActive,
+    recentWorkspacePaths: uniq,
+    unpinActiveMigrated: true,
+  });
+
+  return { newActivePath: newActive };
+}
+
+export type RemoveWorkspaceUserResult =
+  | { ok: true; newActivePath: string; deletedFromDisk: boolean }
+  | { ok: false; error: string };
+
+/**
+ * 从最近列表移除；非「默认工作区」目录则递归删除该文件夹。
+ */
+export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
+  const abs = path.resolve(workspacePath);
+  const def = path.resolve(getDefaultWorkspacePath());
+  try {
+    const { newActivePath } = detachWorkspaceFromRegistry(abs);
+    if (isSameWorkspacePath(abs, def)) {
+      return { ok: true, newActivePath, deletedFromDisk: false };
+    }
+    await fs.promises.rm(abs, { recursive: true, force: true });
+    return { ok: true, newActivePath, deletedFromDisk: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
 }
