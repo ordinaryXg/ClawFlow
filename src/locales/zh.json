@@ -2,6 +2,10 @@
   "brand": {
     "tagline": "桌面端工作助手"
   },
+  "layout": {
+    "resizeSidebar": "拖动调整左侧会话栏宽度",
+    "resizeRightPanel": "拖动调整右侧信息栏宽度"
+  },
   "workspace": {
     "title": "工作空间",
     "default": "默认",
@@ -28,8 +32,6 @@
     "helpDocs": "了解更多"
   },
   "nav": {
-    "dashboard": "仪表盘",
-    "dashboardHint": "状态",
     "chat": "对话",
     "chatHint": "对话",
     "skills": "技能",
@@ -336,7 +338,9 @@
   },
   "settings": {
     "title": "设置",
-    "subtitle": "外观、多语言、OpenClaw 路径、超时、日志与启动行为。",
+    "subtitle": "运行状态、外观、OpenClaw、模型与行为配置。",
+    "statusOverviewTitle": "OpenClaw 与 Gateway",
+    "statusOverviewHint": "原仪表盘中的版本检测、Gateway 启停与快捷入口已合并到此。",
     "save": "保存设置",
     "savedTitle": "已保存",
     "savedBody": "设置已写入本地；OpenClaw 相关项已同步到引擎（如可用）。",

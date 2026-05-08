@@ -1,14 +1,29 @@
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import i18n from '../../i18n';
 import './styles.css';
+import { useConnectorStore } from '../../store/modules/connectorStore';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
+import { useSkillStore } from '../../store/modules/skillStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
+import { mergeConfiguredModelsForDisplay } from '../../utils/modelDisplay';
 
 const SettingsPage: FC = () => {
   const { t } = useTranslation();
-  const { version, fetchVersion, error: gatewayError, fetchStatus } = useGatewayStore();
+  const navigate = useNavigate();
+  const {
+    version,
+    status: gatewayStatus,
+    isStarting,
+    isStopping,
+    error: gatewayError,
+    fetchStatus,
+    fetchVersion,
+    startGateway,
+    stopGateway,
+  } = useGatewayStore();
   const {
     theme,
     language,
@@ -34,6 +49,33 @@ const SettingsPage: FC = () => {
   const [configuredModels, setConfiguredModels] = useState<Array<{ id: string; available?: boolean; tags?: string[] }>>([]);
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [providerProfiles, setProviderProfiles] = useState<Record<string, { profileId: string; label?: string }>>({});
+  const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
+  const [cliError, setCliError] = useState<string>('');
+
+  const { skills, fetchSkills, error: skillError, isLoading: isSkillLoading } = useSkillStore();
+  const {
+    connectors,
+    fetchConnectors,
+    error: connectorError,
+    isLoading: isConnectorLoading,
+  } = useConnectorStore();
+
+  const installedSkillsCount = useMemo(
+    () => skills.filter((s) => s.installed).length,
+    [skills]
+  );
+  const enabledSkillsCount = useMemo(() => skills.filter((s) => s.enabled).length, [skills]);
+  const connectorsCount = connectors.length;
+
+  const gatewayChip = useMemo(() => {
+    if (gatewayStatus === 'running')
+      return <span className="cf-chip cf-chipRunning">{t('gateway.statusRunning')}</span>;
+    if (gatewayStatus === 'stopped')
+      return <span className="cf-chip cf-chipStopped">{t('gateway.statusStopped')}</span>;
+    return <span className="cf-chip cf-chipUnknown">{t('gateway.statusUnknown')}</span>;
+  }, [gatewayStatus, t]);
+
+  const canOperateGateway = cliAvailable !== false;
 
   useEffect(() => {
     setCliPath(storeCliPath);
@@ -43,6 +85,20 @@ const SettingsPage: FC = () => {
   useEffect(() => {
     void fetchVersion();
     void fetchStatus();
+    void fetchSkills();
+    void fetchConnectors();
+    if (window.electronAPI?.validateCLI) {
+      window.electronAPI
+        .validateCLI()
+        .then((available: boolean) => {
+          setCliAvailable(available);
+          setCliError(available ? '' : t('dashboard.cliNotInPath'));
+        })
+        .catch(() => {
+          setCliAvailable(false);
+          setCliError(t('dashboard.cliCheckFailed'));
+        });
+    }
     void (async () => {
       try {
         const v = await window.electronAPI?.getAppVersion?.();
@@ -51,7 +107,7 @@ const SettingsPage: FC = () => {
         setAppVersion('');
       }
     })();
-  }, [fetchStatus, fetchVersion]);
+  }, [activeWorkspacePath, fetchConnectors, fetchSkills, fetchStatus, fetchVersion, t]);
 
   useEffect(() => {
     void (async () => {
@@ -78,6 +134,11 @@ const SettingsPage: FC = () => {
       }
     })();
   }, [activeWorkspacePath]);
+
+  const displayModels = useMemo(
+    () => mergeConfiguredModelsForDisplay(configuredModels, configuredProviders),
+    [configuredModels, configuredProviders]
+  );
 
   useEffect(() => {
     void (async () => {
@@ -167,6 +228,47 @@ const SettingsPage: FC = () => {
     (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
   };
 
+  const handleStartGateway = async () => {
+    if (!canOperateGateway) return;
+    try {
+      await startGateway();
+      await fetchStatus();
+      (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('gateway.startOkBody'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('gateway.startFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    }
+  };
+
+  const handleStopGateway = async () => {
+    if (!canOperateGateway) return;
+    await stopGateway();
+    await fetchStatus();
+  };
+
+  const refreshStatusOverview = () => {
+    void fetchVersion();
+    void fetchStatus();
+    void fetchSkills();
+    void fetchConnectors();
+    if (window.electronAPI?.validateCLI) {
+      window.electronAPI
+        .validateCLI()
+        .then((available: boolean) => {
+          setCliAvailable(available);
+          setCliError(available ? '' : t('dashboard.cliNotInPath'));
+        })
+        .catch(() => {
+          setCliAvailable(false);
+          setCliError(t('dashboard.cliCheckFailed'));
+        });
+    }
+    (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
+  };
+
+  const scrollToOpenClawPath = () => {
+    document.getElementById('settings-openclaw-path')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const onSaveModel = async () => {
     const provider = modelProvider;
     const token = modelToken.trim();
@@ -193,10 +295,24 @@ const SettingsPage: FC = () => {
             })
             .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
         );
-        setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
-        setProviderProfiles(res?.providerProfiles && typeof res.providerProfiles === 'object' ? res.providerProfiles : {});
+        const fromServer = Array.isArray(res?.configuredProviders) ? res.configuredProviders : [];
+        setConfiguredProviders(Array.from(new Set([provider, ...fromServer.map((x) => String(x).trim()).filter(Boolean)])));
+        const baseProf =
+          res?.providerProfiles && typeof res.providerProfiles === 'object' ? { ...res.providerProfiles } : {};
+        const prevEntry =
+          baseProf[provider] && typeof baseProf[provider] === 'object' ? baseProf[provider] : {};
+        baseProf[provider] = {
+          ...prevEntry,
+          profileId: `${provider}:manual`,
+          ...(label ? { label } : {}),
+        };
+        setProviderProfiles(baseProf);
       } catch {
-        // ignore
+        setConfiguredProviders((prev) => Array.from(new Set([provider, ...prev])));
+        setProviderProfiles((prev) => ({
+          ...prev,
+          [provider]: { ...prev[provider], profileId: `${provider}:manual`, ...(label ? { label } : {}) },
+        }));
       }
       (window as any).__cf_toast?.success?.(t('settings.modelSavedTitle'), t('settings.modelSavedBody'));
     } catch (e: any) {
@@ -260,6 +376,9 @@ const SettingsPage: FC = () => {
           <p>{t('settings.subtitle')}</p>
         </div>
         <div className="cf-row cf-settingsPage__actions">
+          <button className="cf-btn cf-btnGhost" type="button" onClick={() => refreshStatusOverview()}>
+            {t('common.refresh')}
+          </button>
           <button className="cf-btn cf-btnGhost" type="button" onClick={onReset}>
             {t('settings.reset')}
           </button>
@@ -269,19 +388,138 @@ const SettingsPage: FC = () => {
         </div>
       </div>
 
-      {gatewayError ? (
-        <div className="cf-banner" style={{ borderColor: 'rgba(194,75,75,.45)', background: 'rgba(194,75,75,.10)' }}>
+      {cliAvailable === false ? (
+        <div className="cf-banner">
           <div>
-            <b>{t('settings.detectFailedTitle')}</b>
-            <span>{gatewayError}</span>
+            <b>{t('dashboard.noOpenClaw')}</b>
+            <span>{cliError || t('dashboard.cliNotInPath')}</span>
           </div>
-          <button type="button" className="cf-btn cf-btnDanger" onClick={() => void fetchVersion()}>
-            {t('settings.retry')}
+          <button className="cf-btn cf-btnGold" type="button" onClick={scrollToOpenClawPath}>
+            {t('dashboard.goSetPath')}
+          </button>
+        </div>
+      ) : null}
+
+      {(gatewayError || skillError || connectorError) && cliAvailable !== false ? (
+        <div
+          className="cf-banner"
+          style={{
+            marginTop: 12,
+            borderColor: 'rgba(194,75,75,.45)',
+            background: 'rgba(194,75,75,.10)',
+          }}
+        >
+          <div>
+            <b>{t('dashboard.partialLoadFailed')}</b>
+            <span>
+              {gatewayError ? `${t('dashboard.errGateway')}${gatewayError} ` : ''}
+              {skillError ? `${t('dashboard.errSkills')}${skillError} ` : ''}
+              {connectorError ? `${t('dashboard.errConnectors')}${connectorError}` : ''}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="cf-btn cf-btnDanger"
+            onClick={() =>
+              (window as any).__cf_toast?.error?.(t('dashboard.suggestTitle'), t('dashboard.suggestBody'))
+            }
+          >
+            {t('dashboard.suggestTitle')}
           </button>
         </div>
       ) : null}
 
       <section className="cf-grid cf-settingsPage__grid">
+        <div className="cf-card cf-col12">
+          <h3>{t('settings.statusOverviewTitle')}</h3>
+          <div className="cf-help">{t('settings.statusOverviewHint')}</div>
+          <div className="cf-divider" />
+
+          <div className="cf-grid">
+            <div className="cf-card cf-col4" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
+              <h3>{t('dashboard.openclawVersion')}</h3>
+              <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="cf-sub">
+                  {cliAvailable === false ? t('dashboard.notInstalled') : version || t('dashboard.checking')}
+                </span>
+                <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchVersion()}>
+                  {t('dashboard.recheck')}
+                </button>
+              </div>
+              <div className="cf-divider" />
+              <div className="cf-sub">{t('dashboard.missingHint')}</div>
+            </div>
+
+            <div className="cf-card cf-col8" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
+              <h3>{t('dashboard.gatewayStatus')}</h3>
+              <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <div className="cf-row" style={{ alignItems: 'center', gap: 10 }}>
+                  {gatewayChip}
+                  <span className="cf-sub">
+                    {isStarting
+                      ? t('dashboard.starting')
+                      : isStopping
+                        ? t('dashboard.stopping')
+                        : t('dashboard.statusSource')}
+                  </span>
+                </div>
+                <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                  <button type="button" className="cf-btn" onClick={() => void fetchStatus()}>
+                    {t('dashboard.refreshStatus')}
+                  </button>
+                  <button
+                    type="button"
+                    className="cf-btn cf-btnPrimary"
+                    disabled={!canOperateGateway || gatewayStatus === 'running' || isStopping || isStarting}
+                    onClick={() => void handleStartGateway()}
+                  >
+                    {t('dashboard.startGateway')}
+                  </button>
+                  <button
+                    type="button"
+                    className="cf-btn cf-btnDanger"
+                    disabled={!canOperateGateway || gatewayStatus === 'stopped' || isStopping || isStarting}
+                    onClick={() => void handleStopGateway()}
+                  >
+                    {t('dashboard.stop')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="cf-divider" />
+
+          <div className="cf-grid">
+            <div className="cf-card cf-col4" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
+              <h3>{t('dashboard.overview')}</h3>
+              <div className="cf-sub">
+                {t('dashboard.skillsCount')}：{installedSkillsCount} / {enabledSkillsCount}
+                {isSkillLoading ? ` · ${t('dashboard.loading')}` : ''}
+              </div>
+              <div className="cf-sub">
+                {t('dashboard.connectorsCount')}：{connectorsCount}
+                {isConnectorLoading ? ` · ${t('dashboard.loading')}` : ''}
+              </div>
+            </div>
+            <div className="cf-card cf-col8" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
+              <h3>{t('dashboard.quickLinks')}</h3>
+              <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <button type="button" className="cf-btn cf-btnPrimary" onClick={() => navigate('/chat')}>
+                  {t('dashboard.enterChat')}
+                </button>
+                <button type="button" className="cf-btn" onClick={() => navigate('/skills')}>
+                  {t('dashboard.manageSkills')}
+                </button>
+                <button type="button" className="cf-btn" onClick={() => navigate('/connectors')}>
+                  {t('dashboard.manageConnectors')}
+                </button>
+              </div>
+              <div className="cf-help">{t('dashboard.goalHint')}</div>
+            </div>
+          </div>
+        </div>
+
         <div className="cf-card cf-col6">
           <h3>{t('settings.appearance')}</h3>
           <div className="cf-divider" />
@@ -339,14 +577,9 @@ const SettingsPage: FC = () => {
           </div>
         </div>
 
-        <div className="cf-card cf-col6">
+        <div className="cf-card cf-col6" id="settings-openclaw-path">
           <h3>{t('settings.openclaw')}</h3>
           <div className="cf-divider" />
-
-          <div className="cf-sub">
-            {t('settings.versionLabel')}：{version || t('settings.notDetected')}
-          </div>
-          <div style={{ height: 10 }} />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.cliPath')}
@@ -478,11 +711,11 @@ const SettingsPage: FC = () => {
                 {t('settings.currentModel')}: {defaultModelId || t('common.unknown')}
               </div>
 
-              {configuredModels.length === 0 ? (
+              {displayModels.length === 0 ? (
                 <div className="cf-help">{t('settings.noConfiguredModels')}</div>
               ) : (
                 <div className="cf-settingsModels__modelList" role="list">
-                  {configuredModels.map((m) => {
+                  {displayModels.map((m) => {
                     const isDefault = Boolean(defaultModelId && m.id === defaultModelId);
                     const provider = String(m.id).split('/')[0] || '';
                     const providerConfigured = Boolean(providerProfiles?.[provider]) || configuredProviders.includes(provider);

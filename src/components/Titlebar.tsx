@@ -45,7 +45,6 @@ const Titlebar: FC<Props> = ({ visible = true }) => {
     () => ({
       items: [
         { key: 'chat', label: t('nav.chat'), onClick: () => navigate('/chat') },
-        { key: 'dashboard', label: t('nav.dashboard'), onClick: () => navigate('/dashboard') },
         { key: 'skills', label: t('nav.skills'), onClick: () => navigate('/skills') },
         { key: 'connectors', label: t('nav.connectors'), onClick: () => navigate('/connectors') },
         { key: 'settings', label: t('nav.settings'), onClick: () => navigate('/settings') },

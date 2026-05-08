@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
 import StreamingMessage from '../../components/chat/StreamingMessage';
+import { mergeConfiguredModelsForDisplay } from '../../utils/modelDisplay';
 import './styles.css';
 
 const ChatPage: FC = () => {
@@ -35,17 +36,38 @@ const ChatPage: FC = () => {
     void (async () => {
       try {
         const res = await window.electronAPI?.getModels?.();
-        const defaultId = typeof res?.defaultModelId === 'string' ? res.defaultModelId : null;
+        const defaultId = typeof res?.defaultModelId === 'string' ? res.defaultModelId.trim() : null;
         const list = Array.isArray(res?.models) ? res.models : [];
-        const opts = list
+        const rawModels = list
           .map((m: any) => {
             const id = String(m?.id ?? '').trim();
             if (!id) return null;
-            return { id, label: id };
+            return {
+              id,
+              available: typeof m?.available === 'boolean' ? m.available : undefined,
+              tags: Array.isArray(m?.tags) ? m.tags : undefined,
+            };
           })
-          .filter(Boolean) as Array<{ id: string; label: string }>;
+          .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>;
+
+        const configuredProviders = Array.isArray(res?.configuredProviders)
+          ? res.configuredProviders.map((x: unknown) => String(x).trim()).filter(Boolean)
+          : [];
+        const providerProfiles =
+          res?.providerProfiles && typeof res.providerProfiles === 'object'
+            ? (res.providerProfiles as Record<string, { profileId: string; label?: string }>)
+            : {};
+
+        const merged = mergeConfiguredModelsForDisplay(rawModels, configuredProviders);
+        const opts = merged.map((m) => {
+          const provider = m.id.split('/')[0] || '';
+          const lbl = providerProfiles[provider]?.label?.trim();
+          return { id: m.id, label: lbl ? `${m.id} · ${lbl}` : m.id };
+        });
         setModels(opts);
-        setModelId(defaultId);
+
+        const ids = new Set(opts.map((o) => o.id));
+        setModelId(defaultId && ids.has(defaultId) ? defaultId : null);
       } catch {
         setModels([]);
         setModelId(null);

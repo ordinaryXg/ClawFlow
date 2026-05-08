@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next';
 
 type Props = {
   workspacePath: string | null;
+  /** 右栏像素宽度（桌面三栏布局）；不传则沿用样式表默认 */
+  widthPx?: number;
 };
 
 type TabKey = 'workspace' | 'browser' | 'changes';
 
-const ChatRightTabs: FC<Props> = ({ workspacePath }) => {
+const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
   const [active, setActive] = useState<TabKey>('workspace');
 
@@ -21,7 +23,10 @@ const ChatRightTabs: FC<Props> = ({ workspacePath }) => {
   );
 
   return (
-    <aside className="cf-chatRight">
+    <aside
+      className="cf-chatRight"
+      style={widthPx != null ? { width: widthPx, flexShrink: 0, minWidth: 0 } : undefined}
+    >
       <div className="cf-chatRight__tabs" role="tablist" aria-label={t('chat.rightTabs.title')}>
         {tabs.map((it) => {
           const isActive = it.key === active;

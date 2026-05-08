@@ -3,7 +3,6 @@ import { ConfigProvider } from 'antd';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import I18nThemeBootstrap from './components/I18nThemeBootstrap';
 import Layout from './components/Layout';
-import DashboardPage from './pages/DashboardPage';
 import ChatPage from './pages/ChatPage';
 import SkillsPage from './pages/SkillsPage';
 import ConnectorsPage from './pages/ConnectorsPage';
@@ -20,7 +19,7 @@ const App: FC = () => {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/chat" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard" element={<Navigate to="/settings" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/connectors" element={<ConnectorsPage />} />

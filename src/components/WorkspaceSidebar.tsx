@@ -4,7 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 
-const WorkspaceSidebar: FC = () => {
+type Props = {
+  sidebarWidthPx: number;
+  /** 窄屏无拖动条时，在侧栏右侧画分隔线 */
+  trailingBorder?: boolean;
+};
+
+const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -51,7 +57,10 @@ const WorkspaceSidebar: FC = () => {
   };
 
   return (
-    <aside className="cf-shell__sidebar">
+    <aside
+      className={trailingBorder ? 'cf-shell__sidebar cf-shell__sidebar--trailingBorder' : 'cf-shell__sidebar'}
+      style={{ width: sidebarWidthPx, flexShrink: 0 }}
+    >
       <div className="cf-shell__sidebarHeader">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <b style={{ fontSize: 12 }}>{t('chat.sessions')}</b>

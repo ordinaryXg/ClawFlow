@@ -2,6 +2,10 @@
   "brand": {
     "tagline": "Desktop work assistant"
   },
+  "layout": {
+    "resizeSidebar": "Drag to resize the left sessions column",
+    "resizeRightPanel": "Drag to resize the right info column"
+  },
   "workspace": {
     "title": "Workspace",
     "default": "Default",
@@ -28,8 +32,6 @@
     "helpDocs": "Learn more"
   },
   "nav": {
-    "dashboard": "Dashboard",
-    "dashboardHint": "Status",
     "chat": "Chat",
     "chatHint": "Chat",
     "skills": "Skills",
@@ -336,7 +338,9 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Appearance, language, OpenClaw path, timeout, logging, startup.",
+    "subtitle": "Runtime status, appearance, OpenClaw, models, and behavior.",
+    "statusOverviewTitle": "OpenClaw & Gateway",
+    "statusOverviewHint": "Version check, Gateway controls, and quick links from the old dashboard live here.",
     "save": "Save settings",
     "savedTitle": "Saved",
     "savedBody": "Preferences stored locally; OpenClaw settings synced to engine when possible.",

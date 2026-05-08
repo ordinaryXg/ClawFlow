@@ -5,15 +5,15 @@
 }
 
 .cf-shell__sidebar{
-  width:320px;
-  min-width:280px;
-  max-width:360px;
   height:100%;
-  border-right:1px solid var(--border);
   background:var(--panel);
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  box-sizing:border-box;
+}
+.cf-shell__sidebar--trailingBorder{
+  border-right:1px solid var(--border);
 }
 
 .cf-shell__sidebarHeader{
@@ -52,16 +52,48 @@
 .cf-shell__mainGrid{
   flex:1;
   min-height:0;
-  display:grid;
-  grid-template-columns: 1fr 360px;
+}
+.cf-shell__mainGrid--cols{
+  display:flex;
+  flex-direction:row;
+  align-items:stretch;
+  min-width:0;
+}
+.cf-shell__mainGrid--stack{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+
+.cf-shell__gutter{
+  width:6px;
+  flex-shrink:0;
+  cursor:col-resize;
+  background:transparent;
+  position:relative;
+  z-index:3;
+  touch-action:none;
+  box-sizing:border-box;
+  border-left:1px solid var(--border);
+}
+.cf-shell__gutter:hover{
+  background:rgba(30,91,69,.18);
+}
+.cf-shell__gutter:focus-visible{
+  outline:2px solid rgba(30,91,69,.65);
+  outline-offset:-2px;
 }
 
 .cf-shell__center{
-  min-width:0;
+  flex:1;
+  min-width:240px;
   min-height:0;
   overflow:auto;
   display:flex;
   flex-direction:column;
+}
+.cf-shell__mainGrid--stack .cf-shell__center{
+  min-width:0;
 }
 
 /* Workspace + conversation tree (sidebar) */
@@ -167,11 +199,11 @@
 
 /* Right panel tabs */
 .cf-chatRight{
-  border-left:1px solid var(--border);
   min-width:0;
   display:flex;
   flex-direction:column;
   min-height:0;
+  box-sizing:border-box;
 }
 .cf-chatRight__tabs{display:flex;border-bottom:1px solid var(--border)}
 .cf-chatRight__tab{
@@ -195,15 +227,4 @@
 .cf-chatRight__kv{display:flex;flex-direction:column;gap:6px}
 .cf-chatRight__k{font-size:11px;color:var(--muted)}
 .cf-chatRight__v{font-size:12px;color:var(--text);word-break:break-all}
-
-@media (max-width: 900px) {
-  .cf-shell__sidebar{
-    width:260px;
-    min-width:240px;
-  }
-  .cf-shell__mainGrid{
-    grid-template-columns:1fr;
-  }
-  .cf-chatRight{display:none;}
-}
 

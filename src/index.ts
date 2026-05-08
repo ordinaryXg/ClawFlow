@@ -51,7 +51,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     front: '全部置于前台',
     learnMore: '了解更多',
     navChat: '对话',
-    navDashboard: '仪表盘',
     navSkills: '技能',
     navConnectors: '连接器',
     navSettings: '设置',
@@ -90,7 +89,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     front: 'Bring All to Front',
     learnMore: 'Learn More',
     navChat: 'Chat',
-    navDashboard: 'Dashboard',
     navSkills: 'Skills',
     navConnectors: 'Connectors',
     navSettings: 'Settings',
@@ -163,7 +161,6 @@ const setupApplicationMenu = () => {
       label: t('view'),
       submenu: [
         { label: t('navChat'), click: () => nav('/chat') },
-        { label: t('navDashboard'), click: () => nav('/dashboard') },
         { label: t('navSkills'), click: () => nav('/skills') },
         { label: t('navConnectors'), click: () => nav('/connectors') },
         { label: t('navSettings'), click: () => nav('/settings') },
