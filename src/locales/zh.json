@@ -14,7 +14,10 @@
     "settings": "Settings",
     "settingsHint": "偏好",
     "states": "States",
-    "statesHint": "空/错/载"
+    "statesHint": "空/错/载",
+    "collapseNav": "收起侧栏",
+    "expandNav": "展开侧栏",
+    "openMenu": "打开导航"
   },
   "gateway": {
     "title": "Gateway",

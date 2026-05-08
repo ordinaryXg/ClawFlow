@@ -14,7 +14,10 @@
     "settings": "Settings",
     "settingsHint": "Preferences",
     "states": "States",
-    "statesHint": "States"
+    "statesHint": "States",
+    "collapseNav": "Collapse sidebar",
+    "expandNav": "Expand sidebar",
+    "openMenu": "Open navigation"
   },
   "gateway": {
     "title": "Gateway",

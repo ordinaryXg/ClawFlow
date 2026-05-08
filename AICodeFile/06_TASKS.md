@@ -726,12 +726,26 @@ interface SettingsState {
 **前置任务：** 任务 2.3、任务 2.4、任务 2.5、任务 2.7
 
 **验收标准：**
-- [ ] 所有页面可以通过导航栏访问
-- [ ] 当前页面高亮显示
-- [ ] 图标正确显示
-- [ ] 响应式布局生效
+- [x] 所有页面可以通过导航栏访问
+- [x] 当前页面高亮显示
+- [x] 图标正确显示
+- [x] 响应式布局生效（窄屏顶部栏 + 抽屉导航，不再隐藏侧栏）
 
 **预计复杂度：** 简单
+
+#### 完成记录（留存记忆）
+
+- **完成时间**：2026-05-08
+- **完成内容概览**：
+  - `Layout.tsx` 使用 Ant Design `Menu` + `@ant-design/icons` 作为主导航，路由与 `selectedKeys` 同步
+  - 桌面端支持侧栏折叠（`inlineCollapsed` + 栅格列宽 `80px` / `260px`）
+  - viewport ≤980px：顶栏菜单按钮 + `Drawer` 内同等菜单；移除原先「侧栏 `display:none` 导致无导航」行为
+  - `ui.css` 补充 `.cf-app--navCollapsed`、`.cf-mainColumn`、`.cf-mobileBar`、菜单选中态与主题变量衔接
+  - 文案：`nav.collapseNav` / `expandNav` / `openMenu`（zh/en）
+- **涉及文件**：
+  - `src/components/Layout.tsx`、`src/styles/ui.css`、`src/locales/zh.json`、`src/locales/en.json`
+- **验收结果**：
+  - [x] `npx tsc --noEmit` 通过
 
 ---
 
