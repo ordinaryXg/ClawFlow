@@ -144,12 +144,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGatewayStatus: () => ipcRenderer.invoke('engineGateway:status'),
   engineGatewayStart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:start', params ?? {}),
   engineGatewayStop: () => ipcRenderer.invoke('engineGateway:stop'),
+  engineGatewayRestart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:restart', params ?? {}),
+  engineGatewayGetLogs: (params?: { limit?: number }) => ipcRenderer.invoke('engineGateway:logs', params ?? {}),
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
     modelId?: string;
-    mode?: 'ask' | 'plan';
+    mode?: 'ask' | 'plan' | 'multitask';
   }) => ipcRenderer.invoke('engine:sendMessageStream', params),
   onEngineChatStream: (cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void) => {
     const handler = (_event: unknown, payload: unknown) => {

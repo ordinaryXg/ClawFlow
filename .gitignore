@@ -93,6 +93,7 @@ out/
 pack-output/
 dist-pack/
 dist-pack-build/
+dist-pack-build-*/
 dist/
 
 # temp-openclaw

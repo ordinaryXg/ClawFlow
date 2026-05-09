@@ -13,8 +13,8 @@ import fs from 'fs-extra';
 import path from 'path';
 
 const config: ForgeConfig = {
-  /** Windows 常见 app.asar 占用；与旧 dist-pack 错峰输出，避免 EBUSY 无法 unlink */
-  outDir: 'dist-pack-build',
+  /** Windows 常见 app.asar 占用；每次输出到不同目录，避免 EBUSY 无法 unlink */
+  outDir: `dist-pack-build-${Date.now()}`,
   packagerConfig: {
     asar: true,
     // OpenClaw 将通过 postPackage 钩子复制到 resources 目录
@@ -37,9 +37,9 @@ const config: ForgeConfig = {
         outputPaths.push(...(Array.isArray(paths) ? paths : [paths]));
       }
       
-      // 默认路径
+      // 默认路径（仅在 Forge 没返回 outputPaths 时兜底）
       if (outputPaths.length === 0) {
-        outputPaths.push(path.join(process.cwd(), 'dist-pack-build', 'claw-flow-win32-x64'));
+        outputPaths.push(path.join(process.cwd(), config.outDir as string, 'claw-flow-win32-x64'));
       }
       
       for (const outputPath of outputPaths) {
@@ -117,6 +117,11 @@ const config: ForgeConfig = {
   plugins: [
     new WebpackPlugin({
       port: 9001,
+      // 允许 renderer 连接本机 GatewayDaemon（ws/http），否则浏览器 WebSocket 会被 CSP 拦截
+      devContentSecurityPolicy:
+        "default-src 'self' 'unsafe-inline' data:; " +
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' data:; " +
+        "connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*;",
       mainConfig,
       renderer: {
         config: rendererConfig,

@@ -5,10 +5,12 @@ import { create } from 'zustand';
 
 export interface GatewayState {
   status: 'running' | 'stopped' | 'unknown';
-  version: string;
   isStarting: boolean;
   isStopping: boolean;
   error: string | null;
+  port: number | null;
+  uptimeMs: number;
+  logs: Array<{ ts: number; level: string; msg: string }>;
   config: {
     cliPath?: string;
     commandTimeout?: number;
@@ -20,7 +22,8 @@ export interface GatewayState {
   fetchStatus: () => Promise<void>;
   startGateway: () => Promise<void>;
   stopGateway: () => Promise<void>;
-  fetchVersion: () => Promise<void>;
+  restartGateway: () => Promise<void>;
+  fetchLogs: (limit?: number) => Promise<void>;
   updateConfig: (config: Partial<GatewayState['config']>) => void;
   setStatus: (status: GatewayState['status']) => void;
   setError: (error: string | null) => void;
@@ -28,10 +31,12 @@ export interface GatewayState {
 
 export const useGatewayStore = create<GatewayState>((set, get) => ({
   status: 'unknown',
-  version: '',
   isStarting: false,
   isStopping: false,
   error: null,
+  port: null,
+  uptimeMs: 0,
+  logs: [],
   config: {
     cliPath: undefined,
     commandTimeout: 60000,
@@ -41,8 +46,14 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   
   fetchStatus: async () => {
     try {
-      const status = await window.electronAPI?.getGatewayStatus() as 'running' | 'stopped' | 'unknown';
-      set({ status, error: null });
+      const res = await window.electronAPI?.engineGatewayStatus?.();
+      const status = (res?.status as any) as 'running' | 'stopped' | 'unknown';
+      set({
+        status: status || 'unknown',
+        port: typeof res?.port === 'number' ? res.port : null,
+        uptimeMs: typeof res?.uptimeMs === 'number' ? res.uptimeMs : 0,
+        error: null,
+      });
     } catch (error: any) {
       set({ error: error.message || '获取 Gateway 状态失败' });
     }
@@ -51,8 +62,14 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   startGateway: async () => {
     set({ isStarting: true, error: null });
     try {
-      await window.electronAPI?.startGateway();
-      set({ status: 'running', isStarting: false });
+      await window.electronAPI?.engineGatewayStart?.();
+      const res = await window.electronAPI?.engineGatewayStatus?.();
+      set({
+        status: 'running',
+        port: typeof res?.port === 'number' ? res.port : null,
+        uptimeMs: typeof res?.uptimeMs === 'number' ? res.uptimeMs : 0,
+        isStarting: false,
+      });
     } catch (error: any) {
       set({ 
         error: error.message || '启动 Gateway 失败',
@@ -65,8 +82,8 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   stopGateway: async () => {
     set({ isStopping: true, error: null });
     try {
-      await window.electronAPI?.stopGateway();
-      set({ status: 'stopped', isStopping: false });
+      await window.electronAPI?.engineGatewayStop?.();
+      set({ status: 'stopped', isStopping: false, uptimeMs: 0 });
     } catch (error: any) {
       set({ 
         error: error.message || '停止 Gateway 失败',
@@ -75,13 +92,30 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       throw error;
     }
   },
-  
-  fetchVersion: async () => {
+
+  restartGateway: async () => {
+    set({ isStarting: true, error: null });
     try {
-      const version = await window.electronAPI?.getVersion();
-      set({ version, error: null });
+      await window.electronAPI?.engineGatewayRestart?.();
+      const res = await window.electronAPI?.engineGatewayStatus?.();
+      set({
+        status: 'running',
+        port: typeof res?.port === 'number' ? res.port : null,
+        uptimeMs: typeof res?.uptimeMs === 'number' ? res.uptimeMs : 0,
+        isStarting: false,
+      });
     } catch (error: any) {
-      set({ error: error.message || '获取版本失败' });
+      set({ error: error.message || '重启 Gateway 失败', isStarting: false });
+      throw error;
+    }
+  },
+
+  fetchLogs: async (limit = 120) => {
+    try {
+      const res = await window.electronAPI?.engineGatewayGetLogs?.({ limit });
+      set({ logs: Array.isArray(res?.logs) ? res.logs : [], error: null });
+    } catch (error: any) {
+      set({ error: error.message || '获取 Gateway 日志失败' });
     }
   },
   

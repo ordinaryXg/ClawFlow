@@ -23,7 +23,7 @@ export class AnthropicProvider implements ModelProvider {
     return String(fromResolver || this.opts.apiKey || '').trim();
   }
 
-  async chatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
+  async chatCompletion(req: ChatCompletionRequest, opts?: { signal?: AbortSignal }): Promise<ChatCompletionResult> {
     const apiKey = await this.resolvedKey();
     if (!apiKey) throw new Error('Anthropic API key is not configured');
 
@@ -72,6 +72,7 @@ export class AnthropicProvider implements ModelProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');

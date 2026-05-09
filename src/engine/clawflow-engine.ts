@@ -46,6 +46,7 @@ export interface ClawFlowEngine {
     userText: string;
     mode?: InteractionMode;
     modelId?: string;
+    onDelta?: (delta: string) => void;
   }): Promise<{ message: string }>;
 
   /**
@@ -181,6 +182,59 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     this.emit('engine:message', params.conversationId, assistantMsg);
   }
 
+  private async appendMessages(conversationId: string, msgs: StoredMessage[]): Promise<void> {
+    if (!msgs.length) return;
+    const convs = await this.store.readAll();
+    const idx = convs.findIndex((c) => c.id === conversationId);
+    const now = Date.now();
+    if (idx >= 0) {
+      const c = convs[idx];
+      const next: StoredConversation = {
+        ...c,
+        messages: [...(c.messages ?? []), ...msgs],
+        updatedAt: now,
+      };
+      convs[idx] = next;
+      await this.store.writeAll(convs);
+    }
+    for (const m of msgs) {
+      this.emit('engine:message', conversationId, m);
+    }
+  }
+
+  private toStoredAssistantMessage(params: {
+    content: string;
+    mode: InteractionMode;
+    modelIdHint: string | null;
+    engine: 'clawflow' | 'clawflow-stub';
+    reasoning_content?: string;
+    tool_calls?: StoredMessage['tool_calls'];
+  }): StoredMessage {
+    const now = Date.now();
+    return {
+      id: randomUUID(),
+      role: 'assistant',
+      content: String(params.content ?? ''),
+      timestamp: now,
+      ...(typeof params.reasoning_content === 'string' && params.reasoning_content
+        ? { reasoning_content: params.reasoning_content }
+        : {}),
+      ...(Array.isArray(params.tool_calls) && params.tool_calls.length ? { tool_calls: params.tool_calls } : {}),
+      meta: { engine: params.engine, mode: params.mode, modelId: params.modelIdHint },
+    };
+  }
+
+  private toStoredToolMessage(params: { tool_call_id: string; content: string }): StoredMessage {
+    const now = Date.now();
+    return {
+      id: randomUUID(),
+      role: 'tool',
+      content: String(params.content ?? ''),
+      timestamp: now,
+      tool_call_id: String(params.tool_call_id ?? ''),
+    };
+  }
+
   /** 内置 Chat UI：下拉模型列表（不依赖 OpenClaw CLI） */
   async listChatModelCatalog(): Promise<{
     defaultModelId: string | null;
@@ -239,6 +293,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     userText: string;
     mode?: InteractionMode;
     modelId?: string;
+    onDelta?: (delta: string) => void;
+    abortSignal?: AbortSignal;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
@@ -261,16 +317,16 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         ...(mode === 'ask'
           ? { thinking: { type: 'disabled' } }
           : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-        ...(mode === 'plan' || mode === 'multitask' ? { jsonMode: true } : {}),
         ...(mode === 'multitask' ? { tools: this.tools.listSchemas(), useBetaBaseUrl: true } : {}),
       };
       for (let step = 0; step < 6; step++) {
+        if (params.abortSignal?.aborted) throw new Error('CANCELLED');
         const req: ChatCompletionRequest = {
           model: modelId,
           messages: loopMessages,
           modeConfig: baseModeConfig,
         };
-        const res = await provider.chatCompletion(req);
+        const res = await provider.chatCompletion(req, { signal: params.abortSignal });
 
         const toolCalls = res.tool_calls ?? null;
         const assistantMsg: ChatMessage = {
@@ -286,12 +342,40 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           break;
         }
 
+        // Persist this assistant turn (tool_calls + reasoning) so replay/history stays complete.
+        try {
+          const storedAssistant = this.toStoredAssistantMessage({
+            content: res.content ?? '',
+            reasoning_content: typeof res.reasoning_content === 'string' ? res.reasoning_content : undefined,
+            tool_calls: toolCalls as any,
+            mode,
+            modelIdHint: modelId,
+            engine: 'clawflow',
+          });
+          await this.appendMessages(params.conversationId, [storedAssistant]);
+        } catch (e: any) {
+          console.warn('[ClawFlowEngine] persist assistant(tool_calls) failed:', e?.message ?? e);
+        }
+
         const toolResults = await this.tools.executeToolCalls(toolCalls as any, {
           workspaceRoot: this.config.workspaceRoot,
           config: this.config,
+          onDelta: params.onDelta,
+          abortSignal: params.abortSignal,
         });
+        const toolMsgs: ChatMessage[] = [];
+        const storedTools: StoredMessage[] = [];
         for (const tr of toolResults) {
-          loopMessages.push({ role: 'tool', tool_call_id: tr.tool_call_id, content: tr.content });
+          toolMsgs.push({ role: 'tool', tool_call_id: tr.tool_call_id, content: tr.content });
+          storedTools.push(this.toStoredToolMessage({ tool_call_id: tr.tool_call_id, content: tr.content }));
+        }
+        for (const tm of toolMsgs) loopMessages.push(tm);
+
+        // Persist tool results as discrete messages.
+        try {
+          await this.appendMessages(params.conversationId, storedTools);
+        } catch (e: any) {
+          console.warn('[ClawFlowEngine] persist tool results failed:', e?.message ?? e);
         }
       }
     }
@@ -300,6 +384,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       reply = `【ClawFlowEngine:stub】mode=${mode} model=${modelId}\n\n你说：${params.userText}`;
     }
 
+    // Persist final assistant reply as its own message.
+    // (Tool-calls + tool results are persisted per-step above for multitask.)
     await this.appendAssistantMessage({
       conversationId: params.conversationId,
       reply,
@@ -316,6 +402,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     modelId?: string;
     mode: 'ask' | 'plan';
     onDelta: (delta: string) => void;
+    abortSignal?: AbortSignal;
   }): Promise<string> {
     const emitChunked = async (text: string) => {
       const full = String(text ?? '');
@@ -340,7 +427,6 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       ...(streamMode === 'ask'
         ? { thinking: { type: 'disabled' } }
         : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-      ...(streamMode === 'plan' ? { jsonMode: true } : {}),
     };
 
     if (!provider || !providerId) {
@@ -366,10 +452,10 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     const p = provider as ModelProvider;
     let reply = '';
     if (typeof p.streamChatCompletion === 'function') {
-      const res = await p.streamChatCompletion(req, params.onDelta);
+      const res = await p.streamChatCompletion(req, params.onDelta, { signal: params.abortSignal });
       reply = res.content || '';
     } else {
-      const res = await provider.chatCompletion(req);
+      const res = await provider.chatCompletion(req, { signal: params.abortSignal });
       reply = res.content || '';
       if (reply) await emitChunked(reply);
     }
@@ -444,21 +530,44 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     'engine:sendMessageStream',
     async (
       event,
-      params: { conversationId: string; userText: string; modelId?: string; mode?: 'ask' | 'plan' }
+      params: { conversationId: string; userText: string; modelId?: string; mode?: 'ask' | 'plan' | 'multitask' }
     ) => {
-      const streamMode = params.mode === 'plan' ? 'plan' : 'ask';
+      const sendDelta = (text: string) => {
+        event.sender.send('engine:chatStream', {
+          kind: 'delta',
+          conversationId: params.conversationId,
+          text,
+        });
+      };
+
+      const mode = params.mode === 'plan' ? 'plan' : params.mode === 'multitask' ? 'multitask' : 'ask';
+
+      // Multitask may involve tools and long execution; stream a small status first,
+      // then chunk the final reply for a consistent streaming UX.
+      if (mode === 'multitask') {
+        sendDelta('（执行中…）\n');
+        const res = await getGlobalClawFlowEngine().sendMessage({
+          conversationId: params.conversationId,
+          userText: params.userText,
+          modelId: params.modelId,
+          mode,
+          onDelta: sendDelta,
+        });
+        const full = res.message ?? '';
+        const chunkSize = 28;
+        for (let i = 0; i < full.length; i += chunkSize) {
+          sendDelta(full.slice(i, i + chunkSize));
+          await new Promise((r) => setTimeout(r, 15));
+        }
+        return { success: true, message: full };
+      }
+
       const full = await getGlobalClawFlowEngine().sendMessageTextStream({
         conversationId: params.conversationId,
         userText: params.userText,
         modelId: params.modelId,
-        mode: streamMode,
-        onDelta: (text) => {
-          event.sender.send('engine:chatStream', {
-            kind: 'delta',
-            conversationId: params.conversationId,
-            text,
-          });
-        },
+        mode,
+        onDelta: (text) => sendDelta(text),
       });
       return { success: true, message: full };
     }

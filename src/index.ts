@@ -7,7 +7,7 @@ import {
   getGlobalOpenClawCliEngine,
 } from './engine/openclaw-engine';
 import { registerClawFlowIPC, syncClawFlowEngineWorkspaceRoot } from './engine/clawflow-engine';
-import { registerGatewayIPC } from './engine/gateway-daemon';
+import { getGatewayDaemon, registerGatewayIPC } from './engine/gateway-daemon';
 import * as workspaceService from './workspace-service';
 import * as workspaceExplorer from './workspace-explorer';
 import * as workspaceChangeLog from './workspace-change-log';
@@ -399,6 +399,12 @@ app.whenReady().then(async () => {
   registerOpenClawIPC();
   registerClawFlowIPC({ workspaceRoot: active, verbose: true });
   registerGatewayIPC();
+  // Phase 3: keep internal GatewayDaemon resident (best-effort)
+  try {
+    await getGatewayDaemon().start();
+  } catch (e: any) {
+    console.warn('[GatewayDaemon] auto-start failed:', e?.message ?? e);
+  }
   ipcMain.handle('skillMarket:getIndex', async (_e, opts?: { forceRefresh?: boolean }) => {
     try {
       return await fetchSkillMarketIndex({ forceRefresh: Boolean(opts?.forceRefresh) });

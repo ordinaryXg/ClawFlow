@@ -1,4 +1,4 @@
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
@@ -33,6 +33,9 @@ const ChatPage: FC = () => {
   const [modelId, setModelId] = useState<string | null>(null);
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
 
   const handleModelChange = useCallback(
     (id: string | null) => {
@@ -45,6 +48,24 @@ const ChatPage: FC = () => {
   useEffect(() => {
     void fetchConversations();
   }, [fetchConversations, activeWorkspacePath]);
+
+  // 自动下拉：只有当用户在底部附近时才跟随输出，避免用户上翻阅读时被强制拉回。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distance < 120;
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll as any);
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, streamingMessage]);
 
   const reloadChatModels = useCallback(async () => {
     try {
@@ -123,7 +144,7 @@ const ChatPage: FC = () => {
         ) : null}
       </header>
 
-      <div className="cf-chatCenter__messages">
+      <div ref={scrollRef} className="cf-chatCenter__messages">
         {messages.length === 0 && streamingMessage === null ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>
@@ -135,6 +156,7 @@ const ChatPage: FC = () => {
           <>
             <MessageList messages={messages} />
             <StreamingMessage content={streamingMessage} />
+            <div ref={bottomRef} />
           </>
         )}
       </div>

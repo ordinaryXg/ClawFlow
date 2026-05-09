@@ -31,7 +31,7 @@ export class OpenAIProvider implements ModelProvider {
     return String(fromResolver || this.opts.apiKey || '').trim();
   }
 
-  async chatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResult> {
+  async chatCompletion(req: ChatCompletionRequest, opts?: { signal?: AbortSignal }): Promise<ChatCompletionResult> {
     const apiKey = await this.resolvedKey();
     if (!apiKey) throw new Error('OpenAI API key is not configured');
 
@@ -58,6 +58,7 @@ export class OpenAIProvider implements ModelProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -80,7 +81,8 @@ export class OpenAIProvider implements ModelProvider {
 
   async streamChatCompletion(
     req: ChatCompletionRequest,
-    onDelta: (text: string) => void
+    onDelta: (text: string) => void,
+    opts?: { signal?: AbortSignal }
   ): Promise<ChatCompletionResult> {
     const apiKey = await this.resolvedKey();
     if (!apiKey) throw new Error('OpenAI API key is not configured');
@@ -107,6 +109,7 @@ export class OpenAIProvider implements ModelProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');

@@ -6,6 +6,24 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type ChatInteractionMode = 'ask' | 'plan' | 'multitask';
 
+type GatewayWsEvent =
+  | { type: 'chat:ack'; requestId: string; conversationId: string }
+  | { type: 'chat:delta'; requestId: string; conversationId: string; text: string }
+  | { type: 'chat:final'; requestId: string; conversationId: string; message: string }
+  | { type: 'gateway:log'; entry: { ts: number; level: string; msg: string } }
+  | { type: 'gateway:status'; status: string; port: number; uptimeMs: number };
+
+type GatewayWsSend =
+  | {
+      type: 'chat:send';
+      requestId: string;
+      conversationId: string;
+      text: string;
+      mode: ChatInteractionMode;
+      modelId?: string;
+    }
+  | { type: 'gateway:ping' };
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -72,6 +90,102 @@ let revealCleanup: (() => void) | null = null;
 function cancelAssistantReveal() {
   revealCleanup?.();
   revealCleanup = null;
+}
+
+type Pending = {
+  conversationId: string;
+  onDelta: (text: string) => void;
+  onFinal: (full: string) => void;
+};
+
+let wsClient: WebSocket | null = null;
+let wsConnecting: Promise<WebSocket> | null = null;
+const pendingById = new Map<string, Pending>();
+const activeRequestByConversation = new Map<string, string>();
+
+async function ensureGatewayWs(): Promise<WebSocket> {
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) return wsClient;
+  if (wsConnecting) return wsConnecting;
+
+  wsConnecting = (async () => {
+    // Make sure daemon is running and we know its port.
+    try {
+      await window.electronAPI?.engineGatewayStart?.();
+    } catch {
+      // best-effort
+    }
+    const st = await window.electronAPI?.engineGatewayStatus?.();
+    const port = typeof st?.port === 'number' ? st.port : 18789;
+    const url = `ws://127.0.0.1:${port}/ws`;
+
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const sock = new WebSocket(url);
+      const onOpen = () => {
+        cleanup();
+        resolve(sock);
+      };
+      const onError = (ev: Event) => {
+        cleanup();
+        // 浏览器 WS 的 error 事件拿不到太多细节，但至少带上 url/port 便于诊断
+        reject(new Error(`Gateway WebSocket connect failed (${url})`));
+      };
+      const cleanup = () => {
+        sock.removeEventListener('open', onOpen);
+        sock.removeEventListener('error', onError);
+      };
+      sock.addEventListener('open', onOpen);
+      sock.addEventListener('error', onError);
+    });
+
+    ws.addEventListener('message', (ev) => {
+      let payload: GatewayWsEvent | null = null;
+      try {
+        payload = JSON.parse(String((ev as MessageEvent).data ?? '')) as GatewayWsEvent;
+      } catch {
+        return;
+      }
+      if (!payload || typeof payload !== 'object') return;
+
+      if (payload.type === 'gateway:log') {
+        // eslint-disable-next-line no-console
+        console.debug('[gateway]', payload.entry?.level, payload.entry?.msg);
+        return;
+      }
+
+      if (payload.type === 'chat:delta') {
+        const p = pendingById.get(payload.requestId);
+        if (!p || p.conversationId !== payload.conversationId) return;
+        p.onDelta(String(payload.text ?? ''));
+        return;
+      }
+
+      if (payload.type === 'chat:final') {
+        const p = pendingById.get(payload.requestId);
+        if (!p || p.conversationId !== payload.conversationId) return;
+        pendingById.delete(payload.requestId);
+        p.onFinal(String(payload.message ?? ''));
+        return;
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      wsClient = null;
+      wsConnecting = null;
+    });
+
+    wsClient = ws;
+    wsConnecting = null;
+    return ws;
+  })();
+
+  try {
+    return await wsConnecting;
+  } catch (e) {
+    // 关键：第一次连接失败后必须清理 wsConnecting，否则后续永远复用“失败的 Promise”，导致一直报错。
+    wsClient = null;
+    wsConnecting = null;
+    throw e;
+  }
 }
 
 export const useChatStore = create<ChatState>()((set, get) => ({
@@ -233,32 +347,59 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       };
 
       const useBuiltinStream =
-        (interactionMode === 'ask' || interactionMode === 'plan') &&
-        typeof window.electronAPI?.engineSendMessageStream === 'function' &&
-        typeof window.electronAPI?.onEngineChatStream === 'function';
+        typeof WebSocket !== 'undefined' &&
+        typeof window.electronAPI?.engineGatewayStatus === 'function' &&
+        typeof window.electronAPI?.engineGatewayStart === 'function';
 
       if (useBuiltinStream) {
         cancelAssistantReveal();
         set({ streamingMessage: '' });
-        const unsub = window.electronAPI.onEngineChatStream((ev) => {
-          if (ev.conversationId !== sessionId) return;
-          set((s) => ({ streamingMessage: (s.streamingMessage ?? '') + ev.text }));
-        });
-        try {
-          const response = await window.electronAPI.engineSendMessageStream({
-            conversationId: sessionId,
-            userText: content,
-            ...(modelId ? { modelId } : {}),
-            mode: interactionMode === 'plan' ? 'plan' : 'ask',
-          });
-          const t1 = performance.now();
-          const replyText =
-            (typeof response?.message === 'string' && response.message) ||
-            `这是对"${content}"的回复（模拟）`;
-          finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'stream' });
-        } finally {
-          unsub();
+        const sendMeta = {
+          conversationId: sessionId,
+          mode: interactionMode,
+          modelId: modelId ?? null,
+          textLen: content.length,
+        };
+        // eslint-disable-next-line no-console
+        console.debug('[chat-debug] send(ws)', sendMeta);
+        const requestId = uuidv4();
+        const ws = await ensureGatewayWs();
+
+        // Cancel previous in-flight request for this conversation (best-effort).
+        const prevId = activeRequestByConversation.get(sessionId);
+        if (prevId) {
+          try {
+            ws.send(JSON.stringify({ type: 'chat:cancel', requestId: prevId }));
+          } catch {
+            // ignore
+          }
+          pendingById.delete(prevId);
         }
+        activeRequestByConversation.set(sessionId, requestId);
+
+        pendingById.set(requestId, {
+          conversationId: sessionId,
+          onDelta: (text) => {
+            set((s) => ({ streamingMessage: (s.streamingMessage ?? '') + text }));
+          },
+          onFinal: (full) => {
+            if (activeRequestByConversation.get(sessionId) === requestId) {
+              activeRequestByConversation.delete(sessionId);
+            }
+            const t1 = performance.now();
+            finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' });
+          },
+        });
+
+        const msg: GatewayWsSend = {
+          type: 'chat:send',
+          requestId,
+          conversationId: sessionId,
+          text: content,
+          mode: interactionMode,
+          ...(modelId ? { modelId } : {}),
+        };
+        ws.send(JSON.stringify(msg));
         return;
       }
 
@@ -278,6 +419,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       cancelAssistantReveal();
 
       set({ streamingMessage: '' });
+      // eslint-disable-next-line no-console
+      console.debug('[chat-debug] send(reveal)', {
+        conversationId: sessionId,
+        mode: interactionMode,
+        modelId: modelId ?? null,
+        textLen: content.length,
+        replyLen: replyText.length,
+      });
 
       let raf = 0;
       let stopped = false;

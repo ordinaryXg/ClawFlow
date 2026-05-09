@@ -35,15 +35,18 @@ const SettingsPage: FC = () => {
   const navigate = useNavigate();
 
   const {
-    version,
-    fetchVersion,
     status: gatewayStatus,
     isStarting,
     isStopping,
     error: gatewayError,
+    port: gatewayPort,
+    uptimeMs: gatewayUptimeMs,
+    logs: gatewayLogs,
     fetchStatus,
     startGateway,
     stopGateway,
+    restartGateway,
+    fetchLogs,
   } = useGatewayStore();
   const {
     theme,
@@ -87,7 +90,6 @@ const SettingsPage: FC = () => {
   }, [storeCliPath, storeTimeout]);
 
   useEffect(() => {
-    void fetchVersion();
     if (window.electronAPI?.validateCLI) {
       window.electronAPI
         .validateCLI()
@@ -108,7 +110,7 @@ const SettingsPage: FC = () => {
         setAppVersion('');
       }
     })();
-  }, [fetchVersion, t]);
+  }, [t]);
 
   const reloadBuiltinCatalog = useCallback(async () => {
     if (!window.electronAPI?.engineGetChatModels) {
@@ -157,6 +159,7 @@ const SettingsPage: FC = () => {
     if (activeSection !== 'integrations') return;
     void fetchStatus();
     void reloadConnectorsCount();
+    void fetchLogs(80);
   }, [activeSection, fetchStatus, reloadConnectorsCount]);
 
   useEffect(() => {
@@ -229,7 +232,6 @@ const SettingsPage: FC = () => {
       const ok = await window.electronAPI?.validateCLI?.();
       setPathCheck(ok ? 'ok' : 'fail');
       if (ok) {
-        void fetchVersion();
         (window as any).__cf_toast?.success?.(t('settings.pathCheckOk'), '');
       } else {
         (window as any).__cf_toast?.error?.(t('settings.pathCheckFail'), t('settings.pathInvalid'));
@@ -253,7 +255,6 @@ const SettingsPage: FC = () => {
   };
 
   const refreshSettingsData = () => {
-    void fetchVersion();
     void reloadBuiltinCatalog();
     void fetchStatus();
     void reloadConnectorsCount();
@@ -598,14 +599,14 @@ const SettingsPage: FC = () => {
                 <strong style={{ color: 'var(--text)' }}>{t('settings.openclawCliVersionTitle')}</strong>
               </div>
               <div className="cf-sub">
-                {cliAvailable === false ? t('settings.cliVersionNotInstalled') : version || t('settings.cliVersionChecking')}
+                {cliAvailable === false ? t('settings.cliVersionNotInstalled') : t('settings.cliVersionChecking')}
               </div>
               <div className="cf-help" style={{ marginTop: 6 }}>
                 {t('settings.openclawCliVersionHint')}
               </div>
             </div>
-            <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchVersion()}>
-              {t('settings.recheckCliVersion')}
+            <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchStatus()}>
+              {t('dashboard.refreshStatus')}
             </button>
           </div>
 
@@ -707,13 +708,13 @@ const SettingsPage: FC = () => {
         <div className="cf-divider" />
         <div className="cf-settingsIntegrationRow">
           {gatewayChip}
-          <button className="cf-btn cf-btnSmall" type="button" disabled={cliAvailable === false} onClick={() => void fetchStatus()}>
+          <button className="cf-btn cf-btnSmall" type="button" onClick={() => void fetchStatus()}>
             {t('dashboard.refreshStatus')}
           </button>
           <button
             className="cf-btn cf-btnSmall"
             type="button"
-            disabled={cliAvailable === false || isStarting}
+            disabled={isStarting}
             onClick={() => void handleStartGateway()}
           >
             {isStarting ? t('dashboard.starting') : t('dashboard.startGateway')}
@@ -721,20 +722,41 @@ const SettingsPage: FC = () => {
           <button
             className="cf-btn cf-btnSmall"
             type="button"
-            disabled={cliAvailable === false || isStopping || gatewayStatus !== 'running'}
+            disabled={isStopping || gatewayStatus !== 'running'}
             onClick={() => void handleStopGateway()}
           >
             {isStopping ? t('dashboard.stopping') : t('dashboard.stop')}
           </button>
+          <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" disabled={isStarting} onClick={() => void restartGateway()}>
+            {t('settings.gatewayRestart')}
+          </button>
         </div>
         {gatewayError ? <div className="cf-errorText" style={{ marginBottom: 8 }}>{gatewayError}</div> : null}
-        {cliAvailable === false ? <div className="cf-help" style={{ marginBottom: 8 }}>{t('settings.integrationsCliRequired')}</div> : null}
+        <div className="cf-help" style={{ marginBottom: 8 }}>
+          {t('settings.gatewayPort')}：{typeof gatewayPort === 'number' ? gatewayPort : '—'} · {t('settings.gatewayUptime')}：
+          {gatewayStatus === 'running' ? `${Math.round((gatewayUptimeMs ?? 0) / 1000)}s` : '—'}
+        </div>
         <div className="cf-help" style={{ marginBottom: 12 }}>
           {t('settings.connectorsCountHint', { count: connectorCount })}
         </div>
         <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void reloadConnectorsCount()}>
           {t('settings.refreshIntegrationStatus')}
         </button>
+        <button className="cf-btn cf-btnGhost" type="button" onClick={() => void fetchLogs(120)}>
+          {t('settings.gatewayViewLogs')}
+        </button>
+        {Array.isArray(gatewayLogs) && gatewayLogs.length ? (
+          <pre className="cf-codeBlock" style={{ marginTop: 10, maxHeight: 220, overflow: 'auto' }}>
+            {gatewayLogs
+              .slice(-80)
+              .map((l) => `[${new Date(l.ts).toLocaleTimeString()}] ${l.level}: ${l.msg}`)
+              .join('\n')}
+          </pre>
+        ) : (
+          <div className="cf-help" style={{ marginTop: 10 }}>
+            {t('settings.gatewayLogsEmpty')}
+          </div>
+        )}
         <div style={{ height: 12 }} />
         <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
           <button className="cf-btn cf-btnPrimary" type="button" onClick={() => navigate('/connectors')}>

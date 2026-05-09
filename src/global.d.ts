@@ -27,9 +27,11 @@ export interface IElectronAPI {
   engineGetConversations: () => Promise<any>;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
-  engineGatewayStatus: () => Promise<{ status: string; port: number }>;
+  engineGatewayStatus: () => Promise<{ status: string; port: number; uptimeMs?: number }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
   engineGatewayStop: () => Promise<{ success: boolean }>;
+  engineGatewayRestart: (params?: { port?: number }) => Promise<{ success: boolean }>;
+  engineGatewayGetLogs: (params?: { limit?: number }) => Promise<{ logs: Array<{ ts: number; level: string; msg: string }> }>;
   engineGetChatModels: () => Promise<{
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
@@ -38,7 +40,7 @@ export interface IElectronAPI {
     conversationId: string;
     userText: string;
     modelId?: string;
-    mode?: 'ask' | 'plan';
+    mode?: 'ask' | 'plan' | 'multitask';
   }) => Promise<{ success: boolean; message: string }>;
   onEngineChatStream: (
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
