@@ -1,298 +1,267 @@
-# ClawFlow 产品策划书（PRD v0.2 / AI 可读）
+# ClawFlow 产品需求文档（PRD）
 
-## 元信息
-
-- **文档角色**：定义“做什么/为什么做/做到什么算成”，为设计与研发提供单一事实来源
-- **仓库根目录占位**：`${REPO_ROOT}`
-- **关联文档**
-  - 入口索引：`AICodeFile/00_INDEX.md`
-  - 项目总览：`AICodeFile/01_PROJECT_OVERVIEW.md`
-  - 路线图：`AICodeFile/04_ROADMAP.md`
-  - 架构说明：`AICodeFile/02_ARCHITECTURE.md`
-  - 任务清单：`AICodeFile/06_TASKS.md`
-
-## TL;DR
-
-- ClawFlow 是一个 **Electron 桌面端工作助手**，通过 **OpenClaw CLI/Gateway** 提供对话、技能与连接器能力，并用 **安全的 Preload API + IPC** 暴露给 React UI。
-- 第一阶段只追求 **核心闭环可用**：对话（含流式）+ 技能管理 + 连接器管理 + Gateway 管理 + 基础设置（主题/语言/引擎配置）。
+> **文档角色**：从「构建脚本 → 主进程启动 → IPC 能力面 → 用户价值」反向梳理后的产品说明，与实现细节解耦、与代码现状对齐。  
+> **关联文档**：`01_PROJECT_OVERVIEW.md`（总览）、`02_ARCHITECTURE.md`（分层与文件索引）、`04_ROADMAP.md`（里程碑）、`06_TASKS.md`（任务清单）。
 
 ---
 
-## 1. 背景与机会
+## 1. 产品概述
 
-### 1.1 背景
+### 1.1 定位
 
-- 许多“对话式工作助手”在桌面端的落地，常见问题是：
-  - 工具/数据源接入成本高（API、数据库、第三方服务连接繁琐）
-  - 能力不可复用（每个用户一套配置、难以迁移/分享）
-  - 安全边界不清晰（把系统权限直接暴露给前端/脚本）
+**ClawFlow** 是一款基于 **Electron** 的桌面应用：在本地工作区（Workspace）内提供 **AI 对话**、**技能（Skills）**、**连接器（Connectors）** 与 **全局设置**。底层能力由 **ClawFlow 内置引擎（ClawFlowEngine）** 与 **内置 Gateway 守护进程（GatewayDaemon）** 提供。**本产品不依赖、不要求安装任何 OpenClaw CLI**（无外置 `openclaw` 可执行文件作为交付前提）。
 
-### 1.2 机会
+产品形态对标「桌面协作/对话类应用」的体验目标（如 WorkBuddy 类场景），**不强制复刻**任何既有产品的 UI。
 
-- OpenClaw 提供技能、连接器、Gateway 等基础能力；ClawFlow 提供一个“可视化/可管理”的桌面体验，把能力组织成可用产品。
-- 参考 WorkBuddy 的模块形态，但 **不要求 UI 复刻**，强调可维护、可扩展、可配置与安全默认。
+### 1.2 技术形态（一句话）
+
+**Main（Node/Electron）+ Preload（安全桥）+ Renderer（React + Ant Design + Zustand）**，Renderer 仅通过 `window.electronAPI` 调用主进程 IPC；敏感与文件系统操作集中在 Main。
+
+### 1.3 核心价值主张
+
+| 能力 | 用户价值 |
+|------|----------|
+| 多工作区 | 按项目/目录隔离数据与上下文，支持最近列表与切换 |
+| 对话与流式输出 | 低延迟阅读体验；会话持久化在工作区内 |
+| 模型与鉴权 | 多厂商（DeepSeek / OpenAI / Anthropic）配置与连接测试 |
+| 技能与连接器 | 扩展能力与外部系统集成（由主进程内置逻辑与 IPC 提供） |
+| 本地 Gateway | 内置 HTTP/WebSocket 服务，支撑实时通道与进阶集成 |
 
 ---
 
-## 2. 目标用户与使用场景
+## 2. 目标用户与典型场景
 
 ### 2.1 目标用户
 
-- **个人用户（主）**：开发者、运营、产品、研究人员等知识工作者，希望把本地/网络工具接入到对话工作流。
-- **团队用户（次）**：希望复用“技能+连接器配置”，减少重复配置成本。
+- 需要在 **本地文件夹** 内与 AI 协作的开发者/知识工作者  
+- 希望 **开箱即用**、无需单独安装命令行工具的桌面用户  
+- 需要 **中英文界面** 的用户  
 
-### 2.2 核心场景（Top 5）
+### 2.2 典型场景（用户故事）
 
-- **S1 对话执行**：在 Chat 中提问/指令 → 看到流式回复 → 可复制/回溯历史。
-- **S2 技能管理**：浏览技能 → 安装/卸载 → 启用/禁用 → 在对话中可用。
-- **S3 连接器管理**：添加连接器配置 → 测试连接 → 在技能中使用。
-- **S4 Gateway 管理**：查看运行状态 → 一键启动/停止 → 状态可刷新且一致。
-- **S5 设置**：切换主题与语言；配置 OpenClaw 路径/超时/日志级别。
-
----
-
-## 3. 问题定义（Problem Statement）
-
-用户需要一个桌面端工具，能够：
-
-- 以对话为入口驱动工作流
-- 可视化管理与复用技能/连接器
-- 对 Gateway 与引擎依赖有明确状态反馈与可恢复路径
-- 在 Electron 安全边界内运行，默认不泄露敏感配置
+1. **切换工作区**：用户选择本地目录作为 Workspace，应用初始化 `.clawflow/` 元数据与模板，后续对话与配置归属该目录。  
+2. **日常对话**：用户在「对话」页发送消息，选择模式（如 ask/plan）与模型，查看流式回复与历史会话。  
+3. **管理技能**：在「技能」页浏览市场索引、安装/卸载/启用/禁用技能。  
+4. **管理连接器**：在「连接器」页维护外部服务连接并测试连通性。  
+5. **全局设置**：主题、语言、内置网关与模型鉴权等选项（持续演进）。  
+6. **打包运行**：用户安装桌面制品即可使用；不依赖用户本机预装 OpenClaw CLI。
 
 ---
 
-## 4. 产品目标与成功标准
+## 3. 从「脚本与启动链」反推的系统边界
 
-### 4.1 产品目标（阶段）
+本节按 **npm/Forge 脚本 → 主进程就绪顺序** 理解项目，便于与仓库实际行为对齐。
 
-- **M1（P0）核心闭环**：对话 + 技能 + 连接器 + Gateway 管理可用
-- **M2（P1）可配置与可维护**：设置页完善、错误/加载/空状态一致、稳定性提升
-- **M3（P2）质量保障**：测试与 CI、打包发布质量可控
+### 3.1 `package.json` 脚本映射的职责
 
-### 4.2 成功标准（可量化示例）
+| 脚本 | 命令 | 产品含义 |
+|------|------|----------|
+| `start` | `electron-forge start` | 开发态：Webpack 编译 Main/Renderer/Preload，启动 Electron，热更新/调试入口 |
+| `package` | `electron-forge package` | 产出可运行目录（含 asar 等），验证打包路径 |
+| `make` | `electron-forge make` | 生成各平台安装包/压缩包（Squirrel、ZIP、DEB、RPM 等） |
+| `publish` | `electron-forge publish` | 发布流水线入口（若启用） |
+| `lint` | `eslint --ext .ts,.tsx .` | 静态质量门禁 |
+| `test` | `jest` | 单元/组件测试入口 |
 
-- **首次使用成功率**：新用户在 5 分钟内完成：
-  - 打开应用 → 看到 Gateway 状态 → 完成一次对话发送并得到回复（即使是 mock/降级也有明确提示）
-- **可恢复性**：引擎不可用/连接失败时，用户能在 UI 上看到“原因 + 下一步操作”而不是无响应
-- **可移植性**：配置/路径不硬编码（`${REPO_ROOT}`、可配置 OpenClaw path）
+**推论**：交付链路以 **Electron Forge + Webpack** 为中心；质量以 **ESLint + Jest** 为基线，CI 可在此基础上扩展（见路线图 M3）。
 
----
+### 3.2 `forge.config.ts` 对产品的约束
 
-## 5. 范围定义（Scope）
+- **Webpack 插件**：`mainConfig` 入口为 `src/index.ts`；Renderer 入口为 `src/renderer.tsx`，HTML 为 `src/index.html`，Preload 为 `src/preload.ts`。  
+- **CSP（开发）**：允许 `connect-src` 到本机 `127.0.0.1` 的 `ws:` / `http:`，以支持 **GatewayDaemon** 与本地服务调试。  
+- **Fuses**：打包期收紧 Electron 安全选项（如仅从 asar 加载、Cookie 加密等），影响**发布版**行为而非功能清单本身。  
+- **其他打包钩子**：以仓库当前 `forge.config.ts` 为准；**产品能力不依赖**向外复制独立 OpenClaw CLI 包。若历史中曾存在复制 `openclaw-cli` 的钩子，视为工程遗留，可与「零 CLI」目标一并清理。
 
-### 5.1 P0（必须）
+### 3.3 主进程 `app.whenReady()` 启动序列（逻辑顺序）
 
-- **Chat**
-  - 会话列表：新建/切换/删除
-  - 消息列表：Markdown + 代码高亮 + 复制
-  - 流式响应展示（打字机/增量更新）
-  - 基础持久化策略明确（如 local storage 或后续替换）
-- **Skills**
-  - 技能列表：搜索、筛选（已安装/未安装）
-  - 安装/卸载、启用/禁用
-  - 操作反馈（loading/success/fail）
-- **Connectors**
-  - 列表：搜索、查看详情
-  - 添加/编辑/删除
-  - 测试连接
-  - 敏感字段脱敏展示（如 token/key/password）
-- **Dashboard**
-  - OpenClaw 版本
-  - Gateway 状态与启停
-  - 快捷入口到 Chat/Skills/Connectors/Settings
+以下顺序描述 **Main** 在就绪后做了什么，对应「产品如何立即可用」：
 
-### 5.2 P1（重要）
+1. **读取 Workspace 注册表**（`userData` 下 `cf.workspace.v1.json`），必要时执行一次性迁移标记。  
+2. **确定当前激活工作区路径**：注册表中的 `active` 或默认路径（`userData/Default Workspace`）。  
+3. **执行应用数据迁移/清理**（例如历史上工作区内 `.clawflow/openclaw` 与全局目录的合并策略——**目录名可能仍含 `openclaw` 字样，仅为兼容旧路径，不代表安装 CLI**）。  
+4. **`ensureWorkspaceInitialized(active)`**：保证根目录存在、`workspace.json`、`.clawflow` 结构及代理角色模板等。  
+5. **注册 IPC**：`workspace:*`、`engine:*` / `engineGateway:*` / `engineAuth:*`（ClawFlow 内置引擎与网关）、`gateway` 相关、`skillMarket:getIndex`、`app:*` 等；部分通道名可能仍带 `openclaw:` 前缀，**语义上属内置实现，不表示调用外置 CLI**。  
+6. **`registerClawFlowIPC`**：绑定 **ClawFlowEngine**（会话存储、Provider 路由、工具运行时、可选 Web Search 配置）。  
+7. **`GatewayDaemon.start()`（尽力而为）**：内置 HTTP/WebSocket 网关常驻，失败则记录警告。  
+8. **创建主窗口**：加载 Webpack 提供的 Renderer URL，Windows 下自定义标题栏与菜单行为。  
 
-- **Settings**
-  - 主题（light/dark）
-  - 语言（zh/en）
-  - OpenClaw 可执行路径（或检测提示）
-  - 命令超时、日志级别等
-- **稳定性与一致性**
-  - Gateway 启停后强制刷新状态，以 `openclaw gateway status` 为事实来源
-  - 统一错误/空状态/加载态组件与文案
+**推论**：产品是 **「工作区先行」** 的——未正确初始化工作区时，对话与文件浏览等能力会受影响；切换工作区时会 **同步引擎根目录**、通知 Renderer，并在适当时机 **best-effort** 协调网关相关资源，避免跨工作区状态干扰。
 
-### 5.3 P2（建议）
+### 3.4 Preload 能力面（对 PRD 的「对外接口」含义）
 
-- 测试：关键模块单测/集成测试
-- CI：lint + typecheck + build
-- 发布：make 产物验证、可选签名与自动更新
+Renderer 仅能通过 **`window.electronAPI`** 调用下列能力类别（实现上为 `ipcRenderer.invoke` / 事件订阅）：
+
+- **应用**：版本号、界面语言切换。  
+- **窗口**：最小化/最大化/关闭、重载、DevTools、编辑快捷键代理。  
+- **内置网关（主产品路径）**：`engineGateway:*` 与 GatewayDaemon 对应能力——状态、启停、日志等（以当前 preload 暴露为准）。  
+- **ClawFlow 引擎**：会话 CRUD、发送消息、流式事件订阅、模型列表、鉴权配置与连接测试。  
+- **技能 / 连接器**：列表与增删改及安装类操作（走主进程内置逻辑；IPC 名可能与历史命名并存）。  
+- **技能市场**：拉取远端/缓存索引（`skillMarket:getIndex`）。  
+- **工作区**：当前路径、最近列表、选择文件夹、目录列表、文件预览、在资源管理器中显示、创建目录、写入文本、重命名、删除、变更日志读写等。  
+- **剪贴板**：写文本。  
+
+**推论**：PRD 中的「功能模块」应以 **Preload 暴露集合** 与 **页面路由** 为验收锚点，避免文档描述 Main 私有逻辑而 UI 无法触达。
 
 ---
 
-## 6. 用户故事（User Stories）与验收（AC）
+## 4. 功能需求
 
-> 写法：作为【某类用户】，我想要【能力】，以便【收益】。每条至少 2-4 条验收标准。
+### 4.1 信息架构（页面）
 
-### US-1 对话：发送与回复
+| 路由 | 模块 | 说明 |
+|------|------|------|
+| `/chat` | 对话 | 默认首页；会话列表、输入区、流式展示、与工作区上下文关联 |
+| `/skills` | 技能 | 技能市场索引、安装与启用状态管理 |
+| `/connectors` | 连接器 | 连接器配置、测试与生命周期管理 |
+| `/settings` | 全局设置 | 语言、主题、内置网关、模型鉴权等（持续迭代） |
 
-- **故事**：作为用户，我想发送消息并看到流式回复，以便高效对话。
-- **验收**
-  - 输入框支持 Enter 发送、Shift+Enter 换行
-  - 发送后消息立即出现在列表中
-  - 回复以流式方式更新展示（可中途结束或至少能正常落盘）
-  - 失败时显示错误提示与重试入口（如按钮/再次发送）
+系统菜单「视图」可提供与上述路由一致的导航（主进程向 Renderer 发送 `app:navigate`）。
 
-### US-2 会话：管理历史
+### 4.2 工作区（Workspace）
 
-- **故事**：作为用户，我想管理会话，以便组织不同主题。
-- **验收**
-  - 可新建会话、切换会话、删除会话
-  - 切换会话后消息列表更新正确
-  - 重启应用后会话仍可恢复（或给出明确“未启用持久化”的提示）
+**必须**
 
-### US-3 技能：安装与启用
+- 支持选择本地文件夹、列出最近工作区、切换当前工作区。  
+- 切换后 Renderer 收到变更事件；主进程在切换后 **初始化** 目标工作区文件布局。  
+- 在工作区根下维护 **`.clawflow/`**：元数据、会话存储路径、变更日志；应用级共享数据（如鉴权）可位于 `userData` 下 `.clawflow/`（路径命名可能保留历史片段，**不表示依赖 CLI**）。  
 
-- **故事**：作为用户，我想安装/启用技能，以便扩展能力。
-- **验收**
-  - 能看到技能列表与基本信息
-  - 安装/卸载操作有 loading 与结果提示
-  - 未安装时“启用开关”不可用且有解释
+**应当**
 
-### US-4 连接器：配置与测试
+- 提供目录浏览、文本文件预览（含大小/二进制限制）、在系统文件管理器中定位。  
+- 提供受控的创建目录、写入文本、重命名、删除（路径限制在工作区内）。  
 
-- **故事**：作为用户，我想配置连接器并测试连接，以便技能可用。
-- **验收**
-  - 可新增/编辑/删除连接器
-  - 测试连接返回成功/失败并给出原因
-  - 敏感字段默认脱敏展示
+### 4.3 对话（内置 ClawFlowEngine）
 
-### US-5 Gateway：状态与启停
+**必须**
 
-- **故事**：作为用户，我想看到 Gateway 状态并启停，以便系统可用。
-- **验收**
-  - 状态显示：running/stopped/unknown
-  - 启停按钮有 loading，结束后自动刷新状态
-  - OpenClaw 不可用时显示“缺少依赖/找不到命令”的指引
+- 会话列表的持久化与删除；消息发送与历史展示。  
+- **Ask 模式**下支持流式增量展示（IPC 事件推送 delta）。  
+- 模型列表按已配置鉴权/可用性标注；支持多 Provider 路由。  
 
-### US-6 设置：主题与语言
+**应当**
 
-- **故事**：作为用户，我想切换主题和语言，以便符合习惯。
-- **验收**
-  - 主题切换立即生效且可持久化
-  - 语言切换立即生效且可持久化
-  - 关键页面文案覆盖完整
+- **Plan / Multitask** 等模式与工具运行时协同（多轮工具调用路径以引擎实现为准）。  
+- 对话相关内容可写入工作区级 **变更日志**（便于用户回顾「本轮做了什么」）。  
 
----
+### 4.4 鉴权与模型
 
-## 7. 信息架构（IA）与导航
+**必须**
 
-- **左侧导航**（建议固定）
-  - Dashboard
-  - Chat
-  - Skills
-  - Connectors
-  - Settings
+- 支持为各 Provider 维护多个 Profile（标签、环境类型元数据等）及 Active Profile。  
+- 支持「测试连接」并返回可读错误信息。  
+- Token 等敏感信息 **不** 暴露给 Renderer；使用主进程安全存储（如 `safeStorage` 路径下的存储抽象）。  
 
-### 7.1 可视化原型（Single Source of Truth）
+### 4.5 技能与连接器
 
-- **HTML 原型入口**：`${REPO_ROOT}/AICodeFile/prototype/index.html`
-- **覆盖范围**：主页面（Dashboard/Chat/Skills/Connectors/Settings）+ 关键弹窗/抽屉 + 空/加载/错误态 + Toast
-- **使用原则**：在 UI 重构与实现阶段，页面结构/组件样式/状态文案以 `AICodeFile/prototype/` 为准；PRD 负责定义“做什么/为什么做/做到什么算成”，原型负责定义“长什么样/怎么交互”。
+**必须**
 
-### 7.2 视觉与组件规范（极简深色主题）
+- 技能：查询列表、安装/卸载、启用/禁用；可拉取技能市场索引。  
+- 连接器：列表、增删改、连接测试。  
 
-- **主题色**：灰 + 暗绿 + 暗金（低干扰、强调关键动作与状态）
-- **颜色 Token（建议）**
-  - 背景：`#0F1113`（应用底色）、`#1A1D21`（侧栏/分区）、`#2A2F36`（卡片/浮层）
-  - 文本：主文 `#E6E9ED`，次文 `#A7B0B8`，弱化 `#6E7681`
-  - 主色（暗绿）：`#1E5B45`（主按钮/高亮），hover `#237055`
-  - 强调（暗金）：`#8A6A2A`（状态/提示），hover `#9B7A33`
-  - 危险：`#C24B4B`（仅用于错误与删除确认）
-- **形态**
-  - 圆角：8–10px；分割线：1px `#2F353D`
-  - 卡片化分区：信息块统一卡片容器，避免“满屏表格”
-- **核心组件（P0/P1）**
-  - Button（Primary/Secondary/Ghost/Danger）
-  - Card / Banner
-  - Status Chip：Running / Stopped / Unknown
-  - Field：Input/Select/Textarea + 校验错误文案
-  - Drawer（连接器新增/编辑）
-  - Modal（删除确认）
-  - Toast（success/error）
-  - Empty / Loading Skeleton / Error（分层 + 下一步）
+**说明**：能力由 **主进程内置实现** 完成；PRD 要求 **UI 与管理闭环可用**，错误可感知、可恢复。
+
+### 4.6 Gateway
+
+**唯一产品语义**：由 **GatewayDaemon**（内置 HTTP + WebSocket）及 **`engineGateway:*` IPC** 提供的本地网关服务；用于状态展示、启停、实时消息通道等。
+
+**必须**
+
+- 用户能感知网关是否在监听、端口与基本状态；支持启动/停止/重启（以当前 IPC 为准）。  
+- 停止网关时不应无声拖垮对话；应有日志或提示辅助排障。  
+
+**不应**再要求用户理解或安装独立的「OpenClaw CLI Gateway」作为使用前提。
+
+### 4.7 国际化与主题
+
+**必须**
+
+- 中文 / 英文界面可切换，且与主进程菜单标签同步（若适用）。  
+- 明/暗主题与 Ant Design 主题令牌一致（见 `settingsStore` 与 `getAntdTheme`）。  
+
+### 4.8 Web 搜索（可选工具能力）
+
+- 引擎可配置 **Web Search**（环境变量与启动配置）：Provider（如 `auto` / `brave` / `duckduckgo`）、Brave API Key、总开关 `CLAWFLOW_WEB_SEARCH_DISABLED`。  
+- 对用户表现为「在支持的场景下模型可引用检索」；具体触发条件以 `tool-runtime` / 模式策略为准。  
 
 ---
 
-## 8. 关键流程（Flow）
+## 5. 非功能需求
 
-### 8.1 Renderer → Preload → Main → OpenClaw（通用调用链）
-
-- Renderer 调用 `window.electronAPI.`*
-- Preload 用 `ipcRenderer.invoke(channel, payload)`
-- Main 用 `ipcMain.handle(channel, handler)` 并在 handler 内调用 OpenClaw CLI/Gateway
-- 返回 `{ ok, data, error }`（建议统一返回结构，避免前端散落 try/catch）
-
-### 8.2 错误提示策略（原则）
-
-- **错误要分层**：依赖缺失、网络/连接、参数校验、权限/安全、未知异常
-- **用户可行动**：每个错误提示至少包含一个“下一步”
+| 类别 | 要求 |
+|------|------|
+| 安全 | `contextIsolation: true`，禁用 Renderer 直接 Node；路径操作限制在工作区根内解析 |
+| 隐私 | 鉴权与密钥仅存主进程；日志避免打印完整 Token |
+| 性能 | 流式输出低延迟；大文件预览需截断与二进制检测 |
+| 兼容性 | Windows / macOS / Linux 打包配置已备；实际验证以 `make` 产物为准 |
+| 可维护 | TypeScript 严格模式、ESLint；关键模块具备单测（持续补充） |
 
 ---
 
-## 9. 数据与配置（概念层）
+## 6. 运行环境与配置
 
-- **会话数据**
-  - `Conversation { id, title, createdAt, updatedAt }`
-  - `Message { id, role, content, createdAt, meta? }`
-- **技能数据**
-  - `Skill { name, version, description, installed, enabled }`
-- **连接器数据**
-  - `Connector { id, name, type, config, status? }`
-- **设置**
-  - `theme, language, openclawPath, timeoutMs, logLevel, autoStartGateway...`
+### 6.1 必备/强依赖
 
----
+- **Node/Electron 运行时**：由 Electron 打包提供。  
+- **各模型 Provider 的可用凭证**（经应用内配置或环境变量）：用于内置引擎调用云端 API。  
+- **不要求**：系统 PATH 中的 `openclaw`、独立 OpenClaw CLI 安装包或 vendor 捆绑 CLI。  
 
-## 10. 非功能性需求（NFR）
+### 6.2 常见环境变量（非穷尽）
 
-- **安全**
-  - Renderer 不直接拥有 Node 能力
-  - 仅通过 preload 暴露最小 API
-  - 敏感配置默认脱敏展示
-- **可用性**
-  - 关键操作必须有 loading/错误/空状态
-  - 避免“点击无反应”
-- **一致性**
-  - Gateway 状态以 CLI 查询为事实来源
-- **可维护性**
-  - 文档与代码的路径约定用 `${REPO_ROOT}`
+| 变量 | 作用 |
+|------|------|
+| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 各 Provider 默认密钥（可被鉴权存储覆盖） |
+| `CLAWFLOW_WEB_SEARCH_PROVIDER` | Web 搜索 provider 选择 |
+| `CLAWFLOW_WEB_SEARCH_DISABLED` | `1` 时关闭 Web 搜索 |
+| `BRAVE_API_KEY` | Brave 搜索 API |
 
 ---
 
-## 11. 埋点与指标（可选，后续补）
+## 7. 发布与交付
 
-- 首次运行成功率、对话发送成功率、技能安装成功率、连接器测试成功率
-- 关键错误类型分布（缺少 openclaw / 超时 / 配置错误 / 未知）
-
----
-
-## 12. 风险与应对
-
-- **R1 OpenClaw 不可用**
-  - 应对：启动时检测并给出安装/路径配置入口；关键页面降级提示
-- **R2 状态不一致（启停与 UI 不同步）**
-  - 应对：启停后强制刷新；以 status 命令为准；避免只靠内存句柄
-- **R3 配置泄露**
-  - 应对：脱敏展示；导出/日志避免输出敏感字段
+- **开发**：`npm run start`。  
+- **制品**：`npm run package` / `npm run make`；注意 `forge.config.ts` 中 `outDir` 带时间戳，避免 Windows 文件占用导致打包失败。  
+- **交付前提**：干净环境安装制品后，**不依赖**用户额外安装 OpenClaw CLI 即可使用核心能力（对话、设置、内置网关等）。  
 
 ---
 
-## 13. 里程碑与交付物
+## 8. 里程碑与验收对齐
 
-- 里程碑见：`AICodeFile/04_ROADMAP.md`
-- 任务拆分见：`AICodeFile/06_TASKS.md`
+与 `04_ROADMAP.md` 一致摘要：
+
+- **M0**：开发启动、主界面与 IPC 正常。  
+- **M1（P0）**：对话闭环、技能/连接器管理、Gateway 状态与启停可用。  
+- **M2（P1）**：设置与稳定性、错误提示与状态一致性。  
+- **M3（P2）**：测试与 CI。  
+- **M4**：签名与自动更新等发布增强（可选）。  
+
+本 PRD 的模块级需求与 **M1/M2** 对齐；细节验收以 `06_TASKS.md` 中勾选项为准。
 
 ---
 
-## 14. 验收清单（发布前最小集合）
+## 9. 明确非目标（当前版本）
 
-- Chat：发送、流式回复、会话管理、错误提示可恢复
-- Skills：安装/卸载/启用/禁用可用且有反馈
-- Connectors：增删改、测试连接、敏感字段脱敏
-- Dashboard：版本与 Gateway 状态/启停可用
-- Settings：主题/语言可切换并持久化
-- 关键依赖缺失时提示清晰（openclaw 找不到/不可执行）
-- Gateway 启停后状态刷新一致（以 status 命令为准）
+- 不复刻任何第三方产品的像素级 UI。  
+- 不在 Renderer 暴露任意文件系统读写或 shell 执行。  
+- 不承诺云端账号体系（除非后续单独立项）。  
+- **不将 OpenClaw CLI 作为产品依赖或用户安装步骤**。  
 
+---
+
+## 10. 术语表
+
+| 术语 | 含义 |
+|------|------|
+| Workspace | 用户选择的本地根目录；其下 `.clawflow/` 存元数据与数据文件 |
+| ClawFlowEngine | 应用内置对话引擎（Provider 路由、会话存储、工具运行时） |
+| GatewayDaemon | 应用内置 HTTP/WebSocket 网关进程 |
+| IPC | Electron 主进程与渲染进程间通信 |
+| `.clawflow/openclaw`（若出现） | 可能仅为**磁盘路径/迁移兼容**命名；**不表示**已安装 OpenClaw CLI |
+
+---
+
+## 11. 修订记录
+
+| 日期 | 变更说明 |
+|------|----------|
+| 2026-05-09 | 初版：基于 `package.json`、`forge.config.ts`、`src/index.ts` 启动链、Preload 能力面与核心模块反向梳理 |
+| 2026-05-09 | 修订：明确 **已移除 OpenClaw CLI 依赖**；网关与技能/连接器以内置实现为准；目录名兼容说明 |

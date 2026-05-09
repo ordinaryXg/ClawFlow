@@ -25,7 +25,7 @@
 
 ### 1) 架构与技术边界
 
-- `02_ARCHITECTURE.md`：当前架构说明（Main/Preload/Renderer + OpenClaw + IPC）
+- `02_ARCHITECTURE.md`：当前架构说明（Main/Preload/Renderer + 内置引擎/网关 + IPC）
 
 ### 2) 计划与执行
 

@@ -99,7 +99,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
 
   const onNewSessionInWorkspace = async (folderPath: string) => {
     await setWorkspace(folderPath);
-    createConversation();
+    await createConversation();
     navigate('/chat');
   };
 

@@ -245,7 +245,7 @@ function registerWorkspaceIPC(): void {
     BrowserWindow.getAllWindows().forEach((w) =>
       w.webContents.send('workspace:changed', { path: res.newActivePath })
     );
-    void workspaceService.ensureWorkspaceInitialized(res.newActivePath);
+    await workspaceService.ensureWorkspaceInitialized(res.newActivePath);
     void getGlobalOpenClawCliEngine()
       .stopGateway()
       .catch((e) => console.warn('[workspace] stopGateway after remove (best-effort) failed:', e?.message || e));
@@ -254,13 +254,17 @@ function registerWorkspaceIPC(): void {
 
   ipcMain.handle('workspace:setActive', async (_event, nextPath: string) => {
     const resolved = path.resolve(String(nextPath || ''));
-    // Fast path: switch active workspace first (UI can update immediately).
-    // Heavy operations (gateway stop, fs init) run best-effort in background.
     workspaceService.setActiveWorkspace(resolved);
     setActiveWorkspaceRoot(resolved);
     syncClawFlowEngineWorkspaceRoot(resolved);
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('workspace:changed', { path: resolved }));
-    void workspaceService.ensureWorkspaceInitialized(resolved);
+    // 等待初始化完成（含根目录角色模板），避免 UI 已切换但文件尚未写入
+    try {
+      await workspaceService.ensureWorkspaceInitialized(resolved);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace] ensureWorkspaceInitialized failed:', msg);
+    }
     void getGlobalOpenClawCliEngine()
       .stopGateway()
       .catch((e) => console.warn('[workspace] stopGateway (best-effort) failed:', e?.message || e));
@@ -503,7 +507,19 @@ app.whenReady().then(async () => {
 
   registerWorkspaceIPC();
   registerOpenClawIPC();
-  registerClawFlowIPC({ workspaceRoot: active, verbose: true });
+  const webSearchProvider = String(process.env.CLAWFLOW_WEB_SEARCH_PROVIDER ?? 'auto').toLowerCase();
+  registerClawFlowIPC({
+    workspaceRoot: active,
+    verbose: true,
+    webSearch: {
+      enabled: process.env.CLAWFLOW_WEB_SEARCH_DISABLED === '1' ? false : undefined,
+      provider:
+        webSearchProvider === 'brave' || webSearchProvider === 'duckduckgo'
+          ? webSearchProvider
+          : 'auto',
+      braveApiKey: process.env.BRAVE_API_KEY,
+    },
+  });
   registerGatewayIPC();
   // Phase 3: keep internal GatewayDaemon resident (best-effort)
   try {

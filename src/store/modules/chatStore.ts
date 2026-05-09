@@ -82,7 +82,7 @@ export interface ChatState {
   // Actions
   fetchConversations: () => Promise<void>;
   sendMessage: (content: string, modelId?: string | null) => Promise<void>;
-  createConversation: () => void;
+  createConversation: () => Promise<void>;
   switchConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   clearMessages: () => void;
@@ -91,6 +91,17 @@ export interface ChatState {
 }
 
 let revealCleanup: (() => void) | null = null;
+
+/** 尚未被 engine 列表确认的本地新建会话 id → 规范化工作区路径，避免 fetch 竞态覆盖，且避免跨工作区串会话 */
+const optimisticConversationWorkspace = new Map<string, string>();
+
+function normWorkspacePath(p: string | null | undefined): string {
+  return String(p ?? '')
+    .trim()
+    .replace(/[/\\]+$/, '')
+    .replace(/\\/g, '/')
+    .toLowerCase();
+}
 
 function cancelAssistantReveal() {
   revealCleanup?.();
@@ -241,13 +252,37 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
 
       const fromRes = rawList.map(normalizeConversation).filter(Boolean) as Conversation[];
+      const current = get().conversations;
+
+      let activeWs = '';
+      try {
+        const a = await window.electronAPI?.workspaceGetActive?.();
+        activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
+      } catch {
+        activeWs = '';
+      }
+
+      // 合并：服务端列表 + 同一工作区下尚未出现在本次拉取中的乐观新建会话
+      const mergedMap = new Map<string, Conversation>();
+      for (const c of fromRes) mergedMap.set(c.id, c);
+      for (const c of current) {
+        if (mergedMap.has(c.id)) continue;
+        if (optimisticConversationWorkspace.get(c.id) === activeWs) {
+          mergedMap.set(c.id, c);
+        }
+      }
+      const merged = Array.from(mergedMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+
+      for (const c of fromRes) {
+        optimisticConversationWorkspace.delete(c.id);
+      }
 
       const prev = get().activeConversationId;
-      const stillValid = Boolean(prev && fromRes.some((c) => c.id === prev));
-      const activeId = stillValid ? prev : (fromRes[0]?.id ?? null);
-      const active = activeId ? fromRes.find((c) => c.id === activeId) : null;
+      const stillValid = Boolean(prev && merged.some((c) => c.id === prev));
+      const activeId = stillValid ? prev : (merged[0]?.id ?? null);
+      const active = activeId ? merged.find((c) => c.id === activeId) : null;
       set({
-        conversations: fromRes,
+        conversations: merged,
         activeConversationId: activeId,
         messages: active?.messages ?? [],
         error: null,
@@ -272,13 +307,23 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         updatedAt: now,
       };
       conversationId = newConversation.id;
+      try {
+        const a = await window.electronAPI?.workspaceGetActive?.();
+        optimisticConversationWorkspace.set(newConversation.id, normWorkspacePath(typeof a?.path === 'string' ? a.path : ''));
+      } catch {
+        optimisticConversationWorkspace.set(newConversation.id, '');
+      }
       set((state) => ({
         conversations: [...state.conversations, newConversation],
         activeConversationId: conversationId,
         messages: [],
         error: null,
       }));
-      void window.electronAPI?.engineUpsertConversation?.(newConversation);
+      try {
+        await window.electronAPI?.engineUpsertConversation?.(newConversation);
+      } catch {
+        /* best-effort */
+      }
     }
 
     if (!conversationId) {
@@ -513,7 +558,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  createConversation: () => {
+  createConversation: async () => {
     cancelAssistantReveal();
     const newConversation: Conversation = {
       id: uuidv4(),
@@ -523,6 +568,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       updatedAt: Date.now(),
     };
 
+    try {
+      const a = await window.electronAPI?.workspaceGetActive?.();
+      optimisticConversationWorkspace.set(newConversation.id, normWorkspacePath(typeof a?.path === 'string' ? a.path : ''));
+    } catch {
+      optimisticConversationWorkspace.set(newConversation.id, '');
+    }
     set((state) => ({
       conversations: [...state.conversations, newConversation],
       activeConversationId: newConversation.id,
@@ -531,7 +582,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       error: null,
     }));
 
-    void window.electronAPI?.engineUpsertConversation?.(newConversation);
+    try {
+      await window.electronAPI?.engineUpsertConversation?.(newConversation);
+    } catch {
+      /* best-effort：乐观合并仍可在 fetch 前保留侧栏展示 */
+    }
   },
 
   switchConversation: (id: string) => {
@@ -551,6 +606,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   deleteConversation: (id: string) => {
     cancelAssistantReveal();
+    optimisticConversationWorkspace.delete(id);
     set((state) => {
       const updatedConversations = state.conversations.filter((conv) => conv.id !== id);
       const newActiveId =

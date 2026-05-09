@@ -1,6 +1,6 @@
 import type { ToolSchema, ToolCall } from './providers/types';
 import * as workspaceExplorer from '../workspace-explorer';
-import type { ClawFlowEngineConfig } from './clawflow-engine';
+import { runClawFlowWebSearch, WEB_SEARCH_MAX_COUNT, type ResolvedClawFlowWebSearch } from './web-search';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -10,7 +10,7 @@ import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary 
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
-  config?: ClawFlowEngineConfig;
+  config?: { verbose?: boolean; webSearch?: ResolvedClawFlowWebSearch };
   /** Optional stream hook for tool progress (delta text) */
   onDelta?: (text: string) => void;
   /** Optional abort signal to cancel tool execution */
@@ -31,7 +31,7 @@ const execFileAsync = promisify(execFile);
 type JsonSchema =
   | {
       type: 'object';
-      properties: Record<string, { type: 'string' | 'number' | 'boolean' }>;
+      properties: Record<string, { type: string; items?: { type: string }; minimum?: number; maximum?: number }>;
       required: string[];
       additionalProperties: false;
     }
@@ -44,7 +44,7 @@ function validateStrictArgs(schema: JsonSchema | undefined, args: any): string[]
 
   const s = schema as {
     type: 'object';
-    properties: Record<string, { type: 'string' | 'number' | 'boolean' }>;
+    properties: Record<string, { type: string; items?: { type: string }; minimum?: number; maximum?: number }>;
     required: string[];
     additionalProperties: false;
   };
@@ -70,10 +70,28 @@ function validateStrictArgs(schema: JsonSchema | undefined, args: any): string[]
 
   for (const [k, def] of Object.entries(props)) {
     if (!(k in args)) continue;
+    const val = (args as any)[k];
     const want = def?.type;
     if (!want) continue;
-    const got = typeof (args as any)[k];
+    if (want === 'array') {
+      if (!Array.isArray(val)) {
+        errs.push(`field ${k} type mismatch: expected array, got ${typeof val}`);
+        continue;
+      }
+      const itemType = def.items?.type;
+      if (itemType === 'string') {
+        for (let i = 0; i < val.length; i++) {
+          if (typeof val[i] !== 'string') errs.push(`field ${k}[${i}] must be string`);
+        }
+      }
+      continue;
+    }
+    const got = typeof val;
     if (got !== want) errs.push(`field ${k} type mismatch: expected ${want}, got ${got}`);
+    if (want === 'number' && got === 'number' && Number.isFinite(val)) {
+      if (typeof def.minimum === 'number' && val < def.minimum) errs.push(`field ${k} below minimum ${def.minimum}`);
+      if (typeof def.maximum === 'number' && val > def.maximum) errs.push(`field ${k} above maximum ${def.maximum}`);
+    }
   }
 
   return errs;
@@ -88,17 +106,17 @@ function assertStrictSchema(schema: ToolSchema): void {
   const properties =
     (params as any).properties && typeof (params as any).properties === 'object' ? (params as any).properties : {};
 
-  // enforce strict mode for our tools: additionalProperties=false + required lists all properties
+  // additionalProperties=false；required 仅列出必填字段（与 JSON Schema / OpenClaw web_search 一致）
   if ((params as any).additionalProperties !== false) {
     throw new Error(`Tool schema must set additionalProperties=false: ${(schema as any)?.function?.name ?? 'unknown'}`);
   }
 
-  const propKeys = Object.keys(properties);
-  const missingInRequired = propKeys.filter((k) => !required.includes(k));
-  if (missingInRequired.length) {
-    throw new Error(
-      `Tool schema required must include all properties (${missingInRequired.join(', ')}): ${(schema as any)?.function?.name ?? 'unknown'}`
-    );
+  for (const k of required) {
+    if (!(k in properties)) {
+      throw new Error(
+        `Tool schema required references unknown property "${k}": ${(schema as any)?.function?.name ?? 'unknown'}`
+      );
+    }
   }
 }
 
@@ -284,6 +302,71 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
       return `${yyyy}-${mm}-${dd}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'web_search',
+        description:
+          'Search the web. Returns provider-normalized results for current information lookup.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query string.' },
+            count: {
+              type: 'number',
+              description: 'Number of results to return.',
+              minimum: 1,
+              maximum: WEB_SEARCH_MAX_COUNT,
+            },
+            country: { type: 'string', description: '2-letter country code for region-specific results.' },
+            language: { type: 'string', description: 'ISO 639-1 language code for results.' },
+            freshness: {
+              type: 'string',
+              description: 'Filter by time: day, week, month, or year.',
+            },
+            date_after: {
+              type: 'string',
+              description: 'Only results published after this date (YYYY-MM-DD).',
+            },
+            date_before: {
+              type: 'string',
+              description: 'Only results published before this date (YYYY-MM-DD).',
+            },
+            search_lang: { type: 'string', description: 'Brave search result language code.' },
+            ui_lang: { type: 'string', description: 'Brave UI locale code in language-region format.' },
+            domain_filter: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Perplexity native Search API domain filter.',
+            },
+            max_tokens: {
+              type: 'number',
+              description: 'Perplexity native Search API total content budget.',
+              minimum: 1,
+              maximum: 1000000,
+            },
+            max_tokens_per_page: {
+              type: 'number',
+              description: 'Perplexity native Search API max tokens extracted per page.',
+              minimum: 1,
+            },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const out = await runClawFlowWebSearch(args as Record<string, unknown>, {
+        abortSignal: ctx.abortSignal,
+        config: ctx.config,
+      });
+      return JSON.stringify(out, null, 2);
     }
   );
 

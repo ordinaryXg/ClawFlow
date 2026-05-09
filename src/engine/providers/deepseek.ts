@@ -1,7 +1,51 @@
 import type { ModelProvider } from './provider';
-import type { ChatCompletionRequest, ChatCompletionResult } from './types';
+import type { ChatCompletionRequest, ChatCompletionResult, ToolSchema } from './types';
 import { apiModelFromClawId } from './model-id';
 import { readOpenAiSseContentStream } from '../streaming/openai-sse';
+
+function cloneJson<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
+
+/**
+ * DeepSeek 对工具 JSON Schema 校验偏严，易报：
+ * `Required properties must match all properties in the object`
+ * （与 OpenAI strict 下「required 须覆盖全部 properties」一致，部分场景即使未传 strict 也会校验）
+ *
+ * 发往 DeepSeek 时：去掉 function.strict，并对 object 形参把 required 设为 properties 的全部键。
+ * 本地 ToolRuntime 仍使用原始 schema 做参数校验。
+ */
+function sanitizeToolsForDeepSeekRequest(tools: ToolSchema[] | undefined): ToolSchema[] | undefined {
+  if (!tools?.length) return tools;
+  return tools.map((tool) => {
+    const t = cloneJson(tool);
+    const fn = t.function;
+    if (!fn) return t;
+    delete (fn as { strict?: boolean }).strict;
+    const params = fn.parameters;
+    if (params && typeof params === 'object' && !Array.isArray(params) && (params as { type?: string }).type === 'object') {
+      const p = params as Record<string, unknown>;
+      const props = p.properties;
+      if (props && typeof props === 'object' && !Array.isArray(props)) {
+        const keys = Object.keys(props as Record<string, unknown>);
+        if (keys.length) p.required = keys;
+      }
+    }
+    return t;
+  });
+}
+
+function logDeepSeekOutgoing(url: string, label: string, body: Record<string, unknown>): void {
+  try {
+    // eslint-disable-next-line no-console
+    console.log(`[DeepSeek] ${label} POST ${url}`);
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(body, null, 2));
+  } catch {
+    // eslint-disable-next-line no-console
+    console.log(`[DeepSeek] ${label} POST ${url}`, body);
+  }
+}
 
 type DeepSeekChatResponse = {
   choices?: Array<{
@@ -46,21 +90,28 @@ export class DeepSeekProvider implements ModelProvider {
     const useBeta = Boolean(req.modeConfig.useBetaBaseUrl);
     const url = `${this.getBaseUrl(useBeta)}/chat/completions`;
 
-    // DeepSeek supports OpenAI-format payload with extra_body for thinking.
-    const body: any = {
+    // `thinking` / `reasoning_effort` are top-level fields (see DeepSeek API docs).
+    // Do NOT wrap them in `extra_body` here: that key is only for the OpenAI SDK, which merges
+    // extra_body into the JSON body; raw fetch would send an unknown `extra_body` object and beta
+    // endpoints may reject it with invalidrequesterror.
+    const body: Record<string, unknown> = {
       model: apiModelFromClawId(req.model),
       messages: req.messages,
     };
 
-    if (req.modeConfig.tools?.length) body.tools = req.modeConfig.tools;
+    if (req.modeConfig.tools?.length) {
+      body.tools = sanitizeToolsForDeepSeekRequest(req.modeConfig.tools);
+      body.tool_choice = 'auto';
+    }
     if (req.modeConfig.reasoning_effort) body.reasoning_effort = req.modeConfig.reasoning_effort;
-    if (req.modeConfig.thinking)
-      body.extra_body = { ...((body.extra_body as object) ?? {}), thinking: req.modeConfig.thinking };
+    if (req.modeConfig.thinking) body.thinking = req.modeConfig.thinking;
 
     // JSON mode: request structured output via response_format where supported (best-effort).
     if (req.modeConfig.jsonMode) {
       body.response_format = { type: 'json_object' };
     }
+
+    logDeepSeekOutgoing(url, 'chat/completions', body);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -106,11 +157,15 @@ export class DeepSeekProvider implements ModelProvider {
       stream: true,
     };
 
-    if (req.modeConfig.tools?.length) body.tools = req.modeConfig.tools;
+    if (req.modeConfig.tools?.length) {
+      body.tools = sanitizeToolsForDeepSeekRequest(req.modeConfig.tools);
+      body.tool_choice = 'auto';
+    }
     if (req.modeConfig.reasoning_effort) body.reasoning_effort = req.modeConfig.reasoning_effort;
-    if (req.modeConfig.thinking)
-      body.extra_body = { ...((body.extra_body as object) ?? {}), thinking: req.modeConfig.thinking };
+    if (req.modeConfig.thinking) body.thinking = req.modeConfig.thinking;
     if (req.modeConfig.jsonMode) body.response_format = { type: 'json_object' };
+
+    logDeepSeekOutgoing(url, 'chat/completions (stream)', body);
 
     const res = await fetch(url, {
       method: 'POST',

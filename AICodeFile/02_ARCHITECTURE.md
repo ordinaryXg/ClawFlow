@@ -15,14 +15,14 @@
 
 ## TL;DR（3 分钟理解）
 
-- **Electron 三层**：Main（系统能力/执行 OpenClaw）→ Preload（安全桥）→ Renderer（React UI）
-- **事实来源**：Gateway 是否运行应以 `openclaw gateway status` 为准，而不是仅靠内存进程句柄
+- **Electron 三层**：Main（系统能力 / 内置引擎与网关）→ Preload（安全桥）→ Renderer（React UI）
+- **事实来源**：内置网关是否可用以 **GatewayDaemon 监听状态** 与 **`engineGateway:*` IPC** 为准（不依赖外置 CLI 的 `gateway status`）
 - **接口入口**：Renderer 通过 `window.electronAPI` 调用 IPC，Main 侧用 `ipcMain.handle(...)` 注册
 
 ## 1. 高层概览
 
 - **架构类型**：Electron 桌面端单体应用（**Main 进程 + Preload 安全桥 + React 渲染进程**），通过 **IPC** 通信。
-- **核心能力**：UI 通过 `window.electronAPI` 调用主进程；主进程通过执行本机 **OpenClaw CLI**（`openclaw ...`）获取版本、查询状态并启停 Gateway。
+- **核心能力**：UI 通过 `window.electronAPI` 调用主进程；对话、模型路由、技能/连接器与内置网关由 **ClawFlowEngine**、**GatewayDaemon** 及主进程其他模块实现。**产品不依赖 OpenClaw CLI**。
 - **构建/打包**：Electron Forge + Webpack（Forge Webpack 插件），构建产物目录为 `.webpack/`。
 
 ## 2. 代码与模块分布
@@ -46,13 +46,18 @@
   - `src/index.ts`
     - 创建 `BrowserWindow`
     - 加载 `MAIN_WINDOW_WEBPACK_ENTRY`
-    - 调用 `registerOpenClawIPC()` 注册 IPC
+    - 注册 Workspace IPC、`registerClawFlowIPC`、`registerGatewayIPC` 等；应用启动时尽力启动 **GatewayDaemon**
 
-- **OpenClaw 引擎（执行本机 CLI / 进程管理）**
-  - `src/engine/openclaw-engine.ts`
-    - `OpenClawEngine` 接口
-    - `OpenClawEngineImpl` 实现：通过 `child_process.exec/spawn` 执行 `openclaw` 命令
-    - `registerOpenClawIPC()`：用 `ipcMain.handle(...)` 暴露 RPC
+- **ClawFlow 内置对话引擎**
+  - `src/engine/clawflow-engine.ts`
+    - 会话存储、多 Provider 路由、工具运行时、流式输出等
+    - `registerClawFlowIPC()`：暴露 `engine:*`、`engineAuth:*` 等
+
+- **内置网关**
+  - `src/engine/gateway-daemon.ts`
+    - 本地 HTTP + WebSocket；`registerGatewayIPC()` 与 `engineGateway:*` 等协同（以代码为准）
+
+- **历史/兼容说明**：若仓库中仍存在 `src/engine/openclaw-engine.ts` 或名为 `openclaw:*` 的 IPC，**不应**理解为「用户必须安装 OpenClaw CLI」。产品语义以 **内置引擎 + GatewayDaemon** 为准；遗留模块与通道名可随重构移除或统一重命名。
 
 #### Preload（安全边界层）
 
@@ -67,15 +72,15 @@
   - `src/renderer.tsx`：挂载 React Root，渲染 `<App />`
 - **路由**
   - `src/App.tsx`：`HashRouter` + `Routes`
-- **页面与组件**
-  - `src/pages/DashboardPage.tsx`：仪表盘（版本、Gateway 状态、启停）
+- **页面（示例）**
+  - `src/pages/ChatPage.tsx`、`SkillsPage`、`ConnectorsPage`、`SettingsPage`
   - `src/components/Layout.tsx`：左侧导航 + 内容区（`<Outlet />`）
 - **渲染进程类型声明**
   - `src/global.d.ts`：声明 `window.electronAPI` 的类型
 
 ### 2.3 状态管理（当前情况）
 
-项目依赖中包含 `zustand`，但目前 `src/store/` 为空；页面状态主要用 `useState/useEffect` 管理（见 `src/pages/DashboardPage.tsx`）。
+使用 **zustand** 等模块化管理设置、会话与 Store（见 `src/store/modules/`）；页面可组合 hooks 与局部 `useState`。
 
 ## 3. 启动、构建与发布
 
@@ -91,9 +96,7 @@
 
 - `html: ./src/index.html`
 - `js: ./src/renderer.tsx`
-- `preload.js: ./src/preload.ts`
-
-> 说明：`src/index.html` 当前仍是示例内容；若要完整启用 React 渲染，一般应提供包含 `#root` 的最小 HTML 外壳（详见“改进建议”）。
+- `preload: ./src/preload.ts`
 
 ### 3.3 打包制品（来自 `forge.config.ts`）
 
@@ -103,48 +106,31 @@
 
 ## 4. 核心数据流（典型调用链）
 
-以「仪表盘点击 *启动 Gateway*」为例：
+以「设置页启动内置网关」为例：
 
-1. **UI 事件（Renderer）**
-   - `src/pages/DashboardPage.tsx`：`handleStartGateway()` 调用 `window.electronAPI.startGateway()`
-2. **Preload 桥接**
-   - `src/preload.ts`：`ipcRenderer.invoke('openclaw:startGateway')`
-3. **Main IPC Handler**
-   - `src/engine/openclaw-engine.ts`：`ipcMain.handle('openclaw:startGateway', ...)`
-4. **执行 OpenClaw CLI**
-   - `OpenClawEngineImpl.startGateway()`：
-     - `spawn('openclaw', ['gateway', 'start'], { detached: true, stdio: 'ignore' })`
-     - `unref()` 并等待 2 秒 resolve
+1. **UI 事件（Renderer）**：调用 `window.electronAPI.engineGatewayStart(...)`（以 `preload.ts` 实际导出为准）
+2. **Preload 桥接**：`ipcRenderer.invoke('engineGateway:start', ...)`
+3. **Main**：`gateway-daemon` / 相关 handler 启动监听，返回成功状态
+4. **UI 刷新**：再次 `engineGatewayStatus` 或订阅事件，展示端口与运行状态
 
-当前 IPC channel 约定如下（preload 与 main 侧需保持一致）：
-
-- `openclaw:getVersion`
-- `openclaw:getGatewayStatus`
-- `openclaw:startGateway`
-- `openclaw:stopGateway`
+对话流式输出：`engine:sendMessageStream` + `onEngineChatStream` 推送 delta（详见 `preload.ts` 与 `clawflow-engine.ts`）。
 
 ## 5. 外部依赖与运行前置条件
 
-- **OpenClaw CLI**：主进程直接执行 `openclaw` 命令（见 `src/engine/openclaw-engine.ts`），因此需要运行环境中：
-  - `openclaw` 已安装
-  - 可在系统 `PATH` 中被找到（或后续引入可配置的路径）
+- **模型 API**：DeepSeek / OpenAI / Anthropic 等凭证经内置鉴权存储或环境变量提供
+- **不要求**：系统安装 `openclaw` CLI 或单独 OpenClaw 运行时
 
 ## 6. 质量保障现状
 
 - **ESLint**：`.eslintrc.json` + `npm run lint`
 - **TypeScript**：`tsconfig.json`（严格模式），并通过 `fork-ts-checker-webpack-plugin` 在构建期做类型检查（见 `webpack.plugins.ts`）
-- **测试/CI**：当前未发现测试目录与 CI 工作流（根目录无 `.github/workflows`）
+- **测试**：`jest` + 部分模块单测（如 `src/engine/providers/model-id.test.ts`）；CI 可按路线图扩展
 
 ## 7. 已知缺口与改进建议（面向后续演进）
 
-- **HTML 外壳**：`src/index.html` 仍是 Hello World 示例，建议改为仅包含 `#root` 的外壳，避免与 React 渲染预期不一致。
-- **DevTools 开关**：`src/index.ts` 默认 `openDevTools()`；建议按环境（dev/prod）控制。
-- **Gateway 启动判定**：`startGateway()` 当前以“等待 2 秒”为成功标准；建议启动后再调用一次 `gateway status` 做确认。
-- **进程状态一致性**：
-  - `gatewayProcess` 仅内存保存，应用重启后无法追踪；
-  - 建议把“是否运行”以 `openclaw gateway status` 的结果为准，UI 也应在启停后刷新状态。
-- **配置化**：可引入集中配置（例如 OpenClaw 可执行路径、日志级别、窗口参数等），并提供示例配置文件。
-- **测试与 CI**：补充最小的 lint/typecheck CI（以及关键引擎逻辑的单测/集成测试）以保证回归质量。
+- **文档与代码一致**：清理仍提及「必须安装 OpenClaw」的 i18n 与注释；统一 IPC 命名（减少 `openclaw:` 前缀误导）
+- **Gateway 启停反馈**：以实际 `listening` 状态与错误信息为准，完善 UI 提示
+- **测试与 CI**：补充最小的 lint/typecheck CI 与关键引擎逻辑单测以保证回归质量
 
 ## 8. 关键文件索引（路径速查）
 
@@ -152,10 +138,9 @@
 - **Preload**：`src/preload.ts`
 - **Renderer 入口**：`src/renderer.tsx`
 - **路由**：`src/App.tsx`
-- **页面**：`src/pages/DashboardPage.tsx`
-- **布局组件**：`src/components/Layout.tsx`
-- **OpenClaw 引擎 + IPC 注册**：`src/engine/openclaw-engine.ts`
+- **内置对话引擎**：`src/engine/clawflow-engine.ts`
+- **内置网关**：`src/engine/gateway-daemon.ts`
+- **工作区服务**：`src/workspace-service.ts`
 - **Forge 配置**：`forge.config.ts`
 - **Webpack 配置**：`webpack.main.config.ts`、`webpack.renderer.config.ts`、`webpack.rules.ts`、`webpack.plugins.ts`
-
 

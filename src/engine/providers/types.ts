@@ -49,7 +49,7 @@ export type InteractionMode = 'ask' | 'plan' | 'multitask';
 
 export type ModeConfig = {
   mode: InteractionMode;
-  // DeepSeek thinking mode toggles (OpenAI format via extra_body)
+  // DeepSeek thinking mode toggles (sent as top-level `thinking` / `reasoning_effort` in chat/completions)
   thinking?: { type: 'enabled' | 'disabled' };
   reasoning_effort?: 'high' | 'max';
   // When using JSON Mode

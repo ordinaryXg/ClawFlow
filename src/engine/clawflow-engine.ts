@@ -13,6 +13,16 @@ import type { ChatCompletionRequest, ChatMessage, ModeConfig } from './providers
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
+import { buildRoleAgentSystemContent } from './role-agent-context';
+import {
+  resolveWebSearchConfig,
+  sanitizeWebSearchForPublic,
+  type ClawFlowWebSearchUserConfig,
+  type PublicWebSearchConfig,
+  type ResolvedClawFlowWebSearch,
+} from './web-search';
+
+export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-search';
 
 /** Chat 下拉：内置引擎可用模型 ID（`/ 前即为 provider router id） */
 const BUILTIN_CHAT_MODEL_CATALOG: Record<string, readonly string[]> = {
@@ -26,6 +36,8 @@ export type InteractionMode = 'ask' | 'plan' | 'multitask';
 export interface ClawFlowEngineConfig {
   workspaceRoot?: string;
   verbose?: boolean;
+  /** 与 OpenClaw `tools.web.search` 类似：Brave API + 无密钥 DuckDuckGo 回退 */
+  webSearch?: ClawFlowWebSearchUserConfig;
 }
 
 export interface ClawFlowEngineEvents {
@@ -34,8 +46,14 @@ export interface ClawFlowEngineEvents {
   'engine:message': [conversationId: string, message: StoredMessage];
 }
 
+export type ClawFlowEnginePublicConfig = {
+  workspaceRoot: string;
+  verbose: boolean;
+  webSearch: PublicWebSearchConfig;
+};
+
 export interface ClawFlowEngine {
-  getConfig(): Readonly<Required<ClawFlowEngineConfig> & { workspaceRoot: string }>;
+  getConfig(): Readonly<ClawFlowEnginePublicConfig>;
   setWorkspaceRoot(workspaceRoot: string): void;
 
   listConversations(): Promise<StoredConversation[]>;
@@ -68,7 +86,11 @@ export interface ClawFlowEngine {
 }
 
 class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
-  private config: Required<ClawFlowEngineConfig> & { workspaceRoot: string };
+  private config: {
+    workspaceRoot: string;
+    verbose: boolean;
+    webSearch: ResolvedClawFlowWebSearch;
+  };
   private store: SessionStore;
   private router: ProviderRouter;
   private tools = createDefaultToolRuntime();
@@ -79,6 +101,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     this.config = {
       workspaceRoot,
       verbose: cfg.verbose ?? true,
+      webSearch: resolveWebSearchConfig(cfg.webSearch, process.env),
     };
     this.store = new SessionStore(workspaceRoot);
     this.router = new ProviderRouter();
@@ -107,8 +130,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     if (this.config.verbose) console.log('[ClawFlowEngine] init', this.config);
   }
 
-  getConfig() {
-    return { ...this.config };
+  getConfig(): Readonly<ClawFlowEnginePublicConfig> {
+    return {
+      workspaceRoot: this.config.workspaceRoot,
+      verbose: this.config.verbose,
+      webSearch: sanitizeWebSearchForPublic(this.config.webSearch),
+    };
   }
 
   setWorkspaceRoot(workspaceRoot: string): void {
@@ -132,9 +159,11 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   }
 
   private async buildHistoryMessages(conversationId: string, userText: string): Promise<ChatMessage[]> {
+    const roleSystem = await buildRoleAgentSystemContent(this.config.workspaceRoot);
+
     const convsBefore = await this.store.readAll();
     const conv = convsBefore.find((c) => c.id === conversationId) ?? null;
-    const history: ChatMessage[] = (conv?.messages ?? [])
+    const tail: ChatMessage[] = (conv?.messages ?? [])
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'tool'))
       .map((m) => ({
         role: m.role as ChatMessage['role'],
@@ -144,13 +173,15 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         ...(typeof m.tool_call_id === 'string' ? { tool_call_id: m.tool_call_id } : {}),
       }));
 
-    const last = history[history.length - 1];
+    const last = tail[tail.length - 1];
     const ut = String(userText ?? '');
     const alreadyHasUserTurn = last?.role === 'user' && String(last.content ?? '') === ut;
     if (!alreadyHasUserTurn) {
-      history.push({ role: 'user', content: ut });
+      tail.push({ role: 'user', content: ut });
     }
-    return history;
+
+    // 每次请求固定携带 `.roleAgent/` 下 Markdown，作为 system（不写入会话持久化）
+    return [{ role: 'system', content: roleSystem }, ...tail];
   }
 
   private async appendAssistantMessage(params: {
@@ -507,8 +538,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
 let globalEngine: ClawFlowEngineImpl | null = null;
 
-export function getGlobalClawFlowEngine(): ClawFlowEngineImpl {
-  if (!globalEngine) globalEngine = new ClawFlowEngineImpl();
+export function getGlobalClawFlowEngine(bootstrap?: ClawFlowEngineConfig): ClawFlowEngineImpl {
+  if (!globalEngine) globalEngine = new ClawFlowEngineImpl(bootstrap ?? {});
   return globalEngine;
 }
 
@@ -522,9 +553,7 @@ export function syncClawFlowEngineWorkspaceRoot(workspaceRoot: string): void {
 }
 
 export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
-  if (config) {
-    getGlobalClawFlowEngine().setWorkspaceRoot(config.workspaceRoot ?? getGlobalClawFlowEngine().getConfig().workspaceRoot);
-  }
+  getGlobalClawFlowEngine(config);
 
   ipcMain.handle('engine:getConfig', async () => getGlobalClawFlowEngine().getConfig());
   ipcMain.handle('engine:setWorkspaceRoot', async (_e, workspaceRoot: string) => {

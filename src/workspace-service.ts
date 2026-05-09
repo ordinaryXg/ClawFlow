@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 
 export const CLAWFLOW_DIR = '.clawflow';
 
@@ -260,6 +261,7 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
 
 /**
  * 创建当前工作区 `.clawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 同时在**工作区根目录下的 `.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  */
 export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
@@ -271,6 +273,16 @@ export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise
   await fs.promises.mkdir(ocDir, { recursive: true });
 
   migrateLegacyConversationsOnce(root);
+
+  try {
+    const { created } = await ensureWorkspaceAgentRoleTemplates(root);
+    if (created.length) {
+      console.log('[workspace-service] agent role templates created:', created.join(', '));
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
+  }
 
   const now = Date.now();
   let meta: WorkspaceMeta;
