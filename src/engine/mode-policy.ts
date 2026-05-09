@@ -5,8 +5,8 @@ export type ChatIntent = 'fast' | 'strong' | 'cheap';
 export type AutoPick = { pickedMode: InteractionMode; reason: string };
 
 export type ModePolicyOverrides = Partial<
-  Pick<ModeConfig, 'thinking' | 'reasoning_effort' | 'jsonMode' | 'useBetaBaseUrl'>
-> & { toolsEnabled?: boolean };
+  Pick<ModeConfig, 'thinking' | 'reasoning_effort' | 'jsonMode' | 'useBetaBaseUrl' | 'toolsEnabled'>
+>;
 
 export function defaultModeConfig(mode: InteractionMode): ModeConfig {
   return {
@@ -14,7 +14,7 @@ export function defaultModeConfig(mode: InteractionMode): ModeConfig {
     ...(mode === 'ask'
       ? { thinking: { type: 'disabled' } }
       : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-    ...(mode === 'multitask' ? { useBetaBaseUrl: true } : {}),
+    ...((mode === 'multitask' || mode === 'plan') ? { useBetaBaseUrl: true } : {}),
   };
 }
 
@@ -48,10 +48,9 @@ export function buildModeConfig(params: {
   if (typeof overrides.jsonMode === 'boolean') cfg.jsonMode = overrides.jsonMode;
   if (typeof overrides.useBetaBaseUrl === 'boolean') cfg.useBetaBaseUrl = overrides.useBetaBaseUrl;
 
-  const toolsEnabled =
-    typeof overrides.toolsEnabled === 'boolean' ? overrides.toolsEnabled : params.mode === 'multitask';
-  // NOTE: tools schemas are injected by the engine runtime (ToolRuntime) to avoid bundling node-only deps in renderer.
-  if (toolsEnabled && params.mode === 'multitask') cfg = { ...cfg };
+  const defaultToolsEnabled = params.mode === 'multitask' || params.mode === 'plan';
+  cfg.toolsEnabled =
+    typeof overrides.toolsEnabled === 'boolean' ? overrides.toolsEnabled : defaultToolsEnabled;
   return cfg;
 }
 

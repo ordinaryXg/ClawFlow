@@ -51,13 +51,13 @@ export interface ClawFlowEngine {
   }): Promise<{ message: string }>;
 
   /**
-   * Ask / Plan 单轮流式（SSE → onDelta）；Multitask（工具循环）请用 sendMessage。
+   * Ask 单轮流式（SSE → onDelta）。Plan / Multitask 若需工具循环请用 sendMessage。
    */
   sendMessageTextStream(params: {
     conversationId: string;
     userText: string;
     modelId?: string;
-    mode: 'ask' | 'plan';
+    mode: 'ask';
     onDelta: (delta: string) => void;
   }): Promise<string>;
 
@@ -339,7 +339,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         overrides: overridesForMode,
       });
       // Ensure tools come from the current runtime (avoid creating a second runtime for schemas).
-      if (mode === 'multitask') {
+      if (baseModeConfig.toolsEnabled) {
         baseModeConfig.tools = this.tools.listSchemas();
       }
       for (let step = 0; step < 6; step++) {
@@ -408,7 +408,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     }
 
     // Persist final assistant reply as its own message.
-    // (Tool-calls + tool results are persisted per-step above for multitask.)
+    // (Tool-calls + tool results are persisted per-step above for plan/multitask.)
     await this.appendAssistantMessage({
       conversationId: params.conversationId,
       reply,
@@ -423,7 +423,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     conversationId: string;
     userText: string;
     modelId?: string;
-    mode: 'ask' | 'plan';
+    mode: 'ask';
     onDelta: (delta: string) => void;
     abortSignal?: AbortSignal;
     intent?: ChatIntent;
@@ -654,9 +654,9 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
 
       const mode = params.mode === 'plan' ? 'plan' : params.mode === 'multitask' ? 'multitask' : 'ask';
 
-      // Multitask may involve tools and long execution; stream a small status first,
+      // Plan / Multitask may involve tools and long execution; stream a small status first,
       // then chunk the final reply for a consistent streaming UX.
-      if (mode === 'multitask') {
+      if (mode === 'multitask' || mode === 'plan') {
         sendDelta('（执行中…）\n');
         const res = await getGlobalClawFlowEngine().sendMessage({
           conversationId: params.conversationId,

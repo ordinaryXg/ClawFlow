@@ -1,7 +1,16 @@
 import { ipcMain } from 'electron';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import { EventEmitter } from 'events';
-import WebSocket, { WebSocketServer } from 'ws';
+import WebSocket from 'ws';
+import type { WebSocketServer as WsServerClass } from 'ws';
+
+/** ws@8+ 有 WebSocketServer；ws@7 仅有 default.Server（部分依赖会把 7 提升到顶层） */
+function getWsServerCtor(): new (options?: { noServer?: boolean }) => WsServerClass {
+  const root = WebSocket as unknown as { WebSocketServer?: unknown; Server?: unknown };
+  if (typeof root.WebSocketServer === 'function') return root.WebSocketServer as new (options?: { noServer?: boolean }) => WsServerClass;
+  if (typeof root.Server === 'function') return root.Server as new (options?: { noServer?: boolean }) => WsServerClass;
+  throw new Error('ws: missing WebSocketServer / WebSocket.Server');
+}
 import { getGlobalClawFlowEngine } from './clawflow-engine';
 
 export type GatewayStatus = 'running' | 'stopped' | 'unknown';
@@ -57,7 +66,7 @@ function readBody(req: IncomingMessage, limitBytes = 256 * 1024): Promise<string
 
 class GatewayDaemon extends EventEmitter {
   private server: http.Server | null = null;
-  private wss: WebSocketServer | null = null;
+  private wss: WsServerClass | null = null;
   private clients = new Set<WebSocket>();
   private port = 18789;
   private startedAt = 0;
@@ -66,7 +75,9 @@ class GatewayDaemon extends EventEmitter {
   private abortByRequestId = new Map<string, AbortController>();
 
   status(): GatewayStatus {
-    if (!this.server) return 'stopped';
+    // 仅有 Server 实例不够：createServer 之后、listen 成功之前，或 listen 失败后未清理时，
+    // 不能报 running，否则渲染进程会连 WS 得到 ERR_CONNECTION_REFUSED。
+    if (!this.server || !this.server.listening) return 'stopped';
     return 'running';
   }
 
@@ -75,7 +86,7 @@ class GatewayDaemon extends EventEmitter {
   }
 
   uptimeMs(): number {
-    if (!this.server || !this.startedAt) return 0;
+    if (!this.server || !this.server.listening || !this.startedAt) return 0;
     return Math.max(0, Date.now() - this.startedAt);
   }
 
@@ -118,7 +129,10 @@ class GatewayDaemon extends EventEmitter {
   }
 
   async start(port?: number): Promise<void> {
-    if (this.server) return;
+    if (this.server?.listening) return;
+    if (this.server && !this.server.listening) {
+      await this.stop();
+    }
     const p = typeof port === 'number' && Number.isFinite(port) ? port : this.port;
     this.port = p;
     this.startedAt = Date.now();
@@ -202,7 +216,7 @@ class GatewayDaemon extends EventEmitter {
     });
 
     // WebSocket server (noServer) — upgraded from the HTTP server.
-    this.wss = new WebSocketServer({ noServer: true });
+        this.wss = new (getWsServerCtor())({ noServer: true });
     this.wss.on('connection', (ws, req) => {
       this.clients.add(ws);
       const origin = String((req?.headers as any)?.origin ?? '');
@@ -263,10 +277,14 @@ class GatewayDaemon extends EventEmitter {
         lastErr = e;
         const code = String(e?.code ?? '');
         if (code === 'EADDRINUSE') continue;
+        await this.stop().catch(() => {});
         throw e;
       }
     }
-    if (lastErr) throw lastErr;
+    if (lastErr) {
+      await this.stop().catch(() => {});
+      throw lastErr;
+    }
     this.pushLog('info', `GatewayDaemon started on 127.0.0.1:${this.port}`);
     this.emit('gateway:started', { port: this.port });
   }
@@ -343,7 +361,7 @@ class GatewayDaemon extends EventEmitter {
     };
 
     try {
-      if (mode === 'multitask') {
+      if (mode === 'multitask' || mode === 'plan') {
         const out = await getGlobalClawFlowEngine().sendMessage({
           conversationId,
           userText: text,
@@ -362,7 +380,7 @@ class GatewayDaemon extends EventEmitter {
       const full = await getGlobalClawFlowEngine().sendMessageTextStream({
         conversationId,
         userText: text,
-        mode: mode === 'plan' ? 'plan' : 'ask',
+        mode: 'ask',
         ...(modelId ? { modelId } : {}),
         onDelta: sendDelta,
         abortSignal: abort.signal,

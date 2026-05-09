@@ -56,6 +56,8 @@ export type ModeConfig = {
   jsonMode?: boolean;
   // Tool calls
   tools?: ToolSchema[];
+  /** 是否允许注入工具 schema（由 mode-policy / 用户覆盖决定） */
+  toolsEnabled?: boolean;
   // Beta flags
   useBetaBaseUrl?: boolean;
 };

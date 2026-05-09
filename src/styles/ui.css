@@ -375,6 +375,40 @@
   outline:none;
   font-size:12px;
 }
+/* 下拉列表：显式指定 option 前景/背景，避免系统默认「灰字白底」难辨认 */
+.cf-select{
+  cursor:pointer;
+  color-scheme:dark;
+}
+:root[data-theme="light"] .cf-select{
+  color-scheme:light;
+}
+.cf-select option,
+.cf-select optgroup{
+  background-color:var(--panel);
+  color:var(--text);
+  font-weight:normal;
+}
+:root[data-theme="light"] .cf-select option,
+:root[data-theme="light"] .cf-select optgroup{
+  background-color:#ffffff;
+  color:#1a1d21;
+}
+.cf-select option:hover,
+.cf-select option:focus,
+.cf-select option:active{
+  background-color:rgba(30,91,69,.28);
+  color:var(--text);
+}
+:root[data-theme="light"] .cf-select option:hover,
+:root[data-theme="light"] .cf-select option:focus,
+:root[data-theme="light"] .cf-select option:active{
+  background-color:#e8f0ec;
+  color:#0d1117;
+}
+.cf-select option:checked{
+  font-weight:600;
+}
 .cf-textarea{min-height:92px;resize:vertical}
 .cf-input:focus,.cf-select:focus,.cf-textarea:focus{
   border-color:rgba(30,91,69,.55);

@@ -7,6 +7,7 @@ import './styles.css';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
+import { CfSelectWithHints } from '../../components/CfSelectWithHints';
 const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
@@ -208,6 +209,34 @@ const SettingsPage: FC = () => {
       return <span className="cf-chip cf-chipStopped">{t('gateway.statusStopped')}</span>;
     return <span className="cf-chip cf-chipUnknown">{t('gateway.statusUnknown')}</span>;
   }, [gatewayStatus, t]);
+
+  const modelEnvSelectOptions = useMemo(
+    () => [
+      { value: 'personal', label: t('settings.modelEnv_personal'), hint: t('settings.modelEnvHint_personal') },
+      { value: 'work', label: t('settings.modelEnv_work'), hint: t('settings.modelEnvHint_work') },
+      { value: 'custom', label: t('settings.modelEnv_custom'), hint: t('settings.modelEnvHint_custom') },
+    ],
+    [t],
+  );
+
+  const modelProviderSelectOptions = useMemo(
+    () => [
+      { value: 'deepseek', label: 'DeepSeek', hint: t('settings.providerHintDeepseek') },
+      { value: 'openai', label: 'OpenAI', hint: t('settings.providerHintOpenai') },
+      { value: 'anthropic', label: 'Anthropic', hint: t('settings.providerHintAnthropic') },
+    ],
+    [t],
+  );
+
+  const logLevelSelectOptions = useMemo(
+    () => [
+      { value: 'debug', label: 'debug', hint: t('settings.logLevelHint_debug') },
+      { value: 'info', label: 'info', hint: t('settings.logLevelHint_info') },
+      { value: 'warn', label: 'warn', hint: t('settings.logLevelHint_warn') },
+      { value: 'error', label: 'error', hint: t('settings.logLevelHint_error') },
+    ],
+    [t],
+  );
 
   const handleStartGateway = async () => {
     try {
@@ -515,25 +544,27 @@ const SettingsPage: FC = () => {
               <div className="cf-sub" style={{ marginBottom: 6 }}>
                 {t('settings.modelEnvironment')}
               </div>
-              <select className="cf-select" value={modelEnvironment} onChange={(e) => setModelEnvironment(e.target.value as any)}>
-                <option value="personal">{t('settings.modelEnv_personal')}</option>
-                <option value="work">{t('settings.modelEnv_work')}</option>
-                <option value="custom">{t('settings.modelEnv_custom')}</option>
-              </select>
+              <CfSelectWithHints
+                className="cf-selectHint--wide"
+                value={modelEnvironment}
+                onChange={(v) => setModelEnvironment(v as 'personal' | 'work' | 'custom')}
+                options={modelEnvSelectOptions}
+                hintIconAriaBase={t('common.selectOptionHintAria')}
+                aria-label={t('settings.modelEnvironment')}
+              />
               <div style={{ height: 10 }} />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.modelProvider')}
           </div>
-          <select
-            className="cf-select"
+          <CfSelectWithHints
+            className="cf-selectHint--wide"
             value={modelProvider}
-            onChange={(e) => setModelProvider(e.target.value as 'deepseek' | 'openai' | 'anthropic')}
-          >
-            <option value="deepseek">DeepSeek</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-          </select>
+            onChange={(v) => setModelProvider(v as 'deepseek' | 'openai' | 'anthropic')}
+            options={modelProviderSelectOptions}
+            hintIconAriaBase={t('common.selectOptionHintAria')}
+            aria-label={t('settings.modelProvider')}
+          />
 
           <div style={{ height: 10 }} />
           <div className="cf-sub" style={{ marginBottom: 6 }}>
@@ -723,16 +754,14 @@ const SettingsPage: FC = () => {
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.logLevel')}
           </div>
-          <select
-            className="cf-select"
+          <CfSelectWithHints
+            className="cf-selectHint--wide"
             value={logLevel}
-            onChange={(e) => updateSettings({ logLevel: e.target.value as typeof logLevel })}
-          >
-            <option value="debug">debug</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
+            onChange={(v) => updateSettings({ logLevel: v as typeof logLevel })}
+            options={logLevelSelectOptions}
+            hintIconAriaBase={t('common.selectOptionHintAria')}
+            aria-label={t('settings.logLevel')}
+          />
           <div className="cf-help">{t('settings.logLevelHelp')}</div>
         </div>
 

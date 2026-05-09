@@ -63,6 +63,7 @@
 }
 
 .cf-chatApiKeyBar {
+  flex-shrink:0;
   margin-bottom: 10px;
   padding: 10px 12px;
   border: 1px solid rgba(212, 168, 75, 0.42);
@@ -101,14 +102,19 @@
 .cf-chatInput {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
 }
 
 .cf-chatInput .cf-textarea{
   border:0;
   background:transparent;
-  padding:8px 10px;
+  padding:8px 10px 10px;
   outline:none;
+  flex:1 1 auto;
+  min-height:72px;
+  resize:none;
 }
 
 .cf-chatSendBtn{
@@ -132,32 +138,55 @@
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:0;
+  gap:10px;
+  padding-top:2px;
+  flex-shrink:0;
 }
 .cf-chatInput__footerLeft{
   display:flex;
-  align-items:flex-end;
+  align-items:center;
   gap:10px;
   flex-wrap:wrap;
   min-width:0;
   flex:1;
 }
-.cf-chatInput__modes{
+/* 图标 + 下拉：同一行、统一高度，与模型选择对齐 */
+.cf-chatInput__fieldGroup{
   display:flex;
-  flex-direction:column;
-  gap:4px;
-  align-items:flex-start;
-  flex-shrink:0;
-}
-.cf-chatInput__modes label{
-  margin:0;
-  line-height:1.2;
-}
-.cf-chatInput__model{
-  display:flex;
+  flex-direction:row;
   align-items:center;
   gap:0;
+  flex-shrink:0;
+  min-height:32px;
+}
+.cf-chatInput__fieldGroup--grow{
+  flex:1;
+  min-width:140px;
+}
+.cf-chatInput__fieldIco{
+  width:30px;
+  height:30px;
+  flex-shrink:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--border);
+  border-right:0;
+  color:var(--muted);
+  background:rgba(255,255,255,.02);
+  box-sizing:border-box;
+}
+.cf-chatInput__fieldIco svg{
+  display:block;
+}
+.cf-chatInput__fieldGroup .cf-selectHint.ant-select-single .ant-select-selector{
+  border-top-left-radius:0;
+  border-bottom-left-radius:0;
+}
+.cf-chatInput__fieldGroup--grow .cf-selectHint{
+  flex:1;
   min-width:0;
+  max-width:100%;
 }
 .cf-ico{
   width:24px;

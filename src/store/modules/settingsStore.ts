@@ -15,7 +15,8 @@ export interface SettingsState {
   /**
    * 模式策略覆盖（JSON 字符串）
    * 结构示例：
-   * { "ask": { "thinking": {"type":"disabled"} }, "plan": { "reasoning_effort":"max" }, "multitask": { "toolsEnabled": true } }
+   * { "ask": { "thinking": {"type":"disabled"} }, "plan": { "toolsEnabled": false }, "multitask": { "toolsEnabled": false } }
+   * （plan / multitask 默认开启工具；需关闭时设 toolsEnabled: false）
    */
   chatModePolicyOverridesJson: string;
 }

@@ -1,7 +1,52 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChatInteractionMode } from '../../store/modules/chatStore';
+import { CfSelectWithHints } from '../CfSelectWithHints';
 import './chat.css';
+
+const CHAT_MODES: ChatInteractionMode[] = ['ask', 'plan', 'multitask', 'auto'];
+
+/** 对话模式：重叠对话气泡，象征多模式对话 */
+function IconChatMode() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 6H5a2 2 0 00-2 2v5a2 2 0 002 2h1.2L8 17v-2.2A2 2 0 009 13V8a2 2 0 00-2-2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 10h-5a2 2 0 00-2 2v2a2 2 0 002 2h2.2L20 18v-2.5a1.5 1.5 0 001.5-1.5V12a2 2 0 00-2-2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 偏好/强度：递升柱形，象征更快 / 更强 / 更省钱的梯度 */
+function IconIntent() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="5" y="14" width="3.5" height="6" rx="0.75" fill="currentColor" />
+      <rect x="10.25" y="10" width="3.5" height="10" rx="0.75" fill="currentColor" />
+      <rect x="15.5" y="6" width="3.5" height="14" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 模型：同心圆靶心，与原先 ⊚ 语义一致 */
+function IconModel() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
 
 interface Props {
   disabled?: boolean;
@@ -33,6 +78,51 @@ const ChatInput: FC<Props> = ({
   const canSend = useMemo(() => {
     return !disabled && !isSending && value.trim().length > 0;
   }, [disabled, isSending, value]);
+
+  const modeOptions = useMemo(
+    () =>
+      CHAT_MODES.map((m) => ({
+        value: m,
+        label:
+          m === 'ask'
+            ? t('chat.modeAsk')
+            : m === 'plan'
+              ? t('chat.modePlan')
+              : m === 'multitask'
+                ? t('chat.modeMultitask')
+                : t('chat.modeAuto'),
+        hint:
+          m === 'ask'
+            ? t('chat.modeCapabilityAsk')
+            : m === 'plan'
+              ? t('chat.modeCapabilityPlan')
+              : m === 'multitask'
+                ? t('chat.modeCapabilityMultitask')
+                : t('chat.modeCapabilityAuto'),
+      })),
+    [t],
+  );
+
+  const intentOptions = useMemo(
+    () => [
+      { value: 'fast', label: t('chat.intentFast'), hint: t('chat.intentHintFast') },
+      { value: 'strong', label: t('chat.intentStrong'), hint: t('chat.intentHintStrong') },
+      { value: 'cheap', label: t('chat.intentCheap'), hint: t('chat.intentHintCheap') },
+    ],
+    [t],
+  );
+
+  const modelOptions = useMemo(() => {
+    const opts = [{ value: '', label: t('chat.modelAuto'), hint: t('chat.modelAutoHint') }];
+    for (const m of models ?? []) {
+      opts.push({
+        value: m.id,
+        label: m.label,
+        hint: t('chat.modelIdHint', { label: m.label }),
+      });
+    }
+    return opts;
+  }, [models, t]);
 
   useEffect(() => {
     if (disabled) setIsSending(false);
@@ -68,59 +158,52 @@ const ChatInput: FC<Props> = ({
       />
       <div className="cf-chatInput__footer">
         <div className="cf-chatInput__footerLeft">
-          <div className="cf-chatInput__modes">
-            <label className="cf-sub" htmlFor="cf-chat-mode">
-              {t('chat.modeLabel')}
-            </label>
-            <select
-              id="cf-chat-mode"
-              className="cf-select cf-select--compact"
-              value={interactionMode}
-              disabled={disabled || isSending}
-              onChange={(e) => onInteractionModeChange(e.target.value as ChatInteractionMode)}
-              aria-label={t('chat.modeLabel')}
-            >
-              <option value="ask">{t('chat.modeAsk')}</option>
-              <option value="plan">{t('chat.modePlan')}</option>
-              <option value="multitask">{t('chat.modeMultitask')}</option>
-              <option value="auto">{t('chat.modeAuto')}</option>
-            </select>
-          </div>
-          <div className="cf-chatInput__modes">
-            <label className="cf-sub" htmlFor="cf-chat-intent">
-              {t('chat.intentLabel')}
-            </label>
-            <select
-              id="cf-chat-intent"
-              className="cf-select cf-select--compact"
-              value={intent}
-              disabled={disabled || isSending}
-              onChange={(e) => onIntentChange(e.target.value as any)}
-              aria-label={t('chat.intentLabel')}
-            >
-              <option value="fast">{t('chat.intentFast')}</option>
-              <option value="strong">{t('chat.intentStrong')}</option>
-              <option value="cheap">{t('chat.intentCheap')}</option>
-            </select>
-          </div>
-          <div className="cf-chatInput__model">
-            <span className="cf-ico" title={t('chat.model')} aria-label={t('chat.model')}>
-              ⊚
+          <div className="cf-chatInput__fieldGroup" title={t('chat.modeLabel')}>
+            <span className="cf-chatInput__fieldIco" aria-hidden>
+              <IconChatMode />
             </span>
-            <select
-              className="cf-select cf-select--compact"
+            <CfSelectWithHints
+              id="cf-chat-mode"
+              className="cf-selectHint--compact"
+              value={interactionMode}
+              onChange={(v) => onInteractionModeChange(v as ChatInteractionMode)}
+              options={modeOptions}
+              disabled={disabled || isSending}
+              aria-label={t('chat.modeLabel')}
+              hintIconAriaBase={t('chat.modeHelpAria')}
+              popupMatchSelectWidth={false}
+            />
+          </div>
+          <div className="cf-chatInput__fieldGroup" title={t('chat.intentLabel')}>
+            <span className="cf-chatInput__fieldIco" aria-hidden>
+              <IconIntent />
+            </span>
+            <CfSelectWithHints
+              id="cf-chat-intent"
+              className="cf-selectHint--compact"
+              value={intent}
+              onChange={(v) => onIntentChange(v as 'fast' | 'strong' | 'cheap')}
+              options={intentOptions}
+              disabled={disabled || isSending}
+              aria-label={t('chat.intentLabel')}
+              hintIconAriaBase={t('common.selectOptionHintAria')}
+              popupMatchSelectWidth={false}
+            />
+          </div>
+          <div className="cf-chatInput__fieldGroup cf-chatInput__fieldGroup--grow" title={t('chat.model')}>
+            <span className="cf-chatInput__fieldIco" aria-hidden>
+              <IconModel />
+            </span>
+            <CfSelectWithHints
+              className="cf-selectHint--wide"
               value={modelId ?? ''}
+              onChange={(v) => onModelChange?.(v ? v : null)}
+              options={modelOptions}
               disabled={disabled || isSending || !models || models.length === 0}
-              onChange={(e) => onModelChange?.(e.target.value ? e.target.value : null)}
               aria-label={t('chat.model')}
-            >
-              <option value="">{t('chat.modelAuto')}</option>
-              {(models ?? []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+              hintIconAriaBase={t('common.selectOptionHintAria')}
+              popupMatchSelectWidth={false}
+            />
           </div>
         </div>
         <div className="cf-chatInput__actions">
@@ -142,4 +225,3 @@ const ChatInput: FC<Props> = ({
 };
 
 export default ChatInput;
-

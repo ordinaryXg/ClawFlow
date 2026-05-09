@@ -113,14 +113,35 @@ async function ensureGatewayWs(): Promise<WebSocket> {
   if (wsConnecting) return wsConnecting;
 
   wsConnecting = (async () => {
-    // Make sure daemon is running and we know its port.
-    try {
-      await window.electronAPI?.engineGatewayStart?.();
-    } catch {
-      // best-effort
+    const api = window.electronAPI;
+    if (!api?.engineGatewayStart || !api?.engineGatewayStatus) {
+      throw new Error('Gateway 仅在 Electron 应用内可用（缺少 engineGateway IPC）。');
     }
-    const st = await window.electronAPI?.engineGatewayStatus?.();
-    const port = typeof st?.port === 'number' ? st.port : 18789;
+
+    // 必须先让 GatewayDaemon 在本机 listen，再连 WS；不可用默认 18789 猜测（未启动时必失败）。
+    try {
+      await api.engineGatewayStart();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`启动 Gateway 失败: ${msg}`);
+    }
+
+    let port: number | undefined;
+    for (let i = 0; i < 25; i++) {
+      const st = await api.engineGatewayStatus();
+      if (st?.status === 'running' && typeof st.port === 'number' && st.port > 0) {
+        port = st.port;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    if (port == null) {
+      const st = await api.engineGatewayStatus();
+      throw new Error(
+        `Gateway 未在本地监听（状态: ${String(st?.status ?? 'unknown')}）。请在「设置」中启动或重启 Gateway，并确认 127.0.0.1 端口未被占用。`
+      );
+    }
+
     const url = `ws://127.0.0.1:${port}/ws`;
 
     const ws = await new Promise<WebSocket>((resolve, reject) => {

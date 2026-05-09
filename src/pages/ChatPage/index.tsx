@@ -10,6 +10,12 @@ import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
 import './styles.css';
 
+const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
+const DEFAULT_CHAT_FOOTER_PX = 220;
+const MIN_CHAT_FOOTER_PX = 140;
+const MIN_CHAT_MESSAGES_PX = 80;
+const RESIZE_HANDLE_PX = 6;
+
 const ChatPage: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -34,9 +40,68 @@ const ChatPage: FC = () => {
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const chatIntent = useSettingsStore((s) => s.chatIntent);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const resizeDragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const footerHeightRef = useRef(DEFAULT_CHAT_FOOTER_PX);
+
+  const [inputPanelHeightPx, setInputPanelHeightPx] = useState(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_FOOTER_HEIGHT_KEY);
+      const n = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(n)) return Math.max(MIN_CHAT_FOOTER_PX, n);
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_CHAT_FOOTER_PX;
+  });
+
+  const clampFooterHeight = useCallback((h: number) => {
+    const root = rootRef.current;
+    if (!root) return Math.max(MIN_CHAT_FOOTER_PX, Math.min(720, h));
+    const headerEl = root.querySelector('.cf-chatCenter__header');
+    const headerH = headerEl?.getBoundingClientRect().height ?? 52;
+    const inner = root.getBoundingClientRect().height - headerH - RESIZE_HANDLE_PX;
+    /** 为消息区至少保留 MIN_CHAT_MESSAGES_PX；窗口极小时允许输入区略低于理想最小值 */
+    const maxFooter = Math.max(96, inner - MIN_CHAT_MESSAGES_PX);
+    return Math.max(96, Math.min(maxFooter, h));
+  }, []);
+
+  useEffect(() => {
+    footerHeightRef.current = inputPanelHeightPx;
+  }, [inputPanelHeightPx]);
+
+  useEffect(() => {
+    setInputPanelHeightPx((prev) => {
+      const c = clampFooterHeight(prev);
+      return c === prev ? prev : c;
+    });
+  }, [clampFooterHeight]);
+
+  useEffect(() => {
+    const onWinResize = () =>
+      setInputPanelHeightPx((prev) => {
+        const c = clampFooterHeight(prev);
+        return c === prev ? prev : c;
+      });
+    window.addEventListener('resize', onWinResize);
+    return () => window.removeEventListener('resize', onWinResize);
+  }, [clampFooterHeight]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      setInputPanelHeightPx((prev) => {
+        const c = clampFooterHeight(prev);
+        return c === prev ? prev : c;
+      });
+    });
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [clampFooterHeight]);
 
   const handleModelChange = useCallback(
     (id: string | null) => {
@@ -128,8 +193,41 @@ const ChatPage: FC = () => {
     await sendMessage(content, modelId);
   };
 
+  const onResizePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    resizeDragRef.current = { startY: e.clientY, startH: footerHeightRef.current };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.classList.add('cf-chatCenter__resize--active');
+  };
+
+  const onResizePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    /** 与视觉直觉一致：鼠标上移增大输入区高度，下移减小（使用与 clientY 增量相反的符号） */
+    const next = clampFooterHeight(drag.startH - dy);
+    footerHeightRef.current = next;
+    setInputPanelHeightPx(next);
+  };
+
+  const endResize = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!resizeDragRef.current) return;
+    resizeDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    e.currentTarget.classList.remove('cf-chatCenter__resize--active');
+    try {
+      localStorage.setItem(CHAT_FOOTER_HEIGHT_KEY, String(footerHeightRef.current));
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
-    <div className="cf-chatCenter">
+    <div ref={rootRef} className="cf-chatCenter">
       <header className="cf-chatCenter__header">
         <div className="cf-chatCenter__title">
           <b style={{ fontSize: 12 }}>{activeConversation?.title ?? t('chat.noSessionSelected')}</b>
@@ -162,23 +260,45 @@ const ChatPage: FC = () => {
         )}
       </div>
 
-      <footer className="cf-chatCenter__input">
-        <ChatApiKeyBar
-          visible={showApiKeyBar}
-          onSaved={() => void reloadChatModels()}
-          onOpenFullSettings={() => navigate('/settings')}
-        />
-        <ChatInput
-          disabled={isLoading}
-          onSend={onSend}
-          models={modelsForSelect}
-          modelId={modelId}
-          onModelChange={handleModelChange}
-          interactionMode={interactionMode}
-          onInteractionModeChange={setInteractionMode}
-          intent={chatIntent}
-          onIntentChange={(v) => updateSettings({ chatIntent: v })}
-        />
+      <button
+        type="button"
+        className="cf-chatCenter__resize"
+        aria-label={t('chat.resizeInputHeight')}
+        title={t('chat.resizeInputHeightHint')}
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onDoubleClick={() => {
+          const next = clampFooterHeight(DEFAULT_CHAT_FOOTER_PX);
+          setInputPanelHeightPx(next);
+          try {
+            localStorage.setItem(CHAT_FOOTER_HEIGHT_KEY, String(next));
+          } catch {
+            /* ignore */
+          }
+        }}
+      />
+
+      <footer className="cf-chatCenter__input" style={{ height: inputPanelHeightPx }}>
+        <div className="cf-chatCenter__inputInner">
+          <ChatApiKeyBar
+            visible={showApiKeyBar}
+            onSaved={() => void reloadChatModels()}
+            onOpenFullSettings={() => navigate('/settings')}
+          />
+          <ChatInput
+            disabled={isLoading}
+            onSend={onSend}
+            models={modelsForSelect}
+            modelId={modelId}
+            onModelChange={handleModelChange}
+            interactionMode={interactionMode}
+            onInteractionModeChange={setInteractionMode}
+            intent={chatIntent}
+            onIntentChange={(v) => updateSettings({ chatIntent: v })}
+          />
+        </div>
       </footer>
     </div>
   );

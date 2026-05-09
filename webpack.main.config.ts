@@ -17,4 +17,8 @@ export const mainConfig: Configuration = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
+  // ws 含原生/双导出逻辑，打进 bundle 会导致 WebSocketServer is not a constructor
+  externals: {
+    ws: 'commonjs ws',
+  },
 };

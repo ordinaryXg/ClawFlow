@@ -1,6 +1,8 @@
 import { FC, useEffect, useMemo } from 'react';
-import { Form, Input, Modal, Select } from 'antd';
+import { Form, Input, Modal } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { Connector, ConnectorConfig } from '../../store/modules/connectorStore';
+import { CfSelectWithHints } from '../CfSelectWithHints';
 
 interface Props {
   open: boolean;
@@ -11,6 +13,7 @@ interface Props {
 }
 
 const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit }) => {
+  const { t } = useTranslation();
   const [form] = Form.useForm<{
     name: string;
     type: string;
@@ -21,13 +24,13 @@ const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit })
 
   const typeOptions = useMemo(
     () => [
-      { label: 'GitHub', value: 'github' },
-      { label: 'Jira', value: 'jira' },
-      { label: 'Slack', value: 'slack' },
-      { label: 'Webhook', value: 'webhook' },
-      { label: '自定义', value: 'custom' },
+      { value: 'github', label: t('connectors.typeGithub'), hint: t('connectors.typeHintGithub') },
+      { value: 'jira', label: t('connectors.typeJira'), hint: t('connectors.typeHintJira') },
+      { value: 'slack', label: t('connectors.typeSlack'), hint: t('connectors.typeHintSlack') },
+      { value: 'webhook', label: t('connectors.typeWebhook'), hint: t('connectors.typeHintWebhook') },
+      { value: 'custom', label: t('connectors.typeCustom'), hint: t('connectors.typeHintCustom') },
     ],
-    []
+    [t],
   );
 
   useEffect(() => {
@@ -44,15 +47,15 @@ const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit })
     if (!trimmed) return {};
     const parsed = JSON.parse(trimmed);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    throw new Error('配置必须是 JSON 对象');
+    throw new Error(t('connectors.formConfigInvalidObject'));
   };
 
   return (
     <Modal
       open={open}
-      title={isEdit ? '编辑连接器' : '添加连接器'}
-      okText={isEdit ? '保存' : '添加'}
-      cancelText="取消"
+      title={isEdit ? t('connectors.formEditTitle') : t('connectors.formAddTitle')}
+      okText={isEdit ? t('connectors.formOkEdit') : t('connectors.formOkAdd')}
+      cancelText={t('connectors.formCancel')}
       confirmLoading={loading}
       onCancel={onClose}
       onOk={() => {
@@ -66,40 +69,45 @@ const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit })
       }}
       destroyOnClose
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" initialValues={{ name: '', type: 'github', configJson: '{}' }}>
         <Form.Item
-          label="名称"
+          label={t('connectors.formNameLabel')}
           name="name"
           rules={[
-            { required: true, message: '请输入连接器名称' },
-            { max: 60, message: '名称过长' },
+            { required: true, message: t('connectors.formNameRequired') },
+            { max: 60, message: t('connectors.formNameTooLong') },
           ]}
         >
-          <Input placeholder="例如：GitHub" />
+          <Input placeholder={t('connectors.formNamePh')} />
         </Form.Item>
 
-        <Form.Item label="类型" name="type" rules={[{ required: true, message: '请选择类型' }]}>
-          <Select options={typeOptions} />
+        <Form.Item label={t('connectors.formTypeLabel')} name="type" rules={[{ required: true, message: t('connectors.formTypeRequired') }]}>
+          <CfSelectWithHints
+            options={typeOptions}
+            hintIconAriaBase={t('common.selectOptionHintAria')}
+            aria-label={t('connectors.formTypeLabel')}
+            popupMatchSelectWidth={false}
+          />
         </Form.Item>
 
         <Form.Item
-          label="配置（JSON）"
+          label={t('connectors.formConfigLabel')}
           name="configJson"
           rules={[
-            { required: true, message: '请输入配置 JSON（至少 {}）' },
+            { required: true, message: t('connectors.formConfigRequired') },
             {
               validator: async (_, value) => {
                 try {
                   parseConfig(String(value ?? ''));
                   return Promise.resolve();
                 } catch (e: any) {
-                  return Promise.reject(new Error(e?.message || 'JSON 格式不正确'));
+                  return Promise.reject(new Error(e?.message || t('connectors.formConfigJsonInvalid')));
                 }
               },
             },
           ]}
         >
-          <Input.TextArea autoSize={{ minRows: 6, maxRows: 14 }} placeholder='例如：{ "token": "xxx" }' />
+          <Input.TextArea autoSize={{ minRows: 6, maxRows: 14 }} placeholder={t('connectors.formConfigPh')} />
         </Form.Item>
       </Form>
     </Modal>
@@ -107,4 +115,3 @@ const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit })
 };
 
 export default ConnectorForm;
-

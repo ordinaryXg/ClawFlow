@@ -1,5 +1,6 @@
-import { FC, useState } from 'react';
+import { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CfSelectWithHints } from '../CfSelectWithHints';
 import './chat.css';
 
 type ProviderId = 'deepseek' | 'openai' | 'anthropic';
@@ -17,6 +18,15 @@ const ChatApiKeyBar: FC<Props> = ({ visible, onSaved, onOpenFullSettings }) => {
   const [token, setToken] = useState('');
   const [label, setLabel] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const providerOptions = useMemo(
+    () => [
+      { value: 'deepseek', label: 'DeepSeek', hint: t('settings.providerHintDeepseek') },
+      { value: 'openai', label: 'OpenAI', hint: t('settings.providerHintOpenai') },
+      { value: 'anthropic', label: 'Anthropic', hint: t('settings.providerHintAnthropic') },
+    ],
+    [t],
+  );
 
   if (!visible) return null;
 
@@ -49,17 +59,16 @@ const ChatApiKeyBar: FC<Props> = ({ visible, onSaved, onOpenFullSettings }) => {
       <div className="cf-chatApiKeyBar__title">{t('chat.apiKeyBarTitle')}</div>
       <p className="cf-chatApiKeyBar__hint">{t('chat.apiKeyBarBody')}</p>
       <div className="cf-chatApiKeyBar__row">
-        <select
-          className="cf-select cf-select--compact"
+        <CfSelectWithHints
+          className="cf-selectHint--compact"
           value={provider}
+          onChange={(v) => setProvider(v as ProviderId)}
+          options={providerOptions}
           disabled={saving}
           aria-label={t('settings.modelProvider')}
-          onChange={(e) => setProvider(e.target.value as ProviderId)}
-        >
-          <option value="deepseek">DeepSeek</option>
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-        </select>
+          hintIconAriaBase={t('common.selectOptionHintAria')}
+          popupMatchSelectWidth={false}
+        />
         <input
           className="cf-input"
           value={label}

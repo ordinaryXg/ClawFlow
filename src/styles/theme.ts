@@ -50,6 +50,18 @@ export function getAntdTheme(appTheme: AppTheme): ThemeConfig {
       Popconfirm: {
         colorBgElevated: isLight ? '#ffffff' : '#1A1D21',
       },
+      /** 下拉选项：提高未选中项与悬停对比度（避免灰字白底难辨认） */
+      Select: {
+        colorBgElevated: isLight ? '#ffffff' : '#1A1D21',
+        optionSelectedBg: isLight ? '#cfe6d8' : 'rgba(30,91,69,.28)',
+        optionActiveBg: isLight ? '#e8f0ec' : 'rgba(255,255,255,.08)',
+        optionSelectedColor: isLight ? '#0d1117' : '#E6E9ED',
+        colorText: isLight ? '#1a1d21' : '#E6E9ED',
+      },
+      Dropdown: {
+        colorBgElevated: isLight ? '#ffffff' : '#1A1D21',
+        colorText: isLight ? '#1a1d21' : '#E6E9ED',
+      },
     },
   };
 }
