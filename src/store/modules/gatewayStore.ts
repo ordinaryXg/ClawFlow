@@ -11,20 +11,12 @@ export interface GatewayState {
   port: number | null;
   uptimeMs: number;
   logs: Array<{ ts: number; level: string; msg: string }>;
-  config: {
-    cliPath?: string;
-    commandTimeout?: number;
-    gatewayStartTimeout?: number;
-    verbose?: boolean;
-  };
-  
   // Actions
   fetchStatus: () => Promise<void>;
   startGateway: () => Promise<void>;
   stopGateway: () => Promise<void>;
   restartGateway: () => Promise<void>;
   fetchLogs: (limit?: number) => Promise<void>;
-  updateConfig: (config: Partial<GatewayState['config']>) => void;
   setStatus: (status: GatewayState['status']) => void;
   setError: (error: string | null) => void;
 }
@@ -37,13 +29,6 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
   port: null,
   uptimeMs: 0,
   logs: [],
-  config: {
-    cliPath: undefined,
-    commandTimeout: 60000,
-    gatewayStartTimeout: 30000,
-    verbose: true,
-  },
-  
   fetchStatus: async () => {
     try {
       const res = await window.electronAPI?.engineGatewayStatus?.();
@@ -118,13 +103,6 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       set({ error: error.message || '获取 Gateway 日志失败' });
     }
   },
-  
-  updateConfig: (config) => {
-    set(state => ({ 
-      config: { ...state.config, ...config } 
-    }));
-  },
-  
   setStatus: (status) => {
     set({ status });
   },

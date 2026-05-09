@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, shell, clipboard } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
   registerOpenClawIPC,
   setActiveWorkspaceRoot,
@@ -290,6 +291,111 @@ function registerWorkspaceIPC(): void {
   ipcMain.handle('workspace:readFilePreview', async (_e, relativePath: string) => {
     const root = getActiveWorkspaceRoot();
     return await workspaceExplorer.readWorkspaceFilePreview(root, String(relativePath ?? ''));
+  });
+
+  const resolveAbs = (root: string, rel: string) => workspaceExplorer.resolvePathInsideWorkspace(root, String(rel ?? ''));
+
+  ipcMain.handle('workspace:resolveAbsolutePath', async (_e, relativePath: string) => {
+    const root = getActiveWorkspaceRoot();
+    const rel = String(relativePath ?? '');
+    const abs = resolveAbs(root, rel);
+    return { ok: true as const, workspaceRoot: root, relativePath: rel, absolutePath: abs };
+  });
+
+  ipcMain.handle('workspace:revealInExplorer', async (_e, relativePath: string) => {
+    const root = getActiveWorkspaceRoot();
+    const rel = String(relativePath ?? '');
+    const abs = resolveAbs(root, rel);
+    try {
+      shell.showItemInFolder(abs);
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle('clipboard:writeText', async (_e, text: string) => {
+    try {
+      clipboard.writeText(String(text ?? ''));
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle('workspace:mkdir', async (_e, params: { relativePath: string }) => {
+    const root = getActiveWorkspaceRoot();
+    const rel = String(params?.relativePath ?? '');
+    const abs = resolveAbs(root, rel);
+    try {
+      await fs.promises.mkdir(abs, { recursive: true });
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle(
+    'workspace:writeTextFile',
+    async (_e, params: { relativePath: string; content?: string; overwrite?: boolean }) => {
+      const root = getActiveWorkspaceRoot();
+      const rel = String(params?.relativePath ?? '');
+      const abs = resolveAbs(root, rel);
+      const content = String(params?.content ?? '');
+      const overwrite = params?.overwrite !== false;
+      try {
+        await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+        const exists = await fs.promises
+          .stat(abs)
+          .then((s) => s.isFile() || s.isSymbolicLink())
+          .catch(() => false);
+        if (exists && !overwrite) return { ok: false as const, error: 'File exists (overwrite=false)' };
+        await fs.promises.writeFile(abs, content, 'utf8');
+        return { ok: true as const };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false as const, error: msg };
+      }
+    }
+  );
+
+  ipcMain.handle('workspace:renamePath', async (_e, params: { from: string; to: string; overwrite?: boolean }) => {
+    const root = getActiveWorkspaceRoot();
+    const fromRel = String(params?.from ?? '');
+    const toRel = String(params?.to ?? '');
+    const overwrite = params?.overwrite === true;
+    const fromAbs = resolveAbs(root, fromRel);
+    const toAbs = resolveAbs(root, toRel);
+    try {
+      await fs.promises.mkdir(path.dirname(toAbs), { recursive: true });
+      const toExists = await fs.promises
+        .stat(toAbs)
+        .then(() => true)
+        .catch(() => false);
+      if (toExists && !overwrite) return { ok: false as const, error: 'Destination exists (overwrite=false)' };
+      if (toExists && overwrite) await fs.promises.rm(toAbs, { recursive: true, force: true });
+      await fs.promises.rename(fromAbs, toAbs);
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle('workspace:deletePath', async (_e, params: { relativePath: string }) => {
+    const root = getActiveWorkspaceRoot();
+    const rel = String(params?.relativePath ?? '');
+    const abs = resolveAbs(root, rel);
+    try {
+      await fs.promises.rm(abs, { recursive: true, force: true });
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
   });
 
   ipcMain.handle('workspace:getChangeLog', async (_e, limit?: number) => {

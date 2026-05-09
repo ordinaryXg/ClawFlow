@@ -33,6 +33,7 @@ const ChatPage: FC = () => {
   const [modelId, setModelId] = useState<string | null>(null);
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const chatIntent = useSettingsStore((s) => s.chatIntent);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
@@ -175,6 +176,8 @@ const ChatPage: FC = () => {
           onModelChange={handleModelChange}
           interactionMode={interactionMode}
           onInteractionModeChange={setInteractionMode}
+          intent={chatIntent}
+          onIntentChange={(v) => updateSettings({ chatIntent: v })}
         />
       </footer>
     </div>

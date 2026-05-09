@@ -11,6 +11,8 @@ interface Props {
   onModelChange?: (modelId: string | null) => void;
   interactionMode: ChatInteractionMode;
   onInteractionModeChange: (mode: ChatInteractionMode) => void;
+  intent: 'fast' | 'strong' | 'cheap';
+  onIntentChange: (intent: 'fast' | 'strong' | 'cheap') => void;
 }
 
 const ChatInput: FC<Props> = ({
@@ -21,6 +23,8 @@ const ChatInput: FC<Props> = ({
   onModelChange,
   interactionMode,
   onInteractionModeChange,
+  intent,
+  onIntentChange,
 }) => {
   const { t } = useTranslation();
   const [value, setValue] = useState('');
@@ -79,6 +83,24 @@ const ChatInput: FC<Props> = ({
               <option value="ask">{t('chat.modeAsk')}</option>
               <option value="plan">{t('chat.modePlan')}</option>
               <option value="multitask">{t('chat.modeMultitask')}</option>
+              <option value="auto">{t('chat.modeAuto')}</option>
+            </select>
+          </div>
+          <div className="cf-chatInput__modes">
+            <label className="cf-sub" htmlFor="cf-chat-intent">
+              {t('chat.intentLabel')}
+            </label>
+            <select
+              id="cf-chat-intent"
+              className="cf-select cf-select--compact"
+              value={intent}
+              disabled={disabled || isSending}
+              onChange={(e) => onIntentChange(e.target.value as any)}
+              aria-label={t('chat.intentLabel')}
+            >
+              <option value="fast">{t('chat.intentFast')}</option>
+              <option value="strong">{t('chat.intentStrong')}</option>
+              <option value="cheap">{t('chat.intentCheap')}</option>
             </select>
           </div>
           <div className="cf-chatInput__model">

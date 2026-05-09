@@ -23,6 +23,8 @@ type WsClientMessage =
       conversationId: string;
       text: string;
       mode?: 'ask' | 'plan' | 'multitask';
+      intent?: 'fast' | 'strong' | 'cheap';
+      policyOverrides?: unknown;
       modelId?: string;
     }
   | { type: 'gateway:ping' }
@@ -309,6 +311,11 @@ class GatewayDaemon extends EventEmitter {
     const conversationId = String(msg.conversationId ?? '').trim();
     const text = String(msg.text ?? '').trim();
     const mode = (String(msg.mode ?? 'ask').trim().toLowerCase() || 'ask') as 'ask' | 'plan' | 'multitask';
+    const intent = (String((msg as any).intent ?? 'strong').trim().toLowerCase() || 'strong') as
+      | 'fast'
+      | 'strong'
+      | 'cheap';
+    const policyOverrides = (msg as any).policyOverrides;
     const modelId = typeof msg.modelId === 'string' ? msg.modelId.trim() : '';
 
     if (!requestId || !conversationId || !text) {
@@ -320,7 +327,10 @@ class GatewayDaemon extends EventEmitter {
     }
 
     this.send(ws, { type: 'chat:ack', requestId, conversationId });
-    this.pushLog('info', `[ws] chat:send id=${requestId} conv=${conversationId} mode=${mode} chars=${text.length}`);
+    this.pushLog(
+      'info',
+      `[ws] chat:send id=${requestId} conv=${conversationId} mode=${mode} intent=${intent} chars=${text.length}`
+    );
 
     const abort = new AbortController();
     this.abortByRequestId.set(requestId, abort);
@@ -341,6 +351,8 @@ class GatewayDaemon extends EventEmitter {
           ...(modelId ? { modelId } : {}),
           onDelta: sendDelta,
           abortSignal: abort.signal,
+          intent,
+          ...(policyOverrides ? { policyOverrides } : {}),
         });
         this.abortByRequestId.delete(requestId);
         this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
@@ -354,6 +366,8 @@ class GatewayDaemon extends EventEmitter {
         ...(modelId ? { modelId } : {}),
         onDelta: sendDelta,
         abortSignal: abort.signal,
+        intent,
+        ...(policyOverrides ? { policyOverrides } : {}),
       });
       this.abortByRequestId.delete(requestId);
       this.send(ws, { type: 'chat:final', requestId, conversationId, message: full ?? '' });

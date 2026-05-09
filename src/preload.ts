@@ -7,22 +7,9 @@ export interface IElectronAPI {
   getGatewayStatus: () => Promise<string>;
   startGateway: () => Promise<void>;
   stopGateway: () => Promise<void>;
-  validateCLI: () => Promise<boolean>;
-  getConfig: () => Promise<any>;
-  updateConfig: (config: any) => Promise<{ success: boolean }>;
-  pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) => Promise<{ success: boolean }>;
-  removeModelAuthToken: (params: { provider: string; profileId?: string }) => Promise<{ removed: boolean }>;
-  setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
-  removeListedModel: (params: { modelId: string; profileId?: string }) => Promise<{ cliRemoved: boolean; defaultSwitched: boolean }>;
-  getModels: () => Promise<any>;
-  // 对话相关
-  sendMessage: (message: string, sessionId?: string, modelId?: string) => Promise<any>;
-  getConversations: () => Promise<any>;
-  deleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
-  upsertConversation: (conversation: any) => Promise<{ success: boolean }>;
+  // Legacy OpenClaw chat & config APIs removed (desktop chat/gateway are built-in).
   // 新引擎（Phase 0：stub）
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
@@ -31,6 +18,38 @@ export interface IElectronAPI {
   engineGatewayStatus: () => Promise<{ status: string; port: number }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
   engineGatewayStop: () => Promise<{ success: boolean }>;
+  engineAuthListProfiles: () => Promise<{
+    version: 2;
+    profiles: Array<{
+      provider: string;
+      profileId: string;
+      label?: string;
+      environment?: 'personal' | 'work' | 'custom';
+      encryption: 'electron.safeStorage';
+      createdAt: number;
+      updatedAt: number;
+    }>;
+    activeProfileIdByProvider: Record<string, string>;
+  }>;
+  engineAuthUpsertProfile: (params: {
+    provider: string;
+    token: string;
+    profileId?: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => Promise<{ profileId: string }>;
+  engineAuthRemoveProfile: (params: { provider: string; profileId: string }) => Promise<{ removed: boolean }>;
+  engineAuthUpdateProfileMeta: (params: {
+    provider: string;
+    profileId: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => Promise<{ success: boolean }>;
+  engineAuthSetActiveProfile: (params: { provider: string; profileId: string }) => Promise<{ success: boolean }>;
+  engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) => Promise<
+    | { ok: true; latencyMs: number; sample: string }
+    | { ok: false; latencyMs?: number; errorCode: string; message: string }
+  >;
   engineGetChatModels: () => Promise<{
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
@@ -91,6 +110,18 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  workspaceResolveAbsolutePath: (relativePath: string) => Promise<{
+    ok: true;
+    workspaceRoot: string;
+    relativePath: string;
+    absolutePath: string;
+  }>;
+  workspaceRevealInExplorer: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  workspaceDeletePath: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  clipboardWriteText: (text: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceGetChangeLog: (limit?: number) => Promise<{
     ok: boolean;
     entries: Array<{
@@ -116,25 +147,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGatewayStatus: () => ipcRenderer.invoke('openclaw:getGatewayStatus'),
   startGateway: () => ipcRenderer.invoke('openclaw:startGateway'),
   stopGateway: () => ipcRenderer.invoke('openclaw:stopGateway'),
-  validateCLI: () => ipcRenderer.invoke('openclaw:validateCLI'),
-  getConfig: () => ipcRenderer.invoke('openclaw:getConfig'),
-  updateConfig: (config: any) => ipcRenderer.invoke('openclaw:updateConfig', config),
-  pickCliPath: () => ipcRenderer.invoke('openclaw:pickCliPath'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) =>
-    ipcRenderer.invoke('openclaw:setModelAuthToken', params),
-  removeModelAuthToken: (params: { provider: string; profileId?: string }) =>
-    ipcRenderer.invoke('openclaw:removeModelAuthToken', params),
-  setDefaultModel: (params: { modelId: string }) => ipcRenderer.invoke('openclaw:setDefaultModel', params),
-  removeListedModel: (params: { modelId: string; profileId?: string }) => ipcRenderer.invoke('openclaw:removeListedModel', params),
-  getModels: () => ipcRenderer.invoke('openclaw:getModels'),
-  // 对话相关
-  sendMessage: (message: string, sessionId?: string, modelId?: string) =>
-    ipcRenderer.invoke('openclaw:sendMessage', message, sessionId, modelId),
-  getConversations: () => ipcRenderer.invoke('openclaw:getConversations'),
-  deleteConversation: (conversationId: string) => ipcRenderer.invoke('openclaw:deleteConversation', conversationId),
-  upsertConversation: (conversation: any) => ipcRenderer.invoke('openclaw:upsertConversation', conversation),
   // 新引擎（Phase 0：stub）
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) =>
     ipcRenderer.invoke('engine:sendMessage', params),
@@ -146,6 +160,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGatewayStop: () => ipcRenderer.invoke('engineGateway:stop'),
   engineGatewayRestart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:restart', params ?? {}),
   engineGatewayGetLogs: (params?: { limit?: number }) => ipcRenderer.invoke('engineGateway:logs', params ?? {}),
+  engineAuthListProfiles: () => ipcRenderer.invoke('engineAuth:listProfiles'),
+  engineAuthUpsertProfile: (params: {
+    provider: string;
+    token: string;
+    profileId?: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => ipcRenderer.invoke('engineAuth:upsertProfile', params),
+  engineAuthRemoveProfile: (params: { provider: string; profileId: string }) =>
+    ipcRenderer.invoke('engineAuth:removeProfile', params),
+  engineAuthUpdateProfileMeta: (params: {
+    provider: string;
+    profileId: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => ipcRenderer.invoke('engineAuth:updateProfileMeta', params),
+  engineAuthSetActiveProfile: (params: { provider: string; profileId: string }) =>
+    ipcRenderer.invoke('engineAuth:setActiveProfile', params),
+  engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) =>
+    ipcRenderer.invoke('engineAuth:testConnection', params),
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
   engineSendMessageStream: (params: {
     conversationId: string;
@@ -209,6 +243,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),
   workspaceListDir: (relativePath?: string) => ipcRenderer.invoke('workspace:listDir', relativePath),
   workspaceReadFilePreview: (relativePath: string) => ipcRenderer.invoke('workspace:readFilePreview', relativePath),
+  workspaceResolveAbsolutePath: (relativePath: string) => ipcRenderer.invoke('workspace:resolveAbsolutePath', relativePath),
+  workspaceRevealInExplorer: (relativePath: string) => ipcRenderer.invoke('workspace:revealInExplorer', relativePath),
+  workspaceMkdir: (relativePath: string) => ipcRenderer.invoke('workspace:mkdir', { relativePath }),
+  workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) =>
+    ipcRenderer.invoke('workspace:writeTextFile', params),
+  workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => ipcRenderer.invoke('workspace:renamePath', params),
+  workspaceDeletePath: (relativePath: string) => ipcRenderer.invoke('workspace:deletePath', { relativePath }),
+  clipboardWriteText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
   workspaceGetChangeLog: (limit?: number) => ipcRenderer.invoke('workspace:getChangeLog', limit),
   workspaceAppendChangeLog: (payload: { conversationId: string; userPreview: string; assistantExcerpt: string }) =>
     ipcRenderer.invoke('workspace:appendChangeLog', payload),

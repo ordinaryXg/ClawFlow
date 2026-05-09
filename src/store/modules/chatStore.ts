@@ -3,8 +3,10 @@
 
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
+import { autoPickMode, type ChatIntent } from '../../engine/mode-policy';
+import { useSettingsStore } from './settingsStore';
 
-export type ChatInteractionMode = 'ask' | 'plan' | 'multitask';
+export type ChatInteractionMode = 'ask' | 'plan' | 'multitask' | 'auto';
 
 type GatewayWsEvent =
   | { type: 'chat:ack'; requestId: string; conversationId: string }
@@ -20,6 +22,9 @@ type GatewayWsSend =
       conversationId: string;
       text: string;
       mode: ChatInteractionMode;
+      intent?: ChatIntent;
+      autoPick?: { pickedMode: 'ask' | 'plan' | 'multitask'; reason: string };
+      policyOverrides?: unknown;
       modelId?: string;
     }
   | { type: 'gateway:ping' };
@@ -354,9 +359,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       if (useBuiltinStream) {
         cancelAssistantReveal();
         set({ streamingMessage: '' });
+        const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
+        const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
+        let policyOverrides: any = null;
+        try {
+          policyOverrides = overridesJson ? JSON.parse(overridesJson) : null;
+        } catch {
+          policyOverrides = null;
+        }
+        const auto = interactionMode === 'auto' ? autoPickMode(content) : null;
+        const actualMode: 'ask' | 'plan' | 'multitask' = (auto?.pickedMode as any) ?? (interactionMode as any);
         const sendMeta = {
           conversationId: sessionId,
-          mode: interactionMode,
+          mode: actualMode,
+          intent,
+          ...(auto ? { autoPick: auto } : {}),
           modelId: modelId ?? null,
           textLen: content.length,
         };
@@ -381,6 +398,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           conversationId: sessionId,
           onDelta: (text) => {
             set((s) => ({ streamingMessage: (s.streamingMessage ?? '') + text }));
+            // Best-effort: tool execution in ClawFlowEngine emits [tool:*] markers into delta.
+            // When tools may have mutated workspace files, ask the UI file tree to refresh.
+            if (/\[tool:(done|fail)\]/.test(String(text ?? ''))) {
+              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+            }
           },
           onFinal: (full) => {
             if (activeRequestByConversation.get(sessionId) === requestId) {
@@ -388,6 +410,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             }
             const t1 = performance.now();
             finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' });
+            // Final reply likely implies any tool-driven file mutations are complete.
+            window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
           },
         });
 
@@ -396,7 +420,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           requestId,
           conversationId: sessionId,
           text: content,
-          mode: interactionMode,
+          mode: actualMode,
+          intent,
+          ...(auto ? { autoPick: auto } : {}),
+          ...(policyOverrides ? { policyOverrides } : {}),
           ...(modelId ? { modelId } : {}),
         };
         ws.send(JSON.stringify(msg));
@@ -406,7 +433,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const response = await window.electronAPI?.engineSendMessage?.({
         conversationId: sessionId,
         userText: content,
-        mode: interactionMode,
+        mode: interactionMode === 'auto' ? autoPickMode(content).pickedMode : interactionMode,
         ...(modelId ? { modelId } : {}),
       });
       const t1 = performance.now();

@@ -53,8 +53,6 @@ const SettingsPage: FC = () => {
     language,
     autoStartGateway,
     logLevel,
-    openclawCliPath: storeCliPath,
-    commandTimeout: storeTimeout,
     updateSettings,
     resetSettings,
   } = useSettingsStore();
@@ -68,16 +66,27 @@ const SettingsPage: FC = () => {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
   const [connectorCount, setConnectorCount] = useState(0);
 
-  const [cliPath, setCliPath] = useState(storeCliPath);
-  const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
-  const [pathCheck, setPathCheck] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [appVersion, setAppVersion] = useState<string>('');
   const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai' | 'anthropic'>('deepseek');
+  const [modelEnvironment, setModelEnvironment] = useState<'personal' | 'work' | 'custom'>('personal');
   const [modelProfileLabel, setModelProfileLabel] = useState('');
   const [modelToken, setModelToken] = useState('');
   const [modelSaving, setModelSaving] = useState(false);
-  const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
-  const [cliError, setCliError] = useState<string>('');
+  const [authSummary, setAuthSummary] = useState<null | {
+    profiles: Array<{
+      provider: string;
+      profileId: string;
+      label?: string;
+      environment?: 'personal' | 'work' | 'custom';
+      encryption: 'electron.safeStorage';
+      createdAt: number;
+      updatedAt: number;
+    }>;
+    activeProfileIdByProvider: Record<string, string>;
+  }>(null);
+  const [authTesting, setAuthTesting] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<{ provider: string; profileId: string; label: string } | null>(null);
+  const [policyDraft, setPolicyDraft] = useState('');
   const [builtinCatalog, setBuiltinCatalog] = useState<{
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
@@ -85,23 +94,6 @@ const SettingsPage: FC = () => {
   const [builtinCatalogLoading, setBuiltinCatalogLoading] = useState(false);
 
   useEffect(() => {
-    setCliPath(storeCliPath);
-    setTimeoutMs(storeTimeout);
-  }, [storeCliPath, storeTimeout]);
-
-  useEffect(() => {
-    if (window.electronAPI?.validateCLI) {
-      window.electronAPI
-        .validateCLI()
-        .then((available: boolean) => {
-          setCliAvailable(available);
-          setCliError(available ? '' : t('settings.cliPathMissingDetail'));
-        })
-        .catch(() => {
-          setCliAvailable(false);
-          setCliError(t('settings.cliPathCheckFailed'));
-        });
-    }
     void (async () => {
       try {
         const v = await window.electronAPI?.getAppVersion?.();
@@ -170,75 +162,24 @@ const SettingsPage: FC = () => {
   useEffect(() => {
     void (async () => {
       try {
-        const cfg = await window.electronAPI?.getConfig?.();
-        if (cfg && typeof cfg === 'object' && 'cliPath' in cfg) {
-          const p = String((cfg as { cliPath?: string }).cliPath ?? '');
-          setCliPath((prev) => (prev.trim() ? prev : p));
-        }
+        // OpenClaw CLI settings removed (chat & gateway run fully built-in).
       } catch {
         /* ignore */
       }
     })();
   }, []);
 
-  const pathHint = useMemo(() => {
-    if (pathCheck === 'ok') return t('settings.pathCheckOk');
-    if (pathCheck === 'fail') return t('settings.pathCheckFail');
-    return null;
-  }, [pathCheck, t]);
-
-  const persistEngine = useCallback(async () => {
-    const path = cliPath.trim();
-    const payload: { cliPath?: string; commandTimeout: number } = { commandTimeout: timeoutMs };
-    if (path) payload.cliPath = path;
-    await window.electronAPI.updateConfig(payload);
-    useGatewayStore.getState().updateConfig({ cliPath: path || undefined, commandTimeout: timeoutMs });
-  }, [cliPath, timeoutMs]);
-
   const onSave = async () => {
     updateSettings({
-      openclawCliPath: cliPath,
-      commandTimeout: timeoutMs,
       theme,
       language,
       autoStartGateway,
       logLevel,
     });
     try {
-      await persistEngine();
       (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.savedBody'));
     } catch {
       (window as any).__cf_toast?.error?.(t('settings.savePartialTitle'), t('settings.savePartialBody'));
-    }
-  };
-
-  const onPick = async () => {
-    try {
-      const picked = await window.electronAPI?.pickCliPath?.();
-      if (picked) {
-        setCliPath(picked);
-        setPathCheck('idle');
-      } else {
-        (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.pickCancelled'));
-      }
-    } catch {
-      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), t('common.sampleDetectFailBody'));
-    }
-  };
-
-  const onDetect = async () => {
-    try {
-      await persistEngine();
-      const ok = await window.electronAPI?.validateCLI?.();
-      setPathCheck(ok ? 'ok' : 'fail');
-      if (ok) {
-        (window as any).__cf_toast?.success?.(t('settings.pathCheckOk'), '');
-      } else {
-        (window as any).__cf_toast?.error?.(t('settings.pathCheckFail'), t('settings.pathInvalid'));
-      }
-    } catch {
-      setPathCheck('fail');
-      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), t('common.sampleDetectFailBody'));
     }
   };
 
@@ -246,9 +187,6 @@ const SettingsPage: FC = () => {
     if (!window.confirm(t('settings.resetConfirm'))) return;
     resetSettings();
     const st = useSettingsStore.getState();
-    setCliPath(st.openclawCliPath);
-    setTimeoutMs(st.commandTimeout);
-    setPathCheck('idle');
     void i18n.changeLanguage(st.language);
     document.documentElement.dataset.theme = st.theme;
     (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
@@ -258,27 +196,10 @@ const SettingsPage: FC = () => {
     void reloadBuiltinCatalog();
     void fetchStatus();
     void reloadConnectorsCount();
-    if (window.electronAPI?.validateCLI) {
-      window.electronAPI
-        .validateCLI()
-        .then((available: boolean) => {
-          setCliAvailable(available);
-          setCliError(available ? '' : t('settings.cliPathMissingDetail'));
-        })
-        .catch(() => {
-          setCliAvailable(false);
-          setCliError(t('settings.cliPathCheckFailed'));
-        });
-    }
     (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
   };
 
-  const scrollToOpenClawPath = () => {
-    setActiveSection('system');
-    window.setTimeout(() => {
-      document.getElementById('settings-system-openclaw')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
-  };
+  // OpenClaw CLI settings removed (desktop runs fully built-in).
 
   const gatewayChip = useMemo(() => {
     if (gatewayStatus === 'running')
@@ -289,7 +210,6 @@ const SettingsPage: FC = () => {
   }, [gatewayStatus, t]);
 
   const handleStartGateway = async () => {
-    if (cliAvailable === false) return;
     try {
       await startGateway();
       await fetchStatus();
@@ -300,7 +220,6 @@ const SettingsPage: FC = () => {
   };
 
   const handleStopGateway = async () => {
-    if (cliAvailable === false) return;
     try {
       await stopGateway();
       await fetchStatus();
@@ -320,15 +239,113 @@ const SettingsPage: FC = () => {
 
     setModelSaving(true);
     try {
-      await window.electronAPI?.setModelAuthToken?.({ provider, token, profileId: `${provider}:manual`, label });
+      // Create a dedicated profile (multi-account). New profile becomes active by default.
+      await window.electronAPI?.engineAuthUpsertProfile?.({
+        provider,
+        token,
+        ...(label ? { label } : {}),
+        environment: modelEnvironment,
+      });
       setModelToken('');
       setModelProfileLabel('');
       void reloadBuiltinCatalog();
+      void reloadAuthSummary();
       (window as any).__cf_toast?.success?.(t('settings.modelSavedTitle'), t('settings.modelSavedBody'));
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.modelSaveFailTitle'), e?.message || t('common.sampleOpFailBody'));
     } finally {
       setModelSaving(false);
+    }
+  };
+
+  const reloadAuthSummary = useCallback(async () => {
+    try {
+      const res = await window.electronAPI?.engineAuthListProfiles?.();
+      if (!res || typeof res !== 'object') return;
+      setAuthSummary({
+        profiles: Array.isArray((res as any).profiles) ? ((res as any).profiles as any[]) : [],
+        activeProfileIdByProvider:
+          (res as any).activeProfileIdByProvider && typeof (res as any).activeProfileIdByProvider === 'object'
+            ? ((res as any).activeProfileIdByProvider as Record<string, string>)
+            : {},
+      });
+    } catch {
+      setAuthSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadAuthSummary();
+  }, [reloadAuthSummary]);
+
+  useEffect(() => {
+    const raw = useSettingsStore.getState().chatModePolicyOverridesJson ?? '';
+    setPolicyDraft(raw);
+  }, []);
+
+  const onSetActiveProfile = async (provider: string, profileId: string) => {
+    try {
+      await window.electronAPI?.engineAuthSetActiveProfile?.({ provider, profileId });
+      void reloadBuiltinCatalog();
+      void reloadAuthSummary();
+      (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.modelProfileSetActiveOk'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    }
+  };
+
+  const onRemoveProfile = async (provider: string, profileId: string) => {
+    try {
+      await window.electronAPI?.engineAuthRemoveProfile?.({ provider, profileId });
+      void reloadBuiltinCatalog();
+      void reloadAuthSummary();
+      (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.modelProfileRemovedOk'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    }
+  };
+
+  const onTestProfile = async (provider: 'deepseek' | 'openai' | 'anthropic', profileId: string) => {
+    const key = `${provider}::${profileId}`;
+    setAuthTesting((s) => ({ ...s, [key]: true }));
+    try {
+      const res = await window.electronAPI?.engineAuthTestConnection?.({ provider, profileId });
+      if (res?.ok) {
+        (window as any).__cf_toast?.success?.(t('settings.modelTestOkTitle'), t('settings.modelTestOkBody', { ms: res.latencyMs }));
+      } else {
+        const code = String(res?.errorCode ?? 'unknown');
+        (window as any).__cf_toast?.error?.(t('settings.modelTestFailTitle'), t(`settings.modelTestFail_${code}`, res as any) || (res?.message || t('common.sampleOpFailBody')));
+      }
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.modelTestFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setAuthTesting((s) => {
+        const n = { ...s };
+        delete n[key];
+        return n;
+      });
+    }
+  };
+
+  const beginRenameProfile = (provider: string, profileId: string, currentLabel?: string) => {
+    setRenaming({ provider, profileId, label: String(currentLabel ?? '').trim() });
+  };
+
+  const cancelRenameProfile = () => setRenaming(null);
+
+  const commitRenameProfile = async () => {
+    if (!renaming) return;
+    const provider = renaming.provider;
+    const profileId = renaming.profileId;
+    const label = String(renaming.label ?? '').trim();
+    try {
+      await window.electronAPI?.engineAuthUpdateProfileMeta?.({ provider, profileId, ...(label ? { label } : {}) });
+      setRenaming(null);
+      void reloadBuiltinCatalog();
+      void reloadAuthSummary();
+      (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.modelProfileRenamedOk'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
   };
 
@@ -350,6 +367,96 @@ const SettingsPage: FC = () => {
           </div>
           <div style={{ height: 10 }} />
 
+              {authSummary?.profiles?.length ? (
+                <div style={{ marginBottom: 14 }}>
+                  <div className="cf-settingsModels__sectionTitle" style={{ marginBottom: 6 }}>
+                    {t('settings.modelProfilesTitle')}
+                  </div>
+                  <div className="cf-help" style={{ marginBottom: 8 }}>
+                    {t('settings.modelProfilesHint')}
+                  </div>
+                  <div className="cf-settingsModels__modelList" role="list">
+                    {authSummary.profiles
+                      .slice()
+                      .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
+                      .reverse()
+                      .map((p) => {
+                        const prov = String(p.provider ?? '').trim();
+                        const pid = String(p.profileId ?? '').trim();
+                        const activePid = authSummary.activeProfileIdByProvider?.[prov] ?? '';
+                        const isActive = activePid && pid === activePid;
+                        const testKey = `${prov}::${pid}`;
+                        const isRenaming = Boolean(renaming && renaming.provider === prov && renaming.profileId === pid);
+                        return (
+                          <div key={`${prov}:${pid}`} className="cf-settingsModelRow" role="listitem">
+                            <div className="cf-settingsModelRow__static">
+                              <div className="cf-settingsModelRow__staticTitle" title={pid}>
+                                {isRenaming ? (
+                                  <input
+                                    className="cf-input"
+                                    value={renaming?.label ?? ''}
+                                    placeholder={t('settings.modelProfileNamePh')}
+                                    onChange={(e) =>
+                                      setRenaming((s) => (s ? { ...s, label: e.target.value } : s))
+                                    }
+                                  />
+                                ) : p.label ? (
+                                  p.label
+                                ) : (
+                                  pid
+                                )}
+                              </div>
+                              <div className="cf-settingsModelRow__staticSub">
+                                {prov}
+                                {p.environment ? ` · ${t(`settings.modelEnv_${p.environment}`)}` : ''}
+                                {isActive ? ` · ${t('settings.modelProfileActive')}` : ''}
+                              </div>
+                            </div>
+                            <div className="cf-row" style={{ flexShrink: 0, gap: 8, alignItems: 'center' }}>
+                              {!isActive ? (
+                                <button className="cf-btn cf-btnSmall" type="button" onClick={() => void onSetActiveProfile(prov, pid)}>
+                                  {t('settings.modelProfileSetActive')}
+                                </button>
+                              ) : (
+                                <span className="cf-settingsBadge">{t('settings.modelProfileActive')}</span>
+                              )}
+                              <button
+                                className="cf-btn cf-btnSmall"
+                                type="button"
+                                disabled={Boolean(authTesting[testKey])}
+                                onClick={() => void onTestProfile(prov as any, pid)}
+                              >
+                                {authTesting[testKey] ? t('settings.modelTesting') : t('settings.modelTest')}
+                              </button>
+                              {isRenaming ? (
+                                <>
+                                  <button className="cf-btn cf-btnPrimary cf-btnSmall" type="button" onClick={() => void commitRenameProfile()}>
+                                    {t('common.save')}
+                                  </button>
+                                  <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={cancelRenameProfile}>
+                                    {t('common.cancel')}
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="cf-btn cf-btnSmall"
+                                  type="button"
+                                  onClick={() => beginRenameProfile(prov, pid, p.label)}
+                                >
+                                  {t('settings.modelProfileRename')}
+                                </button>
+                              )}
+                              <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={() => void onRemoveProfile(prov, pid)}>
+                                {t('common.delete')}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : null}
+
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.modelProfileName')}
           </div>
@@ -361,6 +468,59 @@ const SettingsPage: FC = () => {
           />
           <div className="cf-help">{t('settings.modelProfileNameHint')}</div>
           <div style={{ height: 10 }} />
+
+          <div className="cf-settingsModels__sectionTitle" style={{ marginBottom: 6, marginTop: 18 }}>
+            {t('settings.modePolicyTitle')}
+          </div>
+          <div className="cf-help" style={{ marginBottom: 8 }}>
+            {t('settings.modePolicyHint')}
+          </div>
+          <textarea
+            className="cf-textarea"
+            rows={6}
+            value={policyDraft}
+            onChange={(e) => setPolicyDraft(e.target.value)}
+            placeholder={t('settings.modePolicyPh')}
+          />
+          <div style={{ height: 10 }} />
+          <div className="cf-row" style={{ gap: 8 }}>
+            <button
+              className="cf-btn cf-btnPrimary"
+              type="button"
+              onClick={() => {
+                try {
+                  const trimmed = policyDraft.trim();
+                  if (trimmed) JSON.parse(trimmed);
+                  updateSettings({ chatModePolicyOverridesJson: trimmed });
+                  (window as any).__cf_toast?.success?.(t('common.sampleTitle'), t('settings.modePolicySavedOk'));
+                } catch (e: any) {
+                  (window as any).__cf_toast?.error?.(t('settings.modePolicyInvalidTitle'), e?.message || t('common.sampleOpFailBody'));
+                }
+              }}
+            >
+              {t('common.save')}
+            </button>
+            <button
+              className="cf-btn cf-btnGhost"
+              type="button"
+              onClick={() => {
+                setPolicyDraft('');
+                updateSettings({ chatModePolicyOverridesJson: '' });
+              }}
+            >
+              {t('settings.modePolicyClear')}
+            </button>
+          </div>
+
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.modelEnvironment')}
+              </div>
+              <select className="cf-select" value={modelEnvironment} onChange={(e) => setModelEnvironment(e.target.value as any)}>
+                <option value="personal">{t('settings.modelEnv_personal')}</option>
+                <option value="work">{t('settings.modelEnv_work')}</option>
+                <option value="custom">{t('settings.modelEnv_custom')}</option>
+              </select>
+              <div style={{ height: 10 }} />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.modelProvider')}
@@ -561,19 +721,6 @@ const SettingsPage: FC = () => {
             {t('settings.chatEngineBuiltinOnlyHint')}
           </div>
           <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.timeout')}
-          </div>
-          <input
-            className="cf-input"
-            type="number"
-            min={1000}
-            step={1000}
-            value={timeoutMs}
-            onChange={(e) => setTimeoutMs(Number(e.target.value || 0))}
-          />
-          <div className="cf-help">{t('settings.timeoutHelp')}</div>
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.logLevel')}
           </div>
           <select
@@ -587,79 +734,6 @@ const SettingsPage: FC = () => {
             <option value="error">error</option>
           </select>
           <div className="cf-help">{t('settings.logLevelHelp')}</div>
-        </div>
-
-        <div className="cf-card" id="settings-system-openclaw">
-          <h3>{t('settings.openclaw')}</h3>
-          <div className="cf-divider" />
-
-          <div className="cf-row" style={{ alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <div className="cf-sub" style={{ marginBottom: 4 }}>
-                <strong style={{ color: 'var(--text)' }}>{t('settings.openclawCliVersionTitle')}</strong>
-              </div>
-              <div className="cf-sub">
-                {cliAvailable === false ? t('settings.cliVersionNotInstalled') : t('settings.cliVersionChecking')}
-              </div>
-              <div className="cf-help" style={{ marginTop: 6 }}>
-                {t('settings.openclawCliVersionHint')}
-              </div>
-            </div>
-            <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchStatus()}>
-              {t('dashboard.refreshStatus')}
-            </button>
-          </div>
-
-          <div className="cf-divider" />
-
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.cliPath')}
-          </div>
-          <div className="cf-row" style={{ alignItems: 'center' }}>
-            <input
-              className="cf-input"
-              value={cliPath}
-              onChange={(e) => {
-                setCliPath(e.target.value);
-                setPathCheck('idle');
-              }}
-              placeholder={t('settings.cliPathPlaceholder')}
-              style={{ flex: 1 }}
-            />
-            <button type="button" className="cf-btn" onClick={() => void onPick()}>
-              {t('common.selectFile')}
-            </button>
-            <button type="button" className="cf-btn" onClick={() => void onDetect()}>
-              {t('common.detect')}
-            </button>
-          </div>
-          {pathHint ? (
-            <div className={pathCheck === 'fail' ? 'cf-errorText' : 'cf-help'} style={{ marginTop: 6 }}>
-              {pathHint}
-            </div>
-          ) : null}
-
-          <div className="cf-help" style={{ marginTop: 6 }}>
-            <span style={{ color: 'var(--muted)' }}>{t('common.viewGuide')}</span>
-          </div>
-
-          <div className="cf-divider" />
-
-          <div className="cf-row cf-settingsPage__row">
-            <div>
-              <div className="cf-sub">
-                <strong style={{ color: 'var(--text)' }}>{t('settings.autoStart')}</strong>
-              </div>
-              <div className="cf-help">{t('settings.autoStartHelp')}</div>
-            </div>
-            <button
-              type="button"
-              className={autoStartGateway ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
-              onClick={() => updateSettings({ autoStartGateway: !autoStartGateway })}
-            >
-              {autoStartGateway ? t('common.on') : t('common.off')}
-            </button>
-          </div>
         </div>
 
         <div className="cf-card">
@@ -842,17 +916,7 @@ const SettingsPage: FC = () => {
         </div>
       </div>
 
-      {cliAvailable === false ? (
-        <div className="cf-banner">
-          <div>
-            <b>{t('settings.cliBannerMissingTitle')}</b>
-            <span>{cliError || t('settings.cliPathMissingDetail')}</span>
-          </div>
-          <button className="cf-btn cf-btnGold" type="button" onClick={scrollToOpenClawPath}>
-            {t('settings.goConfigureCliPath')}
-          </button>
-        </div>
-      ) : null}
+      {null}
 
       <div className="cf-settingsPage__globalStripe" role="note">
         {t('settings.globalScopeStripe')}

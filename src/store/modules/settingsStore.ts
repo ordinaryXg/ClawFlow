@@ -8,12 +8,16 @@ export interface SettingsState {
   language: 'zh' | 'en';
   autoStartGateway: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
-  /** OpenClaw 可执行文件路径，空字符串表示使用内置/PATH 解析 */
-  openclawCliPath: string;
-  /** 主进程命令超时（毫秒） */
-  commandTimeout: number;
   /** 对话页默认选中的模型 ID（如 `deepseek/deepseek-chat`） */
   builtinDefaultModelId: string | null;
+  /** 对话策略意图：更快/更强/更省钱 */
+  chatIntent: 'fast' | 'strong' | 'cheap';
+  /**
+   * 模式策略覆盖（JSON 字符串）
+   * 结构示例：
+   * { "ask": { "thinking": {"type":"disabled"} }, "plan": { "reasoning_effort":"max" }, "multitask": { "toolsEnabled": true } }
+   */
+  chatModePolicyOverridesJson: string;
 }
 
 export interface SettingsActions {
@@ -28,9 +32,9 @@ const DEFAULT_SETTINGS: SettingsState = {
   language: 'zh',
   autoStartGateway: true,
   logLevel: 'info',
-  openclawCliPath: '',
-  commandTimeout: 60000,
   builtinDefaultModelId: null,
+  chatIntent: 'strong',
+  chatModePolicyOverridesJson: '',
 };
 
 function persistSlice(state: SettingsState) {
@@ -39,9 +43,9 @@ function persistSlice(state: SettingsState) {
     language: state.language,
     autoStartGateway: state.autoStartGateway,
     logLevel: state.logLevel,
-    openclawCliPath: state.openclawCliPath,
-    commandTimeout: state.commandTimeout,
     builtinDefaultModelId: state.builtinDefaultModelId,
+    chatIntent: state.chatIntent,
+    chatModePolicyOverridesJson: state.chatModePolicyOverridesJson,
   };
 }
 
@@ -79,15 +83,15 @@ try {
       logLevel: ['debug', 'info', 'warn', 'error'].includes(String(p.logLevel))
         ? (p.logLevel as SettingsState['logLevel'])
         : 'info',
-      openclawCliPath: typeof p.openclawCliPath === 'string' ? p.openclawCliPath : '',
-      commandTimeout:
-        typeof p.commandTimeout === 'number' && Number.isFinite(p.commandTimeout)
-          ? p.commandTimeout
-          : DEFAULT_SETTINGS.commandTimeout,
       builtinDefaultModelId:
         typeof p.builtinDefaultModelId === 'string' && p.builtinDefaultModelId.trim()
           ? p.builtinDefaultModelId.trim()
           : null,
+      chatIntent: ['fast', 'strong', 'cheap'].includes(String((p as any).chatIntent))
+        ? ((p as any).chatIntent as any)
+        : DEFAULT_SETTINGS.chatIntent,
+      chatModePolicyOverridesJson:
+        typeof (p as any).chatModePolicyOverridesJson === 'string' ? (p as any).chatModePolicyOverridesJson : '',
     });
   }
 } catch (error) {

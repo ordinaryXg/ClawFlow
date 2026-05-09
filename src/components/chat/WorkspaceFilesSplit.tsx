@@ -18,6 +18,14 @@ import { WORKSPACE_IMAGE_PREVIEW_MAX_MB } from '../../workspace-preview-limits';
 import './chat.css';
 
 type Entry = { name: string; kind: 'file' | 'dir' };
+type ContextTarget =
+  | { kind: 'root' }
+  | { kind: 'dir'; rel: string }
+  | { kind: 'file'; rel: string };
+
+function targetRel(target: ContextTarget): string | null {
+  return target.kind === 'root' ? null : target.rel;
+}
 
 const TREE_PREVIEW_GUTTER_PX = 6;
 const TREE_COL_MIN_PX = 96;
@@ -73,6 +81,12 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     | { state: 'error'; message: string }
   >({ state: 'idle' });
   const [mdViewMode, setMdViewMode] = useState<'preview' | 'source'>('preview');
+
+  const [ctxMenu, setCtxMenu] = useState<null | { x: number; y: number; target: ContextTarget }>(null);
+  const [dialog, setDialog] = useState<
+    | null
+    | { kind: 'newFile' | 'newDir' | 'rename' | 'delete'; baseRel: string; initialName: string; target?: ContextTarget }
+  >(null);
 
   const markdownOptions = useMemo(
     () => ({
@@ -152,6 +166,88 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     }
   }, [t]);
 
+  const closeCtxMenu = () => setCtxMenu(null);
+
+  const copyText = useCallback(async (text: string) => {
+    const s = String(text ?? '');
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(s);
+        return;
+      }
+    } catch {
+      // fall back to IPC
+    }
+    try {
+      await window.electronAPI?.clipboardWriteText?.(s);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const reveal = useCallback(async (rel: string) => {
+    try {
+      await window.electronAPI?.workspaceRevealInExplorer?.(rel);
+    } finally {
+      closeCtxMenu();
+    }
+  }, []);
+
+  const refreshTree = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+  }, []);
+
+  const runNewDir = useCallback(
+    async (baseRel: string, name: string) => {
+      const rel = joinRel(baseRel, name);
+      const res = await window.electronAPI?.workspaceMkdir?.(rel);
+      if (!res?.ok) throw new Error(res?.error || 'mkdir failed');
+      refreshTree();
+    },
+    [refreshTree]
+  );
+
+  const runNewFile = useCallback(
+    async (baseRel: string, name: string) => {
+      const rel = joinRel(baseRel, name);
+      const res = await window.electronAPI?.workspaceWriteTextFile?.({ relativePath: rel, content: '', overwrite: false });
+      if (!res?.ok) throw new Error(res?.error || 'write failed');
+      refreshTree();
+      setSelectedFile(rel);
+    },
+    [refreshTree]
+  );
+
+  const runRename = useCallback(
+    async (fromRel: string, toName: string) => {
+      const parent = fromRel.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+      const toRel = joinRel(parent, toName);
+      const res = await window.electronAPI?.workspaceRenamePath?.({ from: fromRel, to: toRel, overwrite: false });
+      if (!res?.ok) throw new Error(res?.error || 'rename failed');
+      refreshTree();
+      if (selectedFile === fromRel) setSelectedFile(toRel);
+    },
+    [refreshTree, selectedFile]
+  );
+
+  const runDelete = useCallback(
+    async (rel: string) => {
+      const res = await window.electronAPI?.workspaceDeletePath?.(rel);
+      if (!res?.ok) throw new Error(res?.error || 'delete failed');
+      refreshTree();
+      if (selectedFile === rel) {
+        setSelectedFile(null);
+        setPreview({ state: 'idle' });
+      }
+    },
+    [refreshTree, selectedFile]
+  );
+
+  const expandedRef = useRef<Set<string>>(expanded);
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
+
   useEffect(() => {
     setExpanded(new Set(['']));
     setChildren(new Map());
@@ -161,6 +257,25 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     if (workspacePath) {
       void loadDir('');
     }
+  }, [workspacePath, loadDir]);
+
+  useEffect(() => {
+    if (!workspacePath) return;
+    let timer: number | null = null;
+    const onFilesUpdated = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        // Refresh root and all currently expanded dirs.
+        const dirs = Array.from(expandedRef.current.values());
+        if (!dirs.includes('')) dirs.unshift('');
+        for (const d of dirs) void loadDir(d);
+      }, 120);
+    };
+    window.addEventListener('cf-workspace-files-updated', onFilesUpdated as any);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('cf-workspace-files-updated', onFilesUpdated as any);
+    };
   }, [workspacePath, loadDir]);
 
   useEffect(() => {
@@ -289,7 +404,15 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
       const rows: ReactElement[] = [];
       if (rel === '') {
         rows.push(
-          <div key="__root" className="cf-fileTree__rootLabel">
+          <div
+            key="__root"
+            className="cf-fileTree__rootLabel"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'root' } });
+            }}
+          >
             {t('chat.rightTabs.treeRoot')}
           </div>
         );
@@ -326,6 +449,11 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
               className={`cf-fileTree__row cf-fileTree__row--dir ${open ? 'cf-fileTree__row--open' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 }}
               onClick={() => toggleDir(childRel)}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                setCtxMenu({ x: ev.clientX, y: ev.clientY, target: { kind: 'dir', rel: childRel } });
+              }}
             >
               <span className="cf-fileTree__chev">{open ? '▾' : '▸'}</span>
               <span className="cf-fileTree__name">{e.name}</span>
@@ -343,6 +471,11 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
               className={`cf-fileTree__row cf-fileTree__row--file ${active ? 'cf-fileTree__row--active' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 }}
               onClick={() => setSelectedFile(childRel)}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                setCtxMenu({ x: ev.clientX, y: ev.clientY, target: { kind: 'file', rel: childRel } });
+              }}
             >
               <span className="cf-fileTree__chev" />
               <span className="cf-fileTree__name">{e.name}</span>
@@ -363,6 +496,8 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
   const showMdToggle =
     selectedFile != null && isMarkdownFilename(selectedFile) && preview.state === 'text';
 
+  const previewTitleSuffix = selectedFile ? ` · ${selectedFile}` : '';
+
   return (
     <div className="cf-rightWorkspace">
       <div className="cf-rightWorkspace__path cf-sub" title={workspacePath}>
@@ -374,7 +509,20 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           style={{ flex: 'none', width: treeColPx, minWidth: 0 }}
         >
           <div className="cf-rightWorkspace__colTitle">{t('chat.rightTabs.treeTitle')}</div>
-          <div className="cf-fileTree" role="tree">
+          <div
+            className="cf-fileTree"
+            role="tree"
+            onContextMenu={(e) => {
+              // Right-click on blank area of tree should open root menu (new file/folder).
+              // If the event originated from a file/dir row (or root label), let the row handler handle it.
+              const targetEl = e.target as HTMLElement | null;
+              if (targetEl?.closest?.('.cf-fileTree__row, .cf-fileTree__rootLabel')) {
+                return;
+              }
+              e.preventDefault();
+              setCtxMenu({ x: e.clientX, y: e.clientY, target: { kind: 'root' } });
+            }}
+          >
             {treeNodes}
           </div>
         </div>
@@ -393,7 +541,10 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
                 : 'cf-rightWorkspace__colTitle'
             }
           >
-            <span>{t('chat.rightTabs.previewTitle')}</span>
+            <span>
+              {t('chat.rightTabs.previewTitle')}
+              {previewTitleSuffix ? <span className="cf-sub"> {previewTitleSuffix}</span> : null}
+            </span>
             {showMdToggle ? (
               <div className="cf-filePreview__mdToggle" role="group" aria-label={t('chat.rightTabs.mdModeGroup')}>
                 <button
@@ -432,14 +583,12 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
               <div className="cf-sub">{t('chat.rightTabs.previewBinary')}</div>
             ) : preview.state === 'image' ? (
               <>
-                <div className="cf-filePreview__path cf-sub">{selectedFile}</div>
                 <div className="cf-filePreview__imgWrap">
                   <img className="cf-filePreview__img" src={preview.dataUrl} alt="" decoding="async" />
                 </div>
               </>
             ) : preview.state === 'text' ? (
               <>
-                <div className="cf-filePreview__path cf-sub">{selectedFile}</div>
                 {preview.truncated ? (
                   <div className="cf-filePreview__warn cf-sub">{t('chat.rightTabs.previewTruncated')}</div>
                 ) : null}
@@ -457,8 +606,213 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           </div>
         </div>
       </div>
+
+      {ctxMenu ? (
+        <div
+          className="cf-ctxMenu__backdrop"
+          onMouseDown={() => closeCtxMenu()}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            closeCtxMenu();
+          }}
+        >
+          <div
+            className="cf-ctxMenu"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {ctxMenu.target.kind !== 'root' ? (
+              <button
+                className="cf-ctxMenu__item"
+                type="button"
+                onClick={() => {
+                  const rel = targetRel(ctxMenu.target);
+                  if (rel) void reveal(rel);
+                }}
+              >
+                在文件资源管理器中显示
+              </button>
+            ) : null}
+
+            {ctxMenu.target.kind === 'root' || ctxMenu.target.kind === 'dir' ? (
+              <>
+                <button
+                  className="cf-ctxMenu__item"
+                  type="button"
+                  onClick={() => {
+                    const baseRel = ctxMenu.target.kind === 'dir' ? ctxMenu.target.rel : '';
+                    setDialog({ kind: 'newFile', baseRel, initialName: 'new-file.txt', target: ctxMenu.target });
+                    closeCtxMenu();
+                  }}
+                >
+                  新建文件
+                </button>
+                <button
+                  className="cf-ctxMenu__item"
+                  type="button"
+                  onClick={() => {
+                    const baseRel = ctxMenu.target.kind === 'dir' ? ctxMenu.target.rel : '';
+                    setDialog({ kind: 'newDir', baseRel, initialName: 'new-folder', target: ctxMenu.target });
+                    closeCtxMenu();
+                  }}
+                >
+                  新建文件夹
+                </button>
+                <div className="cf-ctxMenu__sep" />
+              </>
+            ) : null}
+
+            {ctxMenu.target.kind !== 'root' ? (
+              <>
+                <button
+                  className="cf-ctxMenu__item"
+                  type="button"
+                  onClick={async () => {
+                    const rel = targetRel(ctxMenu.target);
+                    if (!rel) return;
+                    const abs = await window.electronAPI?.workspaceResolveAbsolutePath?.(rel);
+                    void copyText(abs?.absolutePath ?? rel);
+                    closeCtxMenu();
+                  }}
+                >
+                  复制路径
+                </button>
+                <button
+                  className="cf-ctxMenu__item"
+                  type="button"
+                  onClick={() => {
+                    const rel = targetRel(ctxMenu.target);
+                    if (rel) void copyText(rel);
+                    closeCtxMenu();
+                  }}
+                >
+                  复制相对路径
+                </button>
+                <div className="cf-ctxMenu__sep" />
+                <button
+                  className="cf-ctxMenu__item"
+                  type="button"
+                  onClick={() => {
+                    const rel = targetRel(ctxMenu.target);
+                    if (!rel) return;
+                    const base = rel.replace(/\\/g, '/').split('/').pop() ?? rel;
+                    setDialog({ kind: 'rename', baseRel: rel, initialName: base, target: ctxMenu.target });
+                    closeCtxMenu();
+                  }}
+                >
+                  重命名
+                </button>
+                <button
+                  className="cf-ctxMenu__item cf-ctxMenu__item--danger"
+                  type="button"
+                  onClick={() => {
+                    const rel = targetRel(ctxMenu.target);
+                    if (!rel) return;
+                    setDialog({ kind: 'delete', baseRel: rel, initialName: '', target: ctxMenu.target });
+                    closeCtxMenu();
+                  }}
+                >
+                  删除
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {dialog ? (
+        <InlineDialog
+          dialog={dialog}
+          onClose={() => setDialog(null)}
+          onSubmit={async (name) => {
+            const d = dialog;
+            if (!workspacePath) return;
+            if (d.kind === 'newFile') return await runNewFile(d.baseRel, name);
+            if (d.kind === 'newDir') return await runNewDir(d.baseRel, name);
+            if (d.kind === 'rename') return await runRename(d.baseRel, name);
+            if (d.kind === 'delete') return await runDelete(d.baseRel);
+          }}
+        />
+      ) : null}
     </div>
   );
 };
 
 export default WorkspaceFilesSplit;
+
+const InlineDialog: FC<{
+  dialog: { kind: 'newFile' | 'newDir' | 'rename' | 'delete'; baseRel: string; initialName: string };
+  onClose: () => void;
+  onSubmit: (name: string) => Promise<void> | void;
+}> = ({ dialog, onClose, onSubmit }) => {
+  const [val, setVal] = useState(dialog.initialName);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setVal(dialog.initialName);
+    setErr(null);
+    setTimeout(() => ref.current?.focus(), 0);
+  }, [dialog.initialName]);
+
+  const title =
+    dialog.kind === 'newFile'
+      ? '新建文件'
+      : dialog.kind === 'newDir'
+        ? '新建文件夹'
+        : dialog.kind === 'rename'
+          ? '重命名'
+          : '删除';
+
+  return (
+    <div className="cf-ctxDialog__backdrop" onMouseDown={onClose}>
+      <div className="cf-ctxDialog" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="cf-ctxDialog__title">{title}</div>
+        {dialog.kind === 'delete' ? (
+          <div className="cf-sub" style={{ marginBottom: 12 }}>
+            确认删除：<code>{dialog.baseRel}</code>
+          </div>
+        ) : (
+          <input
+            ref={ref}
+            className="cf-input"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === 'Escape') onClose();
+              if (e.key === 'Enter') {
+                try {
+                  setErr(null);
+                  await onSubmit(val.trim());
+                  onClose();
+                } catch (ex: any) {
+                  setErr(ex?.message ?? String(ex));
+                }
+              }
+            }}
+          />
+        )}
+        {err ? <div className="cf-errorText" style={{ marginTop: 8 }}>{err}</div> : null}
+        <div className="cf-ctxDialog__actions">
+          <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={onClose}>
+            取消
+          </button>
+          <button
+            className={dialog.kind === 'delete' ? 'cf-btn cf-btnDanger cf-btnSmall' : 'cf-btn cf-btnPrimary cf-btnSmall'}
+            type="button"
+            onClick={async () => {
+              try {
+                setErr(null);
+                await onSubmit(val.trim());
+                onClose();
+              } catch (ex: any) {
+                setErr(ex?.message ?? String(ex));
+              }
+            }}
+          >
+            {dialog.kind === 'delete' ? '删除' : '确定'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

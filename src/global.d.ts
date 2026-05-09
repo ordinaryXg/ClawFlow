@@ -6,22 +6,9 @@ export interface IElectronAPI {
   getGatewayStatus: () => Promise<string>;
   startGateway: () => Promise<void>;
   stopGateway: () => Promise<void>;
-  validateCLI: () => Promise<boolean>;
-  getConfig: () => Promise<any>;
-  updateConfig: (config: any) => Promise<{ success: boolean }>;
-  pickCliPath: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) => Promise<{ success: boolean }>;
-  removeModelAuthToken: (params: { provider: string; profileId?: string }) => Promise<{ removed: boolean }>;
-  setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
-  removeListedModel: (params: { modelId: string; profileId?: string }) => Promise<{ cliRemoved: boolean; defaultSwitched: boolean }>;
-  getModels: () => Promise<any>;
-  // 对话相关
-  sendMessage: (message: string, sessionId?: string, modelId?: string) => Promise<any>;
-  getConversations: () => Promise<any>;
-  deleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
-  upsertConversation: (conversation: any) => Promise<{ success: boolean }>;
+  // Legacy OpenClaw chat & config APIs removed (desktop chat/gateway are built-in).
   // 新引擎（Phase 0：stub）
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
@@ -32,6 +19,38 @@ export interface IElectronAPI {
   engineGatewayStop: () => Promise<{ success: boolean }>;
   engineGatewayRestart: (params?: { port?: number }) => Promise<{ success: boolean }>;
   engineGatewayGetLogs: (params?: { limit?: number }) => Promise<{ logs: Array<{ ts: number; level: string; msg: string }> }>;
+  engineAuthListProfiles: () => Promise<{
+    version: 2;
+    profiles: Array<{
+      provider: string;
+      profileId: string;
+      label?: string;
+      environment?: 'personal' | 'work' | 'custom';
+      encryption: 'electron.safeStorage';
+      createdAt: number;
+      updatedAt: number;
+    }>;
+    activeProfileIdByProvider: Record<string, string>;
+  }>;
+  engineAuthUpsertProfile: (params: {
+    provider: string;
+    token: string;
+    profileId?: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => Promise<{ profileId: string }>;
+  engineAuthRemoveProfile: (params: { provider: string; profileId: string }) => Promise<{ removed: boolean }>;
+  engineAuthUpdateProfileMeta: (params: {
+    provider: string;
+    profileId: string;
+    label?: string;
+    environment?: 'personal' | 'work' | 'custom';
+  }) => Promise<{ success: boolean }>;
+  engineAuthSetActiveProfile: (params: { provider: string; profileId: string }) => Promise<{ success: boolean }>;
+  engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) => Promise<
+    | { ok: true; latencyMs: number; sample: string }
+    | { ok: false; latencyMs?: number; errorCode: string; message: string }
+  >;
   engineGetChatModels: () => Promise<{
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
@@ -99,6 +118,18 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  workspaceResolveAbsolutePath: (relativePath: string) => Promise<{
+    ok: true;
+    workspaceRoot: string;
+    relativePath: string;
+    absolutePath: string;
+  }>;
+  workspaceRevealInExplorer: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  workspaceDeletePath: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  clipboardWriteText: (text: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceGetChangeLog: (limit?: number) => Promise<{
     ok: boolean;
     entries: Array<{

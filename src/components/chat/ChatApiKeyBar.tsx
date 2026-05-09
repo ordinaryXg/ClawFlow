@@ -15,6 +15,7 @@ const ChatApiKeyBar: FC<Props> = ({ visible, onSaved, onOpenFullSettings }) => {
   const { t } = useTranslation();
   const [provider, setProvider] = useState<ProviderId>('deepseek');
   const [token, setToken] = useState('');
+  const [label, setLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
   if (!visible) return null;
@@ -27,12 +28,13 @@ const ChatApiKeyBar: FC<Props> = ({ visible, onSaved, onOpenFullSettings }) => {
     }
     setSaving(true);
     try {
-      await window.electronAPI?.setModelAuthToken?.({
+      await window.electronAPI?.engineAuthUpsertProfile?.({
         provider,
         token: trimmed,
-        profileId: `${provider}:manual`,
+        ...(label.trim() ? { label: label.trim() } : {}),
       });
       setToken('');
+      setLabel('');
       await onSaved();
       (window as any).__cf_toast?.success?.(t('settings.modelSavedTitle'), t('chat.apiKeySavedBody'));
     } catch (e: any) {
@@ -58,6 +60,13 @@ const ChatApiKeyBar: FC<Props> = ({ visible, onSaved, onOpenFullSettings }) => {
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
         </select>
+        <input
+          className="cf-input"
+          value={label}
+          disabled={saving}
+          placeholder={t('settings.modelProfileNamePh')}
+          onChange={(e) => setLabel(e.target.value)}
+        />
         <input
           className="cf-input cf-chatApiKeyBar__token"
           type="password"

@@ -636,6 +636,66 @@
   color:var(--muted);
 }
 .cf-fileTree__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-ctxMenu__backdrop{
+  position:fixed;
+  inset:0;
+  z-index:2000;
+}
+.cf-ctxMenu{
+  position:fixed;
+  min-width:200px;
+  background:rgba(18,20,24,.98);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  padding:6px;
+  box-shadow:0 10px 30px rgba(0,0,0,.45);
+}
+.cf-ctxMenu__item{
+  width:100%;
+  text-align:left;
+  padding:8px 10px;
+  border-radius:8px;
+  border:none;
+  background:transparent;
+  color:rgba(255,255,255,.92);
+  cursor:pointer;
+  font-size:12px;
+}
+.cf-ctxMenu__item:hover{background:rgba(255,255,255,.08)}
+.cf-ctxMenu__item--danger{color:rgba(255,120,120,.95)}
+.cf-ctxMenu__sep{
+  height:1px;
+  margin:6px 4px;
+  background:rgba(255,255,255,.08);
+}
+.cf-ctxDialog__backdrop{
+  position:fixed;
+  inset:0;
+  z-index:2100;
+  display:grid;
+  place-items:center;
+  background:rgba(0,0,0,.35);
+}
+.cf-ctxDialog{
+  width:min(520px,calc(100vw - 40px));
+  background:rgba(18,20,24,.98);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:12px;
+  padding:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.55);
+}
+.cf-ctxDialog__title{
+  font-size:12px;
+  font-weight:700;
+  margin-bottom:10px;
+  color:rgba(255,255,255,.92);
+}
+.cf-ctxDialog__actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:12px;
+}
 .cf-filePreview{
   flex:1;
   min-height:0;

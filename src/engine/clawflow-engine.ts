@@ -10,8 +10,9 @@ import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import type { ModelProvider } from './providers/provider';
 import type { ChatCompletionRequest, ChatMessage, ModeConfig } from './providers/types';
-import { getAuthToken, listAuthProfiles } from './auth-store';
+import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
+import { buildModeConfig, type ChatIntent } from './mode-policy';
 
 /** Chat 下拉：内置引擎可用模型 ID（`/ 前即为 provider router id） */
 const BUILTIN_CHAT_MODEL_CATALOG: Record<string, readonly string[]> = {
@@ -240,13 +241,26 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }> {
-    const profiles = await listAuthProfiles();
+    const authSummary = await getAuthStoreSummary().catch(() => null);
     const labelByProvider = new Map<string, string>();
-    for (const p of profiles) {
-      const prov = String(p.provider ?? '').trim();
-      if (!prov || labelByProvider.has(prov)) continue;
-      const lbl = typeof p.label === 'string' ? p.label.trim() : '';
-      if (lbl) labelByProvider.set(prov, lbl);
+    if (authSummary?.profiles?.length) {
+      const activeByProv = authSummary.activeProfileIdByProvider ?? {};
+      for (const p of authSummary.profiles) {
+        const prov = String(p.provider ?? '').trim();
+        if (!prov) continue;
+        // Prefer active profile label for provider.
+        if (activeByProv[prov] && String(p.profileId) === String(activeByProv[prov])) {
+          const lbl = typeof p.label === 'string' ? p.label.trim() : '';
+          if (lbl) labelByProvider.set(prov, lbl);
+        }
+      }
+      // Fallback: first label we see.
+      for (const p of authSummary.profiles) {
+        const prov = String(p.provider ?? '').trim();
+        if (!prov || labelByProvider.has(prov)) continue;
+        const lbl = typeof p.label === 'string' ? p.label.trim() : '';
+        if (lbl) labelByProvider.set(prov, lbl);
+      }
     }
 
     const models: Array<{ id: string; label: string; available: boolean }> = [];
@@ -295,6 +309,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     modelId?: string;
     onDelta?: (delta: string) => void;
     abortSignal?: AbortSignal;
+    intent?: ChatIntent;
+    policyOverrides?: unknown;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
@@ -312,13 +328,20 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         params.userText
       );
 
-      const baseModeConfig: ModeConfig = {
+      const overridesForMode = (() => {
+        const o: any = params.policyOverrides && typeof params.policyOverrides === 'object' ? (params.policyOverrides as any) : null;
+        const byMode = o && typeof o[mode] === 'object' ? o[mode] : null;
+        return byMode ?? undefined;
+      })();
+      const baseModeConfig: ModeConfig = buildModeConfig({
         mode,
-        ...(mode === 'ask'
-          ? { thinking: { type: 'disabled' } }
-          : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-        ...(mode === 'multitask' ? { tools: this.tools.listSchemas(), useBetaBaseUrl: true } : {}),
-      };
+        intent: params.intent ?? 'strong',
+        overrides: overridesForMode,
+      });
+      // Ensure tools come from the current runtime (avoid creating a second runtime for schemas).
+      if (mode === 'multitask') {
+        baseModeConfig.tools = this.tools.listSchemas();
+      }
       for (let step = 0; step < 6; step++) {
         if (params.abortSignal?.aborted) throw new Error('CANCELLED');
         const req: ChatCompletionRequest = {
@@ -403,6 +426,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     mode: 'ask' | 'plan';
     onDelta: (delta: string) => void;
     abortSignal?: AbortSignal;
+    intent?: ChatIntent;
+    policyOverrides?: unknown;
   }): Promise<string> {
     const emitChunked = async (text: string) => {
       const full = String(text ?? '');
@@ -422,12 +447,16 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     const provider = providerId ? this.router.get(providerId) : null;
     const streamMode = params.mode;
     const mode: InteractionMode = streamMode;
-    const baseModeConfig: ModeConfig = {
+    const overridesForMode = (() => {
+      const o: any = params.policyOverrides && typeof params.policyOverrides === 'object' ? (params.policyOverrides as any) : null;
+      const byMode = o && typeof o[mode] === 'object' ? o[mode] : null;
+      return byMode ?? undefined;
+    })();
+    const baseModeConfig: ModeConfig = buildModeConfig({
       mode,
-      ...(streamMode === 'ask'
-        ? { thinking: { type: 'disabled' } }
-        : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-    };
+      intent: params.intent ?? 'strong',
+      overrides: overridesForMode,
+    });
 
     if (!provider || !providerId) {
       const reply = `【ClawFlowEngine:stub】mode=${streamMode} model=${modelId}\n\n你说：${params.userText}`;
@@ -516,6 +545,89 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     await getGlobalClawFlowEngine().deleteConversation(conversationId);
     return { success: true };
   });
+
+  // D1: provider profiles + secure token storage
+  ipcMain.handle('engineAuth:listProfiles', async () => {
+    return await getAuthStoreSummary();
+  });
+  ipcMain.handle(
+    'engineAuth:upsertProfile',
+    async (
+      _e,
+      params: {
+        provider: string;
+        token: string;
+        profileId?: string;
+        label?: string;
+        environment?: 'personal' | 'work' | 'custom';
+      }
+    ) => {
+      const { upsertAuthProfile } = await import('./auth-store');
+      return await upsertAuthProfile(params);
+    }
+  );
+  ipcMain.handle('engineAuth:removeProfile', async (_e, params: { provider: string; profileId: string }) => {
+    const { removeAuthProfile } = await import('./auth-store');
+    return await removeAuthProfile(params);
+  });
+  ipcMain.handle(
+    'engineAuth:updateProfileMeta',
+    async (_e, params: { provider: string; profileId: string; label?: string; environment?: 'personal' | 'work' | 'custom' }) => {
+      const { updateAuthProfileMeta } = await import('./auth-store');
+      return await updateAuthProfileMeta(params);
+    }
+  );
+  ipcMain.handle('engineAuth:setActiveProfile', async (_e, params: { provider: string; profileId: string }) => {
+    return await setActiveAuthProfile(params);
+  });
+  ipcMain.handle(
+    'engineAuth:testConnection',
+    async (_e, params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) => {
+      const providerId = params.provider;
+      const profileId = params.profileId;
+      const token = await getAuthToken(providerId, profileId);
+      if (!token) return { ok: false as const, errorCode: 'missing_key', message: '缺少 Key' };
+      const modelId = BUILTIN_CHAT_MODEL_CATALOG[providerId]?.[0] ?? '';
+      if (!modelId) return { ok: false as const, errorCode: 'model_not_found', message: '未找到可测试模型' };
+
+      const { DeepSeekProvider } = await import('./providers/deepseek');
+      const { OpenAIProvider } = await import('./providers/openai');
+      const { AnthropicProvider } = await import('./providers/anthropic');
+      const t0 = Date.now();
+      try {
+        const p =
+          providerId === 'deepseek'
+            ? new DeepSeekProvider({ apiKey: token })
+            : providerId === 'openai'
+              ? new OpenAIProvider({ apiKey: token })
+              : new AnthropicProvider({ apiKey: token });
+        const res = await p.chatCompletion({
+          model: modelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          modeConfig: { mode: 'ask' },
+        });
+        const latencyMs = Date.now() - t0;
+        return { ok: true as const, latencyMs, sample: (res?.content ?? '').slice(0, 80) };
+      } catch (e: any) {
+        const msg = e?.message ?? String(e);
+        const latencyMs = Date.now() - t0;
+        const m = String(msg).toLowerCase();
+        const statusMatch = String(msg).match(/HTTP\s+(\d{3})/i);
+        const status = statusMatch ? Number(statusMatch[1]) : null;
+        const errorCode =
+          status === 401 || status === 403 || m.includes('invalid') || m.includes('api key is not configured')
+            ? 'invalid_key'
+            : status === 429 || m.includes('rate')
+              ? 'rate_limited'
+              : m.includes('quota') || m.includes('insufficient')
+                ? 'quota'
+                : m.includes('econnrefused') || m.includes('timeout') || m.includes('network')
+                  ? 'network'
+                  : 'unknown';
+        return { ok: false as const, latencyMs, errorCode, message: msg };
+      }
+    }
+  );
   ipcMain.handle(
     'engine:sendMessage',
     async (
