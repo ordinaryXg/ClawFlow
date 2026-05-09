@@ -1,4 +1,4 @@
-import { FC, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChangeHistoryPanel from './ChangeHistoryPanel';
 import SimpleEmbeddedBrowser from './SimpleEmbeddedBrowser';
@@ -15,6 +15,20 @@ type TabKey = 'workspace' | 'browser' | 'changes';
 const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
   const [active, setActive] = useState<TabKey>('workspace');
+  const [embeddedNavigateUrl, setEmbeddedNavigateUrl] = useState<string | null>(null);
+
+  const clearEmbeddedNavigate = useCallback(() => setEmbeddedNavigateUrl(null), []);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    const off = api?.onEmbeddedBrowserNavigate?.((p) => {
+      if (p?.url && typeof p.url === 'string') {
+        setEmbeddedNavigateUrl(p.url);
+        setActive('browser');
+      }
+    });
+    return () => off?.();
+  }, []);
 
   const tabs = useMemo(
     () => [
@@ -49,9 +63,18 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
       </div>
 
       <div className="cf-chatRight__body" role="tabpanel">
-        {active === 'workspace' ? <WorkspaceFilesSplit workspacePath={workspacePath} /> : null}
-        {active === 'browser' ? <SimpleEmbeddedBrowser /> : null}
-        {active === 'changes' ? <ChangeHistoryPanel workspacePath={workspacePath} /> : null}
+        <div style={{ display: active === 'workspace' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+          <WorkspaceFilesSplit workspacePath={workspacePath} />
+        </div>
+        <div style={{ display: active === 'browser' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+          <SimpleEmbeddedBrowser
+            externalNavigateUrl={embeddedNavigateUrl}
+            onConsumedExternalNavigate={clearEmbeddedNavigate}
+          />
+        </div>
+        <div style={{ display: active === 'changes' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+          <ChangeHistoryPanel workspacePath={workspacePath} />
+        </div>
       </div>
     </aside>
   );

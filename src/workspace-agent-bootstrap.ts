@@ -86,6 +86,7 @@ You are not the user's voice in groups. Be careful with personal context from \`
 
 - Follow tool descriptions and args strictly.
 - Keep environment-specific notes in \`.roleAgent/TOOLS.md\`.
+- To **open a website inside ClawFlow** (right panel embedded browser), call \`open_embedded_browser\` with an https URL (e.g. \`https://www.baidu.com\`). Use \`web_search\` for keyword search, not for opening a known site.
 
 ## Make It Yours
 

@@ -1,32 +1,38 @@
-import { FC, useCallback, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { normalizeHttpUrl } from '../../utils/normalize-http-url';
 
 const DEFAULT_URL = 'https://example.com';
 
-function normalizeUrl(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-  if (/^https?:\/\//i.test(t)) return t;
-  if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(t)) return `https://${t}`;
-  try {
-    // eslint-disable-next-line no-new
-    new URL(t);
-    return t;
-  } catch {
-    return null;
-  }
-}
+export type SimpleEmbeddedBrowserProps = {
+  /** 由主进程工具经 IPC 请求导航；非 null 时应用该 URL 并触发 onConsumedExternalNavigate */
+  externalNavigateUrl?: string | null;
+  onConsumedExternalNavigate?: () => void;
+};
 
-const SimpleEmbeddedBrowser: FC = () => {
+const SimpleEmbeddedBrowser: FC<SimpleEmbeddedBrowserProps> = ({
+  externalNavigateUrl = null,
+  onConsumedExternalNavigate,
+}) => {
   const { t } = useTranslation();
   const wvRef = useRef<HTMLElement | null>(null);
   const [input, setInput] = useState(DEFAULT_URL);
   const [activeSrc, setActiveSrc] = useState(DEFAULT_URL);
 
   const go = useCallback(() => {
-    const u = normalizeUrl(input);
+    const u = normalizeHttpUrl(input);
     if (u) setActiveSrc(u);
   }, [input]);
+
+  useEffect(() => {
+    if (externalNavigateUrl == null || externalNavigateUrl === '') return;
+    const u = normalizeHttpUrl(externalNavigateUrl);
+    if (u) {
+      setInput(u);
+      setActiveSrc(u);
+    }
+    onConsumedExternalNavigate?.();
+  }, [externalNavigateUrl, onConsumedExternalNavigate]);
 
   return (
     <div className="cf-embeddedBrowser">

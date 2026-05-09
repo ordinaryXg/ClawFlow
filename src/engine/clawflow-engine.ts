@@ -342,6 +342,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     abortSignal?: AbortSignal;
     intent?: ChatIntent;
     policyOverrides?: unknown;
+    /** 工具 open_embedded_browser：在主进程通过 IPC 通知渲染进程打开右侧内嵌浏览器 */
+    openEmbeddedBrowser?: (url: string) => void;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
@@ -416,6 +418,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           config: this.config,
           onDelta: params.onDelta,
           abortSignal: params.abortSignal,
+          openEmbeddedBrowser: params.openEmbeddedBrowser,
         });
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];
@@ -660,10 +663,15 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
   ipcMain.handle(
     'engine:sendMessage',
     async (
-      _e,
+      event,
       params: { conversationId: string; userText: string; mode?: InteractionMode; modelId?: string }
     ) => {
-      const res = await getGlobalClawFlowEngine().sendMessage(params);
+      const res = await getGlobalClawFlowEngine().sendMessage({
+        ...params,
+        openEmbeddedBrowser: (url: string) => {
+          event.sender.send('embedded-browser:navigate', { url });
+        },
+      });
       return { success: true, message: res.message };
     }
   );
@@ -693,6 +701,9 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
           modelId: params.modelId,
           mode,
           onDelta: sendDelta,
+          openEmbeddedBrowser: (url: string) => {
+            event.sender.send('embedded-browser:navigate', { url });
+          },
         });
         const full = res.message ?? '';
         const chunkSize = 28;

@@ -1,4 +1,6 @@
+import { shell } from 'electron';
 import type { ToolSchema, ToolCall } from './providers/types';
+import { isSafeHttpUrl, normalizeHttpUrl } from '../utils/normalize-http-url';
 import * as workspaceExplorer from '../workspace-explorer';
 import { runClawFlowWebSearch, WEB_SEARCH_MAX_COUNT, type ResolvedClawFlowWebSearch } from './web-search';
 import { execFile } from 'child_process';
@@ -15,6 +17,8 @@ export type ToolExecutionContext = {
   onDelta?: (text: string) => void;
   /** Optional abort signal to cancel tool execution */
   abortSignal?: AbortSignal;
+  /** 在主窗口内嵌浏览器（右侧 webview）中打开 URL；由 IPC 注入，无则仅能走系统浏览器 */
+  openEmbeddedBrowser?: (url: string) => void;
 };
 
 export type ToolResult = { tool_call_id: string; content: string };
@@ -367,6 +371,60 @@ export function createDefaultToolRuntime(): ToolRuntime {
         config: ctx.config,
       });
       return JSON.stringify(out, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'open_embedded_browser',
+        description:
+          'Open a URL in ClawFlow built-in embedded browser (right sidebar webview). Use when the user asks to open a website in the app (e.g. Baidu: https://www.baidu.com). For keyword-based information lookup, prefer web_search.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            url: {
+              type: 'string',
+              description: 'Full https URL or a domain like www.baidu.com',
+            },
+            prefer_system_browser: {
+              type: 'boolean',
+              description:
+                'If true, open only in the OS default browser instead of the in-app webview.',
+            },
+          },
+          required: ['url', 'prefer_system_browser'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const raw = String(args?.url ?? '');
+      const preferSystem = Boolean(args?.prefer_system_browser);
+      const normalized = normalizeHttpUrl(raw);
+      if (!normalized || !isSafeHttpUrl(normalized)) {
+        return JSON.stringify(
+          { ok: false, error: 'invalid_or_unsafe_url', hint: 'Use http(s) only, e.g. https://www.baidu.com' },
+          null,
+          2
+        );
+      }
+      if (preferSystem) {
+        await shell.openExternal(normalized);
+        return JSON.stringify({ ok: true, opened: 'system_browser', url: normalized }, null, 2);
+      }
+      if (ctx.openEmbeddedBrowser) {
+        ctx.openEmbeddedBrowser(normalized);
+        return JSON.stringify({ ok: true, opened: 'embedded_browser', url: normalized }, null, 2);
+      }
+      await shell.openExternal(normalized);
+      return JSON.stringify(
+        { ok: true, opened: 'system_browser_fallback', url: normalized, note: 'embedded panel unavailable' },
+        null,
+        2
+      );
     }
   );
 

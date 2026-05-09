@@ -64,6 +64,7 @@ export interface IElectronAPI {
   onEngineChatStream: (
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
+  onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   // 技能管理
   getSkills: () => Promise<any>;
   installSkill: (skillName: string) => Promise<{ success: boolean }>;
