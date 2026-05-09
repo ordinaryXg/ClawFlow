@@ -40,7 +40,7 @@ const ChatPage: FC = () => {
         const list = Array.isArray(res?.models) ? res.models : [];
         const rawModels = list
           .map((m: any) => {
-            const id = String(m?.id ?? '').trim();
+            const id = String(m?.id ?? m?.key ?? '').trim();
             if (!id) return null;
             return {
               id,
@@ -58,7 +58,11 @@ const ChatPage: FC = () => {
             ? (res.providerProfiles as Record<string, { profileId: string; label?: string }>)
             : {};
 
-        const merged = mergeConfiguredModelsForDisplay(rawModels, configuredProviders);
+        const merged = mergeConfiguredModelsForDisplay(
+          rawModels,
+          configuredProviders,
+          Object.keys(providerProfiles)
+        );
         const opts = merged.map((m) => {
           const provider = m.id.split('/')[0] || '';
           const lbl = providerProfiles[provider]?.label?.trim();
@@ -67,7 +71,8 @@ const ChatPage: FC = () => {
         setModels(opts);
 
         const ids = new Set(opts.map((o) => o.id));
-        setModelId(defaultId && ids.has(defaultId) ? defaultId : null);
+        const firstId = opts[0]?.id ?? null;
+        setModelId(defaultId && ids.has(defaultId) ? defaultId : firstId);
       } catch {
         setModels([]);
         setModelId(null);

@@ -90,6 +90,7 @@ typings/
 
 # Electron-Forge
 out/
+pack-output/
 dist/
 
 # temp-openclaw

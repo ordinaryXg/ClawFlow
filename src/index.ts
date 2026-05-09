@@ -1,6 +1,11 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron';
 import * as path from 'path';
-import { registerOpenClawIPC, setActiveWorkspaceRoot, getActiveWorkspaceRoot, getActiveEngine } from './engine/openclaw-engine';
+import {
+  registerOpenClawIPC,
+  setActiveWorkspaceRoot,
+  getActiveWorkspaceRoot,
+  getGlobalOpenClawCliEngine,
+} from './engine/openclaw-engine';
 import * as workspaceService from './workspace-service';
 import * as workspaceExplorer from './workspace-explorer';
 import * as workspaceChangeLog from './workspace-change-log';
@@ -56,7 +61,7 @@ const I18N: Record<AppLang, Record<string, string>> = {
     navChat: '对话',
     navSkills: '技能',
     navConnectors: '连接器',
-    navSettings: '设置',
+    navSettings: '全局设置',
   },
   en: {
     file: 'File',
@@ -94,7 +99,7 @@ const I18N: Record<AppLang, Record<string, string>> = {
     navChat: 'Chat',
     navSkills: 'Skills',
     navConnectors: 'Connectors',
-    navSettings: 'Settings',
+    navSettings: 'Global settings',
   },
 };
 
@@ -237,7 +242,7 @@ function registerWorkspaceIPC(): void {
       w.webContents.send('workspace:changed', { path: res.newActivePath })
     );
     void workspaceService.ensureWorkspaceInitialized(res.newActivePath);
-    void getActiveEngine()
+    void getGlobalOpenClawCliEngine()
       .stopGateway()
       .catch((e) => console.warn('[workspace] stopGateway after remove (best-effort) failed:', e?.message || e));
     return res;
@@ -251,7 +256,7 @@ function registerWorkspaceIPC(): void {
     setActiveWorkspaceRoot(resolved);
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('workspace:changed', { path: resolved }));
     void workspaceService.ensureWorkspaceInitialized(resolved);
-    void getActiveEngine()
+    void getGlobalOpenClawCliEngine()
       .stopGateway()
       .catch((e) => console.warn('[workspace] stopGateway (best-effort) failed:', e?.message || e));
     return { success: true, path: resolved };
@@ -380,6 +385,8 @@ app.whenReady().then(async () => {
     workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
   }
   const active = reg.activeWorkspacePath ?? workspaceService.getDefaultWorkspacePath();
+  workspaceService.migrateWorkspaceOpenclawToGlobalOnce();
+  workspaceService.removeLegacyWorkspaceOpenclawDirs();
   await workspaceService.ensureWorkspaceInitialized(active);
   workspaceService.setActiveWorkspace(active);
   setActiveWorkspaceRoot(active);

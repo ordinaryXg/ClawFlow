@@ -24,7 +24,7 @@ export type SettingsStore = SettingsState & SettingsActions;
 const DEFAULT_SETTINGS: SettingsState = {
   theme: 'dark',
   language: 'zh',
-  autoStartGateway: false,
+  autoStartGateway: true,
   logLevel: 'info',
   openclawCliPath: '',
   commandTimeout: 60000,
@@ -70,7 +70,8 @@ try {
     useSettingsStore.setState({
       theme: p.theme === 'light' ? 'light' : 'dark',
       language: p.language === 'en' ? 'en' : 'zh',
-      autoStartGateway: !!p.autoStartGateway,
+      autoStartGateway:
+        typeof p.autoStartGateway === 'boolean' ? p.autoStartGateway : DEFAULT_SETTINGS.autoStartGateway,
       logLevel: ['debug', 'info', 'warn', 'error'].includes(String(p.logLevel))
         ? (p.logLevel as SettingsState['logLevel'])
         : 'info',

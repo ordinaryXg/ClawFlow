@@ -107,7 +107,7 @@ const SettingsPage: FC = () => {
         setAppVersion('');
       }
     })();
-  }, [activeWorkspacePath, fetchConnectors, fetchSkills, fetchStatus, fetchVersion, t]);
+  }, [fetchConnectors, fetchSkills, fetchStatus, fetchVersion, t]);
 
   useEffect(() => {
     void (async () => {
@@ -119,7 +119,7 @@ const SettingsPage: FC = () => {
         setConfiguredModels(
           list
             .map((m: any) => {
-              const id = String(m?.id ?? '').trim();
+              const id = String(m?.id ?? m?.key ?? '').trim();
               if (!id) return null;
               return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
             })
@@ -133,11 +133,17 @@ const SettingsPage: FC = () => {
         setProviderProfiles({});
       }
     })();
+    // 切换工作区后刷新：主进程模型数据为全局，但避免界面长期缓存旧快照
   }, [activeWorkspacePath]);
 
   const displayModels = useMemo(
-    () => mergeConfiguredModelsForDisplay(configuredModels, configuredProviders),
-    [configuredModels, configuredProviders]
+    () =>
+      mergeConfiguredModelsForDisplay(
+        configuredModels,
+        configuredProviders,
+        Object.keys(providerProfiles ?? {})
+      ),
+    [configuredModels, configuredProviders, providerProfiles]
   );
 
   useEffect(() => {
@@ -289,7 +295,7 @@ const SettingsPage: FC = () => {
         setConfiguredModels(
           list
             .map((m: any) => {
-              const id = String(m?.id ?? '').trim();
+              const id = String(m?.id ?? m?.key ?? '').trim();
               if (!id) return null;
               return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
             })
@@ -352,7 +358,7 @@ const SettingsPage: FC = () => {
       setConfiguredModels(
         list
           .map((m: any) => {
-            const id = String(m?.id ?? '').trim();
+            const id = String(m?.id ?? m?.key ?? '').trim();
             if (!id) return null;
             return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
           })
@@ -428,6 +434,10 @@ const SettingsPage: FC = () => {
           </button>
         </div>
       ) : null}
+
+      <div className="cf-settingsPage__globalStripe" role="note">
+        {t('settings.globalScopeStripe')}
+      </div>
 
       <section className="cf-grid cf-settingsPage__grid">
         <div className="cf-card cf-col12">
@@ -682,20 +692,6 @@ const SettingsPage: FC = () => {
         </div>
 
         <div className="cf-card cf-col12">
-          <h3>{t('settings.about')}</h3>
-          <div className="cf-divider" />
-          <div className="cf-row" style={{ gap: 24, flexWrap: 'wrap' }}>
-            <div className="cf-sub">
-              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>：{appVersion || '—'}
-            </div>
-            <div className="cf-sub">
-              <strong style={{ color: 'var(--text)' }}>{t('settings.versionLabel')}</strong>：{version || '—'}
-            </div>
-            <div className="cf-sub">{t('settings.license')}</div>
-          </div>
-        </div>
-
-        <div className="cf-card cf-col12">
           <h3>{t('settings.modelsTitle')}</h3>
           <div className="cf-divider" />
           <div className="cf-help">{t('settings.modelsHint')}</div>
@@ -802,6 +798,20 @@ const SettingsPage: FC = () => {
                 {modelSaving ? t('settings.modelSaving') : t('settings.modelSave')}
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="cf-card cf-col12">
+          <h3>{t('settings.about')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-row" style={{ gap: 24, flexWrap: 'wrap' }}>
+            <div className="cf-sub">
+              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>：{appVersion || '—'}
+            </div>
+            <div className="cf-sub">
+              <strong style={{ color: 'var(--text)' }}>{t('settings.versionLabel')}</strong>：{version || '—'}
+            </div>
+            <div className="cf-sub">{t('settings.license')}</div>
           </div>
         </div>
       </section>

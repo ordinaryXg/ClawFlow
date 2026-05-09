@@ -2,6 +2,16 @@
   align-items: center;
 }
 
+.cf-settingsPage__globalStripe {
+  margin-top: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  border: none;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
 .cf-settingsPage__grid {
   margin-top: 12px;
 }

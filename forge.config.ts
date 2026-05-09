@@ -13,6 +13,8 @@ import fs from 'fs-extra';
 import path from 'path';
 
 const config: ForgeConfig = {
+  /** 使用 Forge 的 outDir（非 packager `out`），避免覆盖被占用的 `out/claw-flow-win32-x64` */
+  outDir: 'pack-output',
   packagerConfig: {
     asar: true,
     // OpenClaw 将通过 postPackage 钩子复制到 resources 目录
@@ -37,7 +39,7 @@ const config: ForgeConfig = {
       
       // 默认路径
       if (outputPaths.length === 0) {
-        outputPaths.push(path.join(process.cwd(), 'out', 'claw-flow-win32-x64'));
+        outputPaths.push(path.join(process.cwd(), 'pack-output', 'claw-flow-win32-x64'));
       }
       
       for (const outputPath of outputPaths) {

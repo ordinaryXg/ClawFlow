@@ -63,6 +63,124 @@ export function openclawConfigPath(workspaceRoot: string): string {
   return path.join(openclawStateDir(workspaceRoot), 'openclaw.json');
 }
 
+/** 应用级共享：模型鉴权与 OpenClaw 状态（不随工作区切换变化） */
+export function globalClawflowRoot(): string {
+  return path.join(app.getPath('userData'), CLAWFLOW_DIR);
+}
+
+export function globalOpenclawStateDir(): string {
+  return path.join(globalClawflowRoot(), 'openclaw');
+}
+
+export function globalOpenclawConfigPath(): string {
+  return path.join(globalOpenclawStateDir(), 'openclaw.json');
+}
+
+/** 注册表里出现过的 workspace 根路径（活跃、最近、默认），用于迁移与清理。 */
+export function registeredWorkspaceRootCandidates(reg?: WorkspaceRegistry): string[] {
+  const r = reg ?? loadRegistry();
+  const candidates: string[] = [];
+  if (r.activeWorkspacePath) candidates.push(r.activeWorkspacePath);
+  for (const p of r.recentWorkspacePaths ?? []) candidates.push(p);
+  candidates.push(getDefaultWorkspacePath());
+  return Array.from(new Set(candidates.map((x) => path.resolve(String(x).trim())).filter(Boolean)));
+}
+
+function authProfilesPathUnderOpenclawState(stateRoot: string): string {
+  return path.join(stateRoot, 'agents', 'main', 'agent', 'auth-profiles.json');
+}
+
+function readAuthProfilesPayload(filePath: string): { version: number; profiles: Record<string, unknown> } | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const j = JSON.parse(raw) as { version?: unknown; profiles?: unknown };
+    if (!j || typeof j !== 'object') return null;
+    const profiles =
+      j.profiles && typeof j.profiles === 'object' && !Array.isArray(j.profiles)
+        ? (j.profiles as Record<string, unknown>)
+        : {};
+    const version = typeof j.version === 'number' ? j.version : 1;
+    return { version, profiles };
+  } catch {
+    return null;
+  }
+}
+
+function countAuthProfiles(filePath: string): number {
+  const p = readAuthProfilesPayload(filePath);
+  return p ? Object.keys(p.profiles).length : 0;
+}
+
+/**
+ * 将历史上保存在「各工作区/.clawflow/openclaw」下的鉴权合并到全局目录（仅当全局尚无 profile 时执行）。
+ * 在创建任意 OpenClaw 引擎之前调用一次即可。
+ */
+export function migrateWorkspaceOpenclawToGlobalOnce(): void {
+  const destRoot = globalOpenclawStateDir();
+  fs.mkdirSync(destRoot, { recursive: true });
+
+  const destAuth = authProfilesPathUnderOpenclawState(destRoot);
+  if (fs.existsSync(destAuth) && countAuthProfiles(destAuth) > 0) {
+    migrateOpenclawJsonIfMissing(destRoot);
+    return;
+  }
+
+  const uniq = registeredWorkspaceRootCandidates();
+
+  const mergedProfiles: Record<string, unknown> = {};
+  let mergedVersion = 1;
+
+  for (const ws of uniq) {
+    const srcAuth = authProfilesPathUnderOpenclawState(openclawStateDir(ws));
+    if (!fs.existsSync(srcAuth)) continue;
+    const payload = readAuthProfilesPayload(srcAuth);
+    if (!payload || Object.keys(payload.profiles).length === 0) continue;
+    Object.assign(mergedProfiles, payload.profiles);
+    mergedVersion = payload.version;
+  }
+
+  if (Object.keys(mergedProfiles).length > 0) {
+    const destAgentDir = path.dirname(destAuth);
+    fs.mkdirSync(destAgentDir, { recursive: true });
+    fs.writeFileSync(destAuth, JSON.stringify({ version: mergedVersion, profiles: mergedProfiles }, null, 2), 'utf-8');
+  }
+
+  migrateOpenclawJsonIfMissing(destRoot, uniq);
+}
+
+function migrateOpenclawJsonIfMissing(destRoot: string, workspaceCandidates?: string[]): void {
+  const destCfg = path.join(destRoot, 'openclaw.json');
+  if (fs.existsSync(destCfg)) return;
+  const candidates = workspaceCandidates ?? registeredWorkspaceRootCandidates();
+  for (const ws of candidates) {
+    const srcCfg = openclawConfigPath(ws);
+    if (!fs.existsSync(srcCfg)) continue;
+    try {
+      fs.copyFileSync(srcCfg, destCfg);
+    } catch (e) {
+      console.warn('[workspace-service] migrate openclaw.json failed:', e);
+    }
+    return;
+  }
+}
+
+/**
+ * 删除各工作区根下历史遗留的 `.clawflow/openclaw`（模型鉴权已迁至应用全局目录）。
+ * 不会删除与用户数据全局目录相同的路径。
+ */
+export function removeLegacyWorkspaceOpenclawDirs(): void {
+  const globalRoot = path.resolve(globalOpenclawStateDir());
+  for (const ws of registeredWorkspaceRootCandidates()) {
+    const legacy = path.resolve(path.join(clawflowDir(ws), 'openclaw'));
+    if (legacy === globalRoot || !fs.existsSync(legacy)) continue;
+    try {
+      fs.rmSync(legacy, { recursive: true, force: true });
+    } catch (e) {
+      console.warn('[workspace-service] remove legacy workspace openclaw failed:', legacy, e);
+    }
+  }
+}
+
 export function legacyConversationsPath(): string {
   return path.join(app.getPath('userData'), 'cf.conversations.v1.json');
 }
@@ -141,13 +259,13 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
 }
 
 /**
- * 创建 `.clawflow/`、`workspace.json`，以及 OpenClaw state 根目录占位。
+ * 创建当前工作区 `.clawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
  */
 export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
-  const ocDir = openclawStateDir(root);
+  const ocDir = globalOpenclawStateDir();
 
   await fs.promises.mkdir(cf, { recursive: true });
   await fs.promises.mkdir(ocDir, { recursive: true });

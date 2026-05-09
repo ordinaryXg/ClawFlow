@@ -7,8 +7,8 @@ import * as fs from 'fs';
 import {
   conversationsStorePath,
   getDefaultWorkspacePath,
-  openclawConfigPath as wsOpenclawConfigPath,
-  openclawStateDir as wsOpenclawStateDir,
+  globalOpenclawConfigPath,
+  globalOpenclawStateDir,
 } from '../workspace-service';
 
 const execAsync = promisify(exec);
@@ -177,8 +177,8 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     const workspaceRoot = path.resolve(config.workspaceRoot ?? getDefaultWorkspacePath());
 
     this.workspaceRoot = workspaceRoot;
-    this.openclawStateDir = wsOpenclawStateDir(workspaceRoot);
-    this.openclawConfigFile = wsOpenclawConfigPath(workspaceRoot);
+    this.openclawStateDir = globalOpenclawStateDir();
+    this.openclawConfigFile = globalOpenclawConfigPath();
     this.conversationStorePath = conversationsStorePath(workspaceRoot);
 
     this.config = {
@@ -191,13 +191,13 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
     this.log('OpenClawEngine 初始化完成');
     this.log('  Workspace:', this.workspaceRoot);
-    this.log('  OPENCLAW_STATE_DIR:', this.openclawStateDir);
+    this.log('  OPENCLAW_STATE_DIR (global):', this.openclawStateDir);
     this.log('  CLI 路径:', this.config.cliPath);
     this.log('  命令超时:', this.config.commandTimeout, 'ms');
     this.log('  Gateway 启动超时:', this.config.gatewayStartTimeout, 'ms');
   }
 
-  /** OpenClaw CLI 子进程环境：状态与配置写入当前 workspace */
+  /** OpenClaw CLI 子进程环境：状态与配置使用应用级全局目录（各工作区共用） */
   private getClawEnv(): NodeJS.ProcessEnv {
     return {
       ...process.env,
@@ -322,6 +322,8 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
         windowsHide: true,
         encoding: 'utf8',
         env: this.getClawEnv(),
+        // 避免依赖 Electron 主进程 cwd；部分 OpenClaw 子命令会探测当前目录下的项目配置
+        cwd: this.openclawStateDir,
       });
 
       const trimForLog = (s: string, max = 4000) => {
@@ -618,10 +620,16 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       if (profiles) {
         for (const [pid, entry] of Object.entries(profiles)) {
           if (!entry || typeof entry !== 'object') continue;
-          const provider = String((entry as any).provider ?? '').trim();
-          const type = String((entry as any).type ?? '').trim();
-          if (!provider || (type && type !== 'token')) continue;
-          const lbl = typeof (entry as any).label === 'string' ? String((entry as any).label).trim() : '';
+          const anyEntry = entry as Record<string, unknown>;
+          const provider = String(anyEntry.provider ?? '').trim();
+          if (!provider) continue;
+          const type = String(anyEntry.type ?? '').trim().toLowerCase();
+          const hasToken = typeof anyEntry.token === 'string' && anyEntry.token.trim().length > 0;
+          // 排除 OAuth 等；兼容历史数据：有 token 但未写 type
+          if (type === 'oauth' || type === 'oauth2') continue;
+          if (!hasToken && type && type !== 'token' && type !== 'api_key') continue;
+          if (!hasToken) continue;
+          const lbl = typeof anyEntry.label === 'string' ? String(anyEntry.label).trim() : '';
           providerProfiles[provider] = { profileId: String(pid), ...(lbl ? { label: lbl } : {}) };
         }
       }
@@ -836,6 +844,7 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
         env: this.getClawEnv(),
+        cwd: this.openclawStateDir,
       });
 
       this.log('Gateway 进程已启动, PID:', this.gatewayProcess.pid);
@@ -1022,6 +1031,24 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
 
 const enginesByWorkspaceRoot = new Map<string, OpenClawEngineImpl>();
 
+/**
+ * CLI 路径、超时等与「当前选中的工作区」无关，但历史上每个 workspace 各有一份引擎实例；
+ * updateConfig 若只写当前 active 引擎，切换工作区后新激活的实例仍用构造默认值，导致 getModels 等结果随工作区变化。
+ * 此处持久化「用户通过设置写入的全局选项」，并在新建引擎时带入，且每次 IPC updateConfig 广播到全部实例。
+ */
+type SharedOpenClawEngineOptions = Partial<Omit<OpenClawEngineConfig, 'workspaceRoot'>>;
+let sharedOpenClawEngineOptions: SharedOpenClawEngineOptions = {};
+
+function applySharedOpenClawEngineConfig(partial: Partial<OpenClawEngineConfig>): void {
+  const next = { ...partial } as Partial<OpenClawEngineConfig>;
+  delete (next as { workspaceRoot?: string }).workspaceRoot;
+  if (Object.keys(next).length === 0) return;
+  sharedOpenClawEngineOptions = { ...sharedOpenClawEngineOptions, ...next };
+  for (const eng of enginesByWorkspaceRoot.values()) {
+    eng.updateConfig(next);
+  }
+}
+
 let activeWorkspaceRoot = path.resolve(getDefaultWorkspacePath());
 
 export function setActiveWorkspaceRoot(root: string): void {
@@ -1036,7 +1063,7 @@ export function getEngineForWorkspace(workspaceRoot: string): OpenClawEngineImpl
   const key = path.resolve(workspaceRoot);
   let eng = enginesByWorkspaceRoot.get(key);
   if (!eng) {
-    eng = new OpenClawEngineImpl({ workspaceRoot: key });
+    eng = new OpenClawEngineImpl({ workspaceRoot: key, ...sharedOpenClawEngineOptions });
     enginesByWorkspaceRoot.set(key, eng);
   }
   return eng;
@@ -1046,11 +1073,20 @@ export function getActiveEngine(): OpenClawEngineImpl {
   return getEngineForWorkspace(activeWorkspaceRoot);
 }
 
+/**
+ * 模型列表、鉴权、Gateway、技能/插件等 CLI 与全局磁盘状态 —— 与「当前选中的工作区」无关。
+ * 统一使用默认工作区键下的引擎实例，避免随 activeWorkspace 切换而命中另一份进程内状态（子进程句柄、未同步的配置等）。
+ * 对话存储仍使用 {@link getActiveEngine}。
+ */
+export function getGlobalOpenClawCliEngine(): OpenClawEngineImpl {
+  return getEngineForWorkspace(path.resolve(getDefaultWorkspacePath()));
+}
+
 /** 兼容旧接口：始终返回当前激活 workspace 的引擎 */
 export function getOpenClawEngine(config?: OpenClawEngineConfig): OpenClawEngine {
   const engine = getActiveEngine();
   if (config && Object.keys(config).length > 0) {
-    engine.updateConfig(config);
+    applySharedOpenClawEngineConfig(config);
   }
   return engine;
 }
@@ -1061,42 +1097,42 @@ export function getOpenClawEngine(config?: OpenClawEngineConfig): OpenClawEngine
  */
 export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   if (config && Object.keys(config).length > 0) {
-    getActiveEngine().updateConfig(config);
+    applySharedOpenClawEngineConfig(config);
   }
 
   ipcMain.handle('openclaw:getVersion', async () => {
-    return await getActiveEngine().getVersion();
+    return await getGlobalOpenClawCliEngine().getVersion();
   });
 
   ipcMain.handle('openclaw:getGatewayStatus', async () => {
-    return await getActiveEngine().getGatewayStatus();
+    return await getGlobalOpenClawCliEngine().getGatewayStatus();
   });
 
   ipcMain.handle('openclaw:startGateway', async () => {
-    await getActiveEngine().startGateway();
+    await getGlobalOpenClawCliEngine().startGateway();
   });
 
   ipcMain.handle('openclaw:stopGateway', async () => {
-    await getActiveEngine().stopGateway();
+    await getGlobalOpenClawCliEngine().stopGateway();
   });
 
   ipcMain.handle('openclaw:getConfig', async () => {
-    return getActiveEngine().getConfig();
+    return getGlobalOpenClawCliEngine().getConfig();
   });
 
   ipcMain.handle('openclaw:updateConfig', async (_event, partial: Partial<OpenClawEngineConfig>) => {
-    getActiveEngine().updateConfig(partial);
+    applySharedOpenClawEngineConfig(partial);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:validateCLI', async () => {
-    return await getActiveEngine().validateCLI();
+    return await getGlobalOpenClawCliEngine().validateCLI();
   });
 
   ipcMain.handle(
     'openclaw:setModelAuthToken',
     async (_event, params: { provider: string; token: string; profileId?: string; label?: string }) => {
-    await getActiveEngine().pasteModelAuthToken({
+    await getGlobalOpenClawCliEngine().pasteModelAuthToken({
       provider: params.provider,
       token: params.token,
       profileId: params.profileId,
@@ -1108,7 +1144,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   );
 
   ipcMain.handle('openclaw:removeModelAuthToken', async (_event, params: { provider: string; profileId?: string }) => {
-    return await getActiveEngine().removeModelAuthToken({
+    return await getGlobalOpenClawCliEngine().removeModelAuthToken({
       provider: params.provider,
       profileId: params.profileId,
       agentId: 'main',
@@ -1116,7 +1152,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   });
 
   ipcMain.handle('openclaw:setDefaultModel', async (_event, params: { modelId: string }) => {
-    await getActiveEngine().setDefaultModel({ modelId: params.modelId });
+    await getGlobalOpenClawCliEngine().setDefaultModel({ modelId: params.modelId });
     return { success: true };
   });
 
@@ -1169,7 +1205,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
 
   ipcMain.handle('openclaw:getModels', async () => {
     try {
-      return await getActiveEngine().getModelsSummary();
+      return await getGlobalOpenClawCliEngine().getModelsSummary();
     } catch (e: any) {
       console.warn('[OpenClawEngine] getModels failed:', e?.message || e);
       return { defaultModelId: null, models: [], configuredProviders: [], error: e?.message || String(e) };
@@ -1197,7 +1233,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   // 技能管理 IPC 接口
   ipcMain.handle('openclaw:getSkills', async () => {
     try {
-      const skills = await getActiveEngine().getSkills();
+      const skills = await getGlobalOpenClawCliEngine().getSkills();
       return { skills };
     } catch (e: any) {
       console.warn('[OpenClawEngine] getSkills failed:', e?.message || e);
@@ -1206,12 +1242,12 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   });
 
   ipcMain.handle('openclaw:installSkill', async (_event, skillName: string) => {
-    await getActiveEngine().installSkill(skillName);
+    await getGlobalOpenClawCliEngine().installSkill(skillName);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:uninstallSkill', async (_event, skillName: string) => {
-    await getActiveEngine().uninstallSkill(skillName);
+    await getGlobalOpenClawCliEngine().uninstallSkill(skillName);
     return { success: true };
   });
 
@@ -1229,7 +1265,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   // 连接器管理 IPC 接口
   ipcMain.handle('openclaw:getConnectors', async () => {
     try {
-      const plugins = await getActiveEngine().getPlugins();
+      const plugins = await getGlobalOpenClawCliEngine().getPlugins();
       const connectors = plugins.map((p: any) => {
         const id = String(p?.id ?? p?.name ?? p?.pluginId ?? p?.package ?? '');
         const name = String(p?.title ?? p?.displayName ?? p?.id ?? p?.name ?? id);
@@ -1255,14 +1291,14 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   ipcMain.handle('openclaw:addConnector', async (_event, config: any) => {
     const spec = String(config?.config?.spec ?? config?.spec ?? config?.name ?? '').trim();
     if (!spec) throw new Error('Missing plugin spec');
-    await getActiveEngine().installPlugin(spec);
+    await getGlobalOpenClawCliEngine().installPlugin(spec);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:updateConnector', async (_event, id: string, config: any) => {
     const action = String(config?.action ?? '').toLowerCase();
-    if (action === 'enable') await getActiveEngine().enablePlugin(id);
-    else if (action === 'disable') await getActiveEngine().disablePlugin(id);
+    if (action === 'enable') await getGlobalOpenClawCliEngine().enablePlugin(id);
+    else if (action === 'disable') await getGlobalOpenClawCliEngine().disablePlugin(id);
     else {
       // Fallback: treat update as enable/disable only for now.
       console.log('[OpenClawEngine] updateConnector unsupported action:', action);
@@ -1271,12 +1307,12 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   });
 
   ipcMain.handle('openclaw:deleteConnector', async (_event, id: string) => {
-    await getActiveEngine().uninstallPlugin(id);
+    await getGlobalOpenClawCliEngine().uninstallPlugin(id);
     return { success: true };
   });
 
   ipcMain.handle('openclaw:testConnector', async (_event, id: string) => {
-    await getActiveEngine().inspectPlugin(id);
+    await getGlobalOpenClawCliEngine().inspectPlugin(id);
     return { success: true };
   });
 }
