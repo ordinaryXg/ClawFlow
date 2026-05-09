@@ -20,14 +20,14 @@
   max-width: 860px;
   width: fit-content;
   border-radius: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.02);
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
 }
 
 .cf-msgItem--user .cf-msgItem__bubble {
-  background: rgba(138,106,42,.10);
-  border-color: rgba(138,106,42,.25);
+  background: transparent;
+  border-color: transparent;
 }
 
 .cf-msgItem__meta {
@@ -62,10 +62,65 @@
   border: 1px solid rgba(255,255,255,.06);
 }
 
+.cf-chatApiKeyBar {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 168, 75, 0.42);
+  background: rgba(212, 168, 75, 0.09);
+  font-size: 12px;
+}
+
+.cf-chatApiKeyBar__title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.cf-chatApiKeyBar__hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.cf-chatApiKeyBar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-chatApiKeyBar__token {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+.cf-chatApiKeyBar__footer {
+  margin-top: 8px;
+}
+
 .cf-chatInput {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.cf-chatInput .cf-textarea{
+  border:0;
+  background:transparent;
+  padding:8px 10px;
+  outline:none;
+}
+
+.cf-chatSendBtn{
+  padding:6px 8px;
+  min-width:0;
+}
+
+.cf-chatSendBtn .cf-ico{
+  border:0;
+  width:auto;
+  height:auto;
+  padding:0;
 }
 
 .cf-chatInput__actions {
@@ -78,6 +133,25 @@
   align-items:center;
   justify-content:space-between;
   gap:0;
+}
+.cf-chatInput__footerLeft{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+  min-width:0;
+  flex:1;
+}
+.cf-chatInput__modes{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  align-items:flex-start;
+  flex-shrink:0;
+}
+.cf-chatInput__modes label{
+  margin:0;
+  line-height:1.2;
 }
 .cf-chatInput__model{
   display:flex;
@@ -112,9 +186,9 @@
 .cf-stream__bubble {
   max-width: 860px;
   border-radius: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(30,91,69,.45);
-  background: rgba(30,91,69,.10);
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
 }
 
 .cf-stream__meta {

@@ -21,6 +21,7 @@ const ConnectorsPage: FC = () => {
     setError,
   } = useConnectorStore();
 
+  const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
   const [query, setQuery] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -49,6 +50,17 @@ const ConnectorsPage: FC = () => {
   useEffect(() => {
     void fetchConnectors();
   }, [fetchConnectors]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const ok = await window.electronAPI?.validateCLI?.();
+        setCliAvailable(Boolean(ok));
+      } catch {
+        setCliAvailable(false);
+      }
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -161,6 +173,19 @@ const ConnectorsPage: FC = () => {
           </button>
         </div>
       </div>
+
+      {cliAvailable === false ? (
+        <div
+          className="cf-banner"
+          style={{
+            marginBottom: 12,
+            borderColor: 'rgba(212,168,75,.45)',
+            background: 'rgba(212,168,75,.12)',
+          }}
+        >
+          <div>{t('connectors.cliMissingBanner')}</div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="cf-banner" style={{ borderColor: 'rgba(194,75,75,.45)', background: 'rgba(194,75,75,.10)' }}>

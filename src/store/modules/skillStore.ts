@@ -72,6 +72,9 @@ export const useSkillStore = create<SkillState>((set) => ({
       });
     } catch (error: any) {
       set({
+        skills: [],
+        installedSkills: [],
+        enabledSkills: [],
         error: error.message || '获取技能列表失败',
         isLoading: false,
       });

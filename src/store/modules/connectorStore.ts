@@ -51,28 +51,15 @@ export const useConnectorStore = create<ConnectorState>((set, get) => ({
       const fromRes =
         Array.isArray(res) ? res : Array.isArray(res?.connectors) ? res?.connectors : null;
       
-      // 主进程目前返回模拟空数组时，保留一份 mock 以保证界面可用
-      const mockConnectors: Connector[] = [
-        {
-          id: '1',
-          name: 'GitHub',
-          type: 'github',
-          config: { token: '***' },
-          status: 'connected',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      ];
-      
-      set({ 
-        // 若主进程明确返回数组（哪怕为空），就尊重它；仅在无返回/异常时才用 mock 兜底
-        connectors: fromRes ? fromRes : mockConnectors,
-        isLoading: false 
+      set({
+        connectors: Array.isArray(fromRes) ? fromRes : [],
+        isLoading: false,
       });
     } catch (error: any) {
-      set({ 
+      set({
+        connectors: [],
         error: error.message || '获取连接器列表失败',
-        isLoading: false 
+        isLoading: false,
       });
     }
   },

@@ -12,6 +12,8 @@ export interface SettingsState {
   openclawCliPath: string;
   /** 主进程命令超时（毫秒） */
   commandTimeout: number;
+  /** 对话页默认选中的模型 ID（如 `deepseek/deepseek-chat`） */
+  builtinDefaultModelId: string | null;
 }
 
 export interface SettingsActions {
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   logLevel: 'info',
   openclawCliPath: '',
   commandTimeout: 60000,
+  builtinDefaultModelId: null,
 };
 
 function persistSlice(state: SettingsState) {
@@ -38,6 +41,7 @@ function persistSlice(state: SettingsState) {
     logLevel: state.logLevel,
     openclawCliPath: state.openclawCliPath,
     commandTimeout: state.commandTimeout,
+    builtinDefaultModelId: state.builtinDefaultModelId,
   };
 }
 
@@ -80,6 +84,10 @@ try {
         typeof p.commandTimeout === 'number' && Number.isFinite(p.commandTimeout)
           ? p.commandTimeout
           : DEFAULT_SETTINGS.commandTimeout,
+      builtinDefaultModelId:
+        typeof p.builtinDefaultModelId === 'string' && p.builtinDefaultModelId.trim()
+          ? p.builtinDefaultModelId.trim()
+          : null,
     });
   }
 } catch (error) {

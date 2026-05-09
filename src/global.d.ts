@@ -22,6 +22,27 @@ export interface IElectronAPI {
   getConversations: () => Promise<any>;
   deleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
   upsertConversation: (conversation: any) => Promise<{ success: boolean }>;
+  // 新引擎（Phase 0：stub）
+  engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
+  engineGetConversations: () => Promise<any>;
+  engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
+  engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
+  engineGatewayStatus: () => Promise<{ status: string; port: number }>;
+  engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
+  engineGatewayStop: () => Promise<{ success: boolean }>;
+  engineGetChatModels: () => Promise<{
+    defaultModelId: string | null;
+    models: Array<{ id: string; label: string; available: boolean }>;
+  }>;
+  engineSendMessageStream: (params: {
+    conversationId: string;
+    userText: string;
+    modelId?: string;
+    mode?: 'ask' | 'plan';
+  }) => Promise<{ success: boolean; message: string }>;
+  onEngineChatStream: (
+    cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
+  ) => () => void;
   // 技能管理
   getSkills: () => Promise<any>;
   installSkill: (skillName: string) => Promise<{ success: boolean }>;

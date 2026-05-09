@@ -6,6 +6,8 @@ import {
   getActiveWorkspaceRoot,
   getGlobalOpenClawCliEngine,
 } from './engine/openclaw-engine';
+import { registerClawFlowIPC, syncClawFlowEngineWorkspaceRoot } from './engine/clawflow-engine';
+import { registerGatewayIPC } from './engine/gateway-daemon';
 import * as workspaceService from './workspace-service';
 import * as workspaceExplorer from './workspace-explorer';
 import * as workspaceChangeLog from './workspace-change-log';
@@ -238,6 +240,7 @@ function registerWorkspaceIPC(): void {
     const res = await workspaceService.removeWorkspaceForUser(String(folderPath || ''));
     if (!res.ok) return res;
     setActiveWorkspaceRoot(res.newActivePath);
+    syncClawFlowEngineWorkspaceRoot(res.newActivePath);
     BrowserWindow.getAllWindows().forEach((w) =>
       w.webContents.send('workspace:changed', { path: res.newActivePath })
     );
@@ -254,6 +257,7 @@ function registerWorkspaceIPC(): void {
     // Heavy operations (gateway stop, fs init) run best-effort in background.
     workspaceService.setActiveWorkspace(resolved);
     setActiveWorkspaceRoot(resolved);
+    syncClawFlowEngineWorkspaceRoot(resolved);
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('workspace:changed', { path: resolved }));
     void workspaceService.ensureWorkspaceInitialized(resolved);
     void getGlobalOpenClawCliEngine()
@@ -393,6 +397,8 @@ app.whenReady().then(async () => {
 
   registerWorkspaceIPC();
   registerOpenClawIPC();
+  registerClawFlowIPC({ workspaceRoot: active, verbose: true });
+  registerGatewayIPC();
   ipcMain.handle('skillMarket:getIndex', async (_e, opts?: { forceRefresh?: boolean }) => {
     try {
       return await fetchSkillMarketIndex({ forceRefresh: Boolean(opts?.forceRefresh) });

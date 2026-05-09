@@ -7,8 +7,6 @@ import './styles.css';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
-import { mergeConfiguredModelsForDisplay } from '../../utils/modelDisplay';
-
 const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
@@ -71,16 +69,17 @@ const SettingsPage: FC = () => {
   const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
   const [pathCheck, setPathCheck] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [appVersion, setAppVersion] = useState<string>('');
-  const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai'>('deepseek');
+  const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai' | 'anthropic'>('deepseek');
   const [modelProfileLabel, setModelProfileLabel] = useState('');
   const [modelToken, setModelToken] = useState('');
-  const [defaultModelId, setDefaultModelId] = useState('deepseek/deepseek-chat');
   const [modelSaving, setModelSaving] = useState(false);
-  const [configuredModels, setConfiguredModels] = useState<Array<{ id: string; available?: boolean; tags?: string[] }>>([]);
-  const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
-  const [providerProfiles, setProviderProfiles] = useState<Record<string, { profileId: string; label?: string }>>({});
   const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
   const [cliError, setCliError] = useState<string>('');
+  const [builtinCatalog, setBuiltinCatalog] = useState<{
+    defaultModelId: string | null;
+    models: Array<{ id: string; label: string; available: boolean }>;
+  } | null>(null);
+  const [builtinCatalogLoading, setBuiltinCatalogLoading] = useState(false);
 
   useEffect(() => {
     setCliPath(storeCliPath);
@@ -111,27 +110,31 @@ const SettingsPage: FC = () => {
     })();
   }, [fetchVersion, t]);
 
-  const reloadModelsFromEngine = useCallback(async () => {
+  const reloadBuiltinCatalog = useCallback(async () => {
+    if (!window.electronAPI?.engineGetChatModels) {
+      setBuiltinCatalog(null);
+      return;
+    }
+    setBuiltinCatalogLoading(true);
     try {
-      const res = await window.electronAPI?.getModels?.();
-      const def = typeof res?.defaultModelId === 'string' ? res.defaultModelId : '';
-      if (def) setDefaultModelId(def);
+      const res = await window.electronAPI.engineGetChatModels();
+      const def = typeof res?.defaultModelId === 'string' && res.defaultModelId.trim() ? res.defaultModelId.trim() : null;
       const list = Array.isArray(res?.models) ? res.models : [];
-      setConfiguredModels(
-        list
+      setBuiltinCatalog({
+        defaultModelId: def,
+        models: list
           .map((m: any) => {
-            const id = String(m?.id ?? m?.key ?? '').trim();
+            const id = String(m?.id ?? '').trim();
             if (!id) return null;
-            return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
+            const label = String(m?.label ?? id).trim() || id;
+            return { id, label, available: m?.available !== false };
           })
-          .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
-      );
-      setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
-      setProviderProfiles(res?.providerProfiles && typeof res.providerProfiles === 'object' ? res.providerProfiles : {});
+          .filter(Boolean) as Array<{ id: string; label: string; available: boolean }>,
+      });
     } catch {
-      setConfiguredModels([]);
-      setConfiguredProviders([]);
-      setProviderProfiles({});
+      setBuiltinCatalog(null);
+    } finally {
+      setBuiltinCatalogLoading(false);
     }
   }, []);
 
@@ -146,8 +149,9 @@ const SettingsPage: FC = () => {
   }, []);
 
   useEffect(() => {
-    void reloadModelsFromEngine();
-  }, [activeWorkspacePath, reloadModelsFromEngine]);
+    if (activeSection !== 'models') return;
+    void reloadBuiltinCatalog();
+  }, [activeSection, activeWorkspacePath, reloadBuiltinCatalog]);
 
   useEffect(() => {
     if (activeSection !== 'integrations') return;
@@ -159,16 +163,6 @@ const SettingsPage: FC = () => {
     if (activeSection !== 'account') return;
     void refreshWorkspace();
   }, [activeSection, refreshWorkspace]);
-
-  const displayModels = useMemo(
-    () =>
-      mergeConfiguredModelsForDisplay(
-        configuredModels,
-        configuredProviders,
-        Object.keys(providerProfiles ?? {})
-      ),
-    [configuredModels, configuredProviders, providerProfiles]
-  );
 
   useEffect(() => {
     void (async () => {
@@ -260,7 +254,7 @@ const SettingsPage: FC = () => {
 
   const refreshSettingsData = () => {
     void fetchVersion();
-    void reloadModelsFromEngine();
+    void reloadBuiltinCatalog();
     void fetchStatus();
     void reloadConnectorsCount();
     if (window.electronAPI?.validateCLI) {
@@ -328,106 +322,10 @@ const SettingsPage: FC = () => {
       await window.electronAPI?.setModelAuthToken?.({ provider, token, profileId: `${provider}:manual`, label });
       setModelToken('');
       setModelProfileLabel('');
-      try {
-        const res = await window.electronAPI?.getModels?.();
-        const list = Array.isArray(res?.models) ? res.models : [];
-        setConfiguredModels(
-          list
-            .map((m: any) => {
-              const id = String(m?.id ?? m?.key ?? '').trim();
-              if (!id) return null;
-              return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
-            })
-            .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
-        );
-        const fromServer = Array.isArray(res?.configuredProviders) ? res.configuredProviders : [];
-        setConfiguredProviders(Array.from(new Set([provider, ...fromServer.map((x) => String(x).trim()).filter(Boolean)])));
-        const baseProf =
-          res?.providerProfiles && typeof res.providerProfiles === 'object' ? { ...res.providerProfiles } : {};
-        const prevEntry =
-          baseProf[provider] && typeof baseProf[provider] === 'object' ? baseProf[provider] : {};
-        baseProf[provider] = {
-          ...prevEntry,
-          profileId: `${provider}:manual`,
-          ...(label ? { label } : {}),
-        };
-        setProviderProfiles(baseProf);
-      } catch {
-        setConfiguredProviders((prev) => Array.from(new Set([provider, ...prev])));
-        setProviderProfiles((prev) => ({
-          ...prev,
-          [provider]: { ...prev[provider], profileId: `${provider}:manual`, ...(label ? { label } : {}) },
-        }));
-      }
+      void reloadBuiltinCatalog();
       (window as any).__cf_toast?.success?.(t('settings.modelSavedTitle'), t('settings.modelSavedBody'));
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.modelSaveFailTitle'), e?.message || t('common.sampleOpFailBody'));
-    } finally {
-      setModelSaving(false);
-    }
-  };
-
-  const onSetDefaultModel = async (modelId: string) => {
-    const id = String(modelId ?? '').trim();
-    if (!id) return;
-    setModelSaving(true);
-    try {
-      await window.electronAPI?.setDefaultModel?.({ modelId: id });
-      setDefaultModelId(id);
-      (window as any).__cf_toast?.success?.(t('settings.defaultModelSetTitle'), t('settings.defaultModelSetBody'));
-    } catch (e: any) {
-      (window as any).__cf_toast?.error?.(t('settings.defaultModelSetFailTitle'), e?.message || t('common.sampleOpFailBody'));
-    } finally {
-      setModelSaving(false);
-    }
-  };
-
-  const onRemoveStaleModelRow = async (modelId: string, provider: string) => {
-    const id = String(modelId ?? '').trim();
-    const p = String(provider ?? '').trim();
-    if (!id || !p) return;
-    const hasLocalToken = Boolean(providerProfiles?.[p]);
-    const flaggedByCli = configuredProviders.includes(p);
-    const providerConfigured = hasLocalToken || flaggedByCli;
-
-    const confirmed = providerConfigured
-      ? window.confirm(t('settings.modelDeleteConfirm'))
-      : window.confirm(t('settings.modelRemoveStaleConfirm'));
-    if (!confirmed) return;
-
-    setModelSaving(true);
-    try {
-      let cliRemoved = false;
-      try {
-        const pid = providerProfiles[p]?.profileId;
-        const rm = await window.electronAPI?.removeListedModel?.({
-          modelId: id,
-          ...(pid ? { profileId: pid } : {}),
-        });
-        cliRemoved = Boolean(rm?.cliRemoved);
-      } catch (inner: any) {
-        const raw = String(inner?.message ?? inner ?? '');
-        if (raw.includes('MODEL_REMOVE_BLOCKED_ONLY_LISTED_MODEL')) {
-          (window as any).__cf_toast?.error?.(t('settings.modelRemoveBlockedOnlyTitle'), t('settings.modelRemoveBlockedOnlyBody'));
-          return;
-        }
-        throw inner;
-      }
-
-      await reloadModelsFromEngine();
-
-      if (providerConfigured) {
-        (window as any).__cf_toast?.success?.(
-          t('settings.modelDeletedTitle'),
-          cliRemoved ? t('settings.modelDeletedBody') : t('settings.modelRowRemovedPartialBody')
-        );
-      } else if (cliRemoved) {
-        (window as any).__cf_toast?.success?.(t('settings.modelRowRemovedTitle'), t('settings.modelRowRemovedBody'));
-      } else {
-        (window as any).__cf_toast?.success?.(t('settings.modelRowRemovedTitle'), t('settings.modelRowRemovedPartialBody'));
-      }
-    } catch (e: any) {
-      (window as any).__cf_toast?.error?.(t('settings.modelDeleteFailTitle'), e?.message || t('common.sampleOpFailBody'));
     } finally {
       setModelSaving(false);
     }
@@ -442,75 +340,13 @@ const SettingsPage: FC = () => {
         {t('settings.modelsLocalHint')}
       </div>
 
-      <div className="cf-settingsModels">
+      <div className="cf-settingsModels cf-settingsModels--single" style={{ marginTop: 14 }}>
         <div className="cf-settingsModels__col">
-          <div className="cf-settingsModels__sectionTitle">{t('settings.configuredModels')}</div>
-          <div className="cf-help">
-            {t('settings.currentModel')}: {defaultModelId || t('common.unknown')}
+          <div className="cf-settingsModels__sectionTitle">{t('settings.apiKeysSectionTitle')}</div>
+          <div className="cf-help">{t('settings.apiKeysSectionLead')}</div>
+          <div className="cf-help" style={{ marginTop: 6 }}>
+            {t('settings.modelsKeysUnifiedHint')}
           </div>
-
-          {displayModels.length === 0 ? (
-            <div className="cf-help">{t('settings.noConfiguredModels')}</div>
-          ) : (
-            <div className="cf-settingsModels__modelList" role="list">
-              {displayModels.map((m) => {
-                const isDefault = Boolean(defaultModelId && m.id === defaultModelId);
-                const provider = String(m.id).split('/')[0] || '';
-                const providerConfigured = Boolean(providerProfiles?.[provider]) || configuredProviders.includes(provider);
-                const providerLabel = providerProfiles?.[provider]?.label;
-                return (
-                  <div
-                    key={m.id}
-                    className={isDefault ? 'cf-settingsModelRow cf-settingsModelRow--active' : 'cf-settingsModelRow'}
-                    role="listitem"
-                  >
-                    <button
-                      type="button"
-                      className="cf-settingsModelRow__pick"
-                      disabled={modelSaving}
-                      onClick={() => void onSetDefaultModel(m.id)}
-                      title={t('settings.pickDefault')}
-                    >
-                      <span className="cf-settingsModelRow__id">
-                        {m.id}
-                        {providerLabel ? <span className="cf-settingsModelRow__label"> · {providerLabel}</span> : null}
-                      </span>
-                      {m.available === false ? (
-                        <span className="cf-settingsBadge cf-settingsBadge--warn">{t('settings.modelUnavailable')}</span>
-                      ) : null}
-                      {isDefault ? <span className="cf-settingsBadge">{t('settings.modelDefaultBadge')}</span> : null}
-                    </button>
-
-                    <div className="cf-row" style={{ flexShrink: 0, gap: 8, alignItems: 'center' }}>
-                      {!providerConfigured ? (
-                        <span className="cf-sub" title={t('settings.modelMissingKeyTitle', { provider })}>
-                          {t('settings.modelMissingKeyShort')}
-                        </span>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="cf-btn cf-btnGhost cf-btnSmall"
-                        disabled={modelSaving}
-                        onClick={() => void onRemoveStaleModelRow(m.id, provider)}
-                        title={
-                          providerConfigured
-                            ? t('settings.modelDeleteProviderTitle', { provider })
-                            : t('settings.modelRemoveStaleHint', { model: m.id })
-                        }
-                      >
-                        {t('common.delete')}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="cf-settingsModels__col">
-          <div className="cf-settingsModels__sectionTitle">{t('settings.addProviderTitle')}</div>
-          <div className="cf-help">{t('settings.addProviderHint')}</div>
           <div style={{ height: 10 }} />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
@@ -528,9 +364,14 @@ const SettingsPage: FC = () => {
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.modelProvider')}
           </div>
-          <select className="cf-select" value={modelProvider} onChange={(e) => setModelProvider(e.target.value as 'deepseek' | 'openai')}>
+          <select
+            className="cf-select"
+            value={modelProvider}
+            onChange={(e) => setModelProvider(e.target.value as 'deepseek' | 'openai' | 'anthropic')}
+          >
             <option value="deepseek">DeepSeek</option>
             <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
           </select>
 
           <div style={{ height: 10 }} />
@@ -549,6 +390,61 @@ const SettingsPage: FC = () => {
           <button className="cf-btn cf-btnPrimary" type="button" disabled={modelSaving} onClick={() => void onSaveModel()}>
             {modelSaving ? t('settings.modelSaving') : t('settings.modelSave')}
           </button>
+        </div>
+      </div>
+
+      <div className="cf-settingsModelsStack">
+        <div className="cf-settingsSubHead">
+          <div className="cf-settingsModels__sectionTitle" style={{ marginBottom: 0 }}>
+            {t('settings.builtinModelsTitle')}
+          </div>
+          <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" disabled={builtinCatalogLoading} onClick={() => void reloadBuiltinCatalog()}>
+            {builtinCatalogLoading ? t('settings.refreshingBuiltin') : t('settings.builtinCatalogRefresh')}
+          </button>
+        </div>
+        <div className="cf-help">{t('settings.builtinModelsHint')}</div>
+        {builtinCatalogLoading && !builtinCatalog ? (
+          <div className="cf-help" style={{ marginTop: 8 }}>
+            {t('settings.builtinCatalogLoading')}
+          </div>
+        ) : null}
+        {!builtinCatalogLoading && (!builtinCatalog || builtinCatalog.models.length === 0) ? (
+          <div className="cf-help" style={{ marginTop: 8 }}>
+            {t('settings.builtinCatalogEmpty')}
+          </div>
+        ) : null}
+        {builtinCatalog && builtinCatalog.models.length > 0 ? (
+          <>
+            {builtinCatalog.defaultModelId ? (
+              <div className="cf-help" style={{ marginTop: 8 }}>
+                {t('settings.builtinSuggestedDefault', { model: builtinCatalog.defaultModelId })}
+              </div>
+            ) : null}
+            <div className="cf-settingsModels__modelList" style={{ marginTop: 10 }} role="list">
+              {builtinCatalog.models.map((m) => {
+                const isSug = Boolean(builtinCatalog.defaultModelId && m.id === builtinCatalog.defaultModelId);
+                return (
+                  <div key={m.id} className="cf-settingsModelRow" role="listitem">
+                    <div className="cf-settingsModelRow__static">
+                      <div className="cf-settingsModelRow__staticTitle" title={m.id}>
+                        {m.id}
+                      </div>
+                      {m.label && m.label !== m.id ? <div className="cf-settingsModelRow__staticSub">{m.label}</div> : null}
+                    </div>
+                    <div className="cf-row" style={{ flexShrink: 0, gap: 8, alignItems: 'center' }}>
+                      {!m.available ? (
+                        <span className="cf-settingsBadge cf-settingsBadge--warn">{t('settings.modelMissingKeyShort')}</span>
+                      ) : null}
+                      {isSug ? <span className="cf-settingsBadge">{t('settings.builtinSuggestedBadge')}</span> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+        <div className="cf-help" style={{ marginTop: 8 }}>
+          {t('settings.builtinChatPickerHint')}
         </div>
       </div>
     </>
@@ -660,6 +556,9 @@ const SettingsPage: FC = () => {
         <div className="cf-card">
           <h3>{t('settings.execution')}</h3>
           <div className="cf-divider" />
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.chatEngineBuiltinOnlyHint')}
+          </div>
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.timeout')}
           </div>

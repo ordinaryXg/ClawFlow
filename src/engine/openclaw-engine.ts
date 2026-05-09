@@ -10,6 +10,7 @@ import {
   globalOpenclawConfigPath,
   globalOpenclawStateDir,
 } from '../workspace-service';
+import { removeAuthProfile as removeBuiltinAuthProfile, upsertAuthProfile } from './auth-store';
 
 const execAsync = promisify(exec);
 
@@ -380,6 +381,15 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     if (!provider) throw new Error('Missing provider');
     if (!token) throw new Error('Missing token');
 
+    // Built-in chat engine reads `auth-profiles.v1.json` first; do this before OpenClaw file writes
+    // so keys work even if agent dir / openclaw.json updates fail.
+    await upsertAuthProfile({
+      provider,
+      token,
+      profileId,
+      ...(label ? { label } : {}),
+    });
+
     // Avoid running interactive OpenClaw helpers inside Electron (no TTY on Windows),
     // write directly to OpenClaw auth store + config instead.
     const stateRoot = this.openclawStateDir;
@@ -459,6 +469,12 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       }
     } catch {
       // ignore missing/invalid
+    }
+
+    try {
+      await removeBuiltinAuthProfile({ provider, profileId });
+    } catch (e) {
+      console.warn('[OpenClawEngine] remove builtin auth-store profile failed:', e instanceof Error ? e.message : e);
     }
 
     return { removed };

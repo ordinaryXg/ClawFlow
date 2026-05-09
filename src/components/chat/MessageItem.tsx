@@ -31,15 +31,6 @@ const MessageItem: FC<Props> = ({ message }) => {
     }
   }, [message.timestamp]);
 
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      (window as any).__cf_toast?.success?.(t('common.copiedTitle'), t('common.copiedBody'));
-    } catch {
-      (window as any).__cf_toast?.error?.(t('common.copyFailedTitle'), t('common.copyFailedBody'));
-    }
-  };
-
   return (
     <div className={isUser ? 'cf-msgItem cf-msgItem--user' : 'cf-msgItem cf-msgItem--assistant'}>
       <div className="cf-msgItem__bubble">
@@ -47,11 +38,6 @@ const MessageItem: FC<Props> = ({ message }) => {
           <span className="cf-sub">{isUser ? t('chat.roleYou') : t('chat.roleAssistant')}</span>
           <span className="cf-sub">·</span>
           <span className="cf-sub">{time}</span>
-          <div className="cf-msgItem__actions">
-            <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={onCopy}>
-              {t('common.copy')}
-            </button>
-          </div>
         </div>
 
         <div className="cf-msgItem__content">

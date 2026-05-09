@@ -1,15 +1,18 @@
-import { FC, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
+import { useSettingsStore } from '../../store/modules/settingsStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
+import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
-import { mergeConfiguredModelsForDisplay } from '../../utils/modelDisplay';
 import './styles.css';
 
 const ChatPage: FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const {
     conversations,
     activeConversationId,
@@ -22,63 +25,72 @@ const ChatPage: FC = () => {
     deleteConversation,
     sendMessage,
     setError,
+    interactionMode,
+    setInteractionMode,
   } = useChatStore();
 
-  const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
+  const [modelRows, setModelRows] = useState<Array<{ id: string; label: string; available: boolean }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+
+  const handleModelChange = useCallback(
+    (id: string | null) => {
+      setModelId(id);
+      if (id && id.trim()) updateSettings({ builtinDefaultModelId: id.trim() });
+    },
+    [updateSettings]
+  );
 
   useEffect(() => {
     void fetchConversations();
   }, [fetchConversations, activeWorkspacePath]);
 
+  const reloadChatModels = useCallback(async () => {
+    try {
+      const res = await window.electronAPI?.engineGetChatModels?.();
+      const list = Array.isArray(res?.models)
+        ? res.models.map((m: { id: string; label: string; available?: boolean }) => ({
+            id: String(m?.id ?? '').trim(),
+            label: String(m?.label ?? m?.id ?? '').trim() || String(m?.id ?? ''),
+            available: m?.available !== false,
+          }))
+        : [];
+      const filtered = list.filter((m) => m.id);
+      setModelRows(filtered);
+      const ids = new Set(filtered.map((o) => o.id));
+      const savedId = useSettingsStore.getState().builtinDefaultModelId?.trim() ?? '';
+      const defaultFromEngine = typeof res?.defaultModelId === 'string' ? res.defaultModelId.trim() : '';
+      const firstAvail = filtered.find((m) => m.available)?.id;
+      let picked: string | null = null;
+      if (savedId && ids.has(savedId)) picked = savedId;
+      else if (defaultFromEngine && ids.has(defaultFromEngine)) picked = defaultFromEngine;
+      else if (firstAvail && ids.has(firstAvail)) picked = firstAvail;
+      else picked = filtered[0]?.id ?? null;
+      setModelId((prev) => {
+        if (prev && ids.has(prev)) return prev;
+        return picked;
+      });
+    } catch {
+      setModelRows([]);
+      setModelId(null);
+    }
+  }, []);
+
   useEffect(() => {
-    void (async () => {
-      try {
-        const res = await window.electronAPI?.getModels?.();
-        const defaultId = typeof res?.defaultModelId === 'string' ? res.defaultModelId.trim() : null;
-        const list = Array.isArray(res?.models) ? res.models : [];
-        const rawModels = list
-          .map((m: any) => {
-            const id = String(m?.id ?? m?.key ?? '').trim();
-            if (!id) return null;
-            return {
-              id,
-              available: typeof m?.available === 'boolean' ? m.available : undefined,
-              tags: Array.isArray(m?.tags) ? m.tags : undefined,
-            };
-          })
-          .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>;
+    void reloadChatModels();
+  }, [reloadChatModels, activeWorkspacePath]);
 
-        const configuredProviders = Array.isArray(res?.configuredProviders)
-          ? res.configuredProviders.map((x: unknown) => String(x).trim()).filter(Boolean)
-          : [];
-        const providerProfiles =
-          res?.providerProfiles && typeof res.providerProfiles === 'object'
-            ? (res.providerProfiles as Record<string, { profileId: string; label?: string }>)
-            : {};
+  const modelsForSelect = useMemo(
+    () =>
+      modelRows.map((m) => ({
+        id: m.id,
+        label: m.available ? m.label : `${m.label} · ${t('settings.modelUnavailable')}`,
+      })),
+    [modelRows, t]
+  );
 
-        const merged = mergeConfiguredModelsForDisplay(
-          rawModels,
-          configuredProviders,
-          Object.keys(providerProfiles)
-        );
-        const opts = merged.map((m) => {
-          const provider = m.id.split('/')[0] || '';
-          const lbl = providerProfiles[provider]?.label?.trim();
-          return { id: m.id, label: lbl ? `${m.id} · ${lbl}` : m.id };
-        });
-        setModels(opts);
-
-        const ids = new Set(opts.map((o) => o.id));
-        const firstId = opts[0]?.id ?? null;
-        setModelId(defaultId && ids.has(defaultId) ? defaultId : firstId);
-      } catch {
-        setModels([]);
-        setModelId(null);
-      }
-    })();
-  }, [activeWorkspacePath]);
+  const showApiKeyBar = modelRows.length > 0 && !modelRows.some((m) => m.available);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) ?? null,
@@ -112,7 +124,7 @@ const ChatPage: FC = () => {
       </header>
 
       <div className="cf-chatCenter__messages">
-        {messages.length === 0 && !streamingMessage ? (
+        {messages.length === 0 && streamingMessage === null ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>
               <h3 style={{ marginBottom: 6 }}>{t('chat.emptyMainTitle')}</h3>
@@ -128,12 +140,19 @@ const ChatPage: FC = () => {
       </div>
 
       <footer className="cf-chatCenter__input">
+        <ChatApiKeyBar
+          visible={showApiKeyBar}
+          onSaved={() => void reloadChatModels()}
+          onOpenFullSettings={() => navigate('/settings')}
+        />
         <ChatInput
           disabled={isLoading}
           onSend={onSend}
-          models={models}
+          models={modelsForSelect}
           modelId={modelId}
-          onModelChange={setModelId}
+          onModelChange={handleModelChange}
+          interactionMode={interactionMode}
+          onInteractionModeChange={setInteractionMode}
         />
       </footer>
     </div>

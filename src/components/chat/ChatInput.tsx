@@ -1,5 +1,6 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ChatInteractionMode } from '../../store/modules/chatStore';
 import './chat.css';
 
 interface Props {
@@ -8,9 +9,19 @@ interface Props {
   models?: Array<{ id: string; label: string }>;
   modelId?: string | null;
   onModelChange?: (modelId: string | null) => void;
+  interactionMode: ChatInteractionMode;
+  onInteractionModeChange: (mode: ChatInteractionMode) => void;
 }
 
-const ChatInput: FC<Props> = ({ disabled, onSend, models, modelId, onModelChange }) => {
+const ChatInput: FC<Props> = ({
+  disabled,
+  onSend,
+  models,
+  modelId,
+  onModelChange,
+  interactionMode,
+  onInteractionModeChange,
+}) => {
   const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -52,32 +63,55 @@ const ChatInput: FC<Props> = ({ disabled, onSend, models, modelId, onModelChange
         rows={3}
       />
       <div className="cf-chatInput__footer">
-        <div className="cf-chatInput__model">
-          <span className="cf-ico" title={t('chat.model')} aria-label={t('chat.model')}>
-            ⊚
-          </span>
-          <select
-            className="cf-select cf-select--compact"
-            value={modelId ?? ''}
-            disabled={disabled || isSending || !models || models.length === 0}
-            onChange={(e) => onModelChange?.(e.target.value ? e.target.value : null)}
-            aria-label={t('chat.model')}
-          >
-            <option value="">{t('chat.modelAuto')}</option>
-            {(models ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+        <div className="cf-chatInput__footerLeft">
+          <div className="cf-chatInput__modes">
+            <label className="cf-sub" htmlFor="cf-chat-mode">
+              {t('chat.modeLabel')}
+            </label>
+            <select
+              id="cf-chat-mode"
+              className="cf-select cf-select--compact"
+              value={interactionMode}
+              disabled={disabled || isSending}
+              onChange={(e) => onInteractionModeChange(e.target.value as ChatInteractionMode)}
+              aria-label={t('chat.modeLabel')}
+            >
+              <option value="ask">{t('chat.modeAsk')}</option>
+              <option value="plan">{t('chat.modePlan')}</option>
+              <option value="multitask">{t('chat.modeMultitask')}</option>
+            </select>
+          </div>
+          <div className="cf-chatInput__model">
+            <span className="cf-ico" title={t('chat.model')} aria-label={t('chat.model')}>
+              ⊚
+            </span>
+            <select
+              className="cf-select cf-select--compact"
+              value={modelId ?? ''}
+              disabled={disabled || isSending || !models || models.length === 0}
+              onChange={(e) => onModelChange?.(e.target.value ? e.target.value : null)}
+              aria-label={t('chat.model')}
+            >
+              <option value="">{t('chat.modelAuto')}</option>
+              {(models ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="cf-chatInput__actions">
           <button
-            className={canSend ? 'cf-btn cf-btnPrimary' : 'cf-btn'}
+            className={canSend ? 'cf-btn cf-btnPrimary cf-chatSendBtn' : 'cf-btn cf-chatSendBtn'}
             onClick={() => void submit()}
             disabled={!canSend}
+            aria-label={t('chat.send')}
+            title={t('chat.send')}
           >
-            {isSending ? t('chat.sending') : t('chat.send')}
+            <span className="cf-ico" aria-hidden="true">
+              {isSending ? '…' : '➤'}
+            </span>
           </button>
         </div>
       </div>
