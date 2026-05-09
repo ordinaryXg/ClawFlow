@@ -4,23 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
-
-function folderLabel(fullPath: string): string {
-  return String(fullPath)
-    .replace(/[/\\]+$/, '')
-    .split(/[/\\]/)
-    .pop() || fullPath;
-}
-
-function pathsLikelyEqual(a: string, b: string): boolean {
-  const norm = (s: string) =>
-    String(s)
-      .trim()
-      .replace(/[/\\]+$/, '')
-      .replace(/\\/g, '/')
-      .toLowerCase();
-  return norm(a) === norm(b);
-}
+import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 
 type Props = {
   sidebarWidthPx: number;
@@ -104,9 +88,9 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   };
 
   const onRemoveWorkspaceRow = async (folderPath: string) => {
-    const name = folderLabel(folderPath);
+    const name = workspaceFolderLabel(folderPath);
     const isDefault =
-      defaultWorkspacePath != null && pathsLikelyEqual(folderPath, defaultWorkspacePath);
+      defaultWorkspacePath != null && workspacePathsLikelyEqual(folderPath, defaultWorkspacePath);
     const msg = isDefault
       ? t('chat.confirmRemoveWorkspaceDefault', { name })
       : t('chat.confirmRemoveWorkspaceDestroy', { name });
@@ -197,7 +181,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                             onClick={() => void setWorkspace(p)}
                             title={p}
                           >
-                            {folderLabel(p)}
+                            {workspaceFolderLabel(p)}
                           </button>
                           <div className="cf-sideTree__wsRowActions">
                             <button

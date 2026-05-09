@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain, shell, clipboard } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, shell, clipboard, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
@@ -26,6 +26,63 @@ if (require('electron-squirrel-startup')) {
 
 type AppLang = 'zh' | 'en';
 let currentLang: AppLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
+
+/** 便签紧凑窗口：进入前保存，退出后还原 */
+let shellRestoreBounds: Electron.Rectangle | null = null;
+let shellRestoreMaximized = false;
+let shellCompactWindowActive = false;
+
+function registerShellViewWindowIPC(): void {
+  try {
+    ipcMain.removeHandler('window:setShellViewAppearance');
+  } catch {
+    /* first load or older Electron */
+  }
+  ipcMain.handle('window:setShellViewAppearance', (_event, params: { compact?: boolean }) => {
+    const win = BrowserWindow.fromWebContents(_event.sender);
+    if (!win || win.isDestroyed()) return { ok: false as const, error: 'no_window' };
+    const wantCompact = Boolean(params?.compact);
+
+    if (wantCompact) {
+      if (!shellCompactWindowActive) {
+        shellRestoreMaximized = win.isMaximized();
+        if (shellRestoreMaximized) win.unmaximize();
+        shellRestoreBounds = win.getBounds();
+      }
+      shellCompactWindowActive = true;
+      const wa = screen.getDisplayMatching(win.getBounds()).workArea;
+      /** 便签：宽约工作区 1/4；高度为工作区高度减去上下留白（略小于整屏高度），贴右侧竖条 */
+      const width = Math.max(320, Math.floor(wa.width * 0.25));
+      const marginTop = 10;
+      const marginBottom = 18;
+      const height = Math.max(420, wa.height - marginTop - marginBottom);
+      const x = wa.x + wa.width - width;
+      const y = wa.y + marginTop;
+      win.setMinimumSize(260, 320);
+      win.setBounds({ x, y, width, height }, true);
+      return { ok: true as const };
+    }
+
+    if (shellCompactWindowActive) {
+      shellCompactWindowActive = false;
+      try {
+        win.setMinimumSize(0, 0);
+      } catch {
+        /* ignore */
+      }
+      if (shellRestoreBounds) {
+        win.setBounds(shellRestoreBounds, true);
+        if (shellRestoreMaximized) win.maximize();
+        shellRestoreBounds = null;
+        shellRestoreMaximized = false;
+      }
+    }
+    return { ok: true as const };
+  });
+}
+
+/** 主进程一加载即注册，避免 whenReady 内前置 await 未完成时渲染进程已发起 invoke */
+registerShellViewWindowIPC();
 
 const I18N: Record<AppLang, Record<string, string>> = {
   zh: {
@@ -433,15 +490,15 @@ const createWindow = (): void => {
   const mainWindow = new BrowserWindow({
     height: 800,
     width: 1200,
-    // Use a custom titlebar overlay so app icon and menus share one row (Windows).
+    // Windows：无边框窗口，由页面内 Titlebar / 便签顶栏提供拖动与窗口按钮（无系统标题栏条）
+    // Windows：透明 + 无边框时若保留 roundedCorners，DWM 常无法把桌面合成进来（表现为发灰/不透）。
+    // 便签玻璃依赖 OS 级透明，故关闭系统圆角；界面圆角由页面 CSS 承担。
     ...(process.platform === 'win32'
       ? {
-          titleBarStyle: 'hidden',
-          titleBarOverlay: {
-            color: '#111315',
-            symbolColor: '#c9d1d9',
-            height: 44,
-          },
+          frame: false,
+          roundedCorners: false,
+          transparent: true,
+          backgroundColor: '#00000000',
         }
       : {}),
     webPreferences: {
@@ -452,10 +509,31 @@ const createWindow = (): void => {
     },
   });
 
+  // 开发模式：Ctrl+F12 切换开发者工具（不注册全局快捷键，仅在窗口聚焦时生效）
+  if (!app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      if (input.code !== 'F12' || !input.control || input.meta || input.alt) return;
+      event.preventDefault();
+      const wc = mainWindow.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools({ mode: 'detach' });
+    });
+  }
+
+  // 再强调一次窗口底色，避免部分显卡/主题下初始帧为不透明白底
+  if (process.platform === 'win32') {
+    try {
+      mainWindow.setBackgroundColor('#00000000');
+    } catch {
+      /* ignore */
+    }
+  }
+
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // On Windows we hide the native menu bar row (we draw our own menus in the overlay).
+  // Windows：无边框下仍隐藏菜单栏
   if (process.platform === 'win32') {
     mainWindow.setMenuBarVisibility(false);
     mainWindow.removeMenu();
@@ -543,6 +621,7 @@ app.whenReady().then(async () => {
     return { success: true };
   });
   setupApplicationMenu();
+
   createWindow();
 });
 

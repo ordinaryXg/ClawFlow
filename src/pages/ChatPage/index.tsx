@@ -8,6 +8,7 @@ import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
 import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
+import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -19,6 +20,8 @@ const RESIZE_HANDLE_PX = 6;
 const ChatPage: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const shellVariant = useShellLayoutVariant();
+  const isAlternateShell = shellVariant === 'alternate';
   const {
     conversations,
     activeConversationId,
@@ -227,21 +230,38 @@ const ChatPage: FC = () => {
   };
 
   return (
-    <div ref={rootRef} className="cf-chatCenter">
-      <header className="cf-chatCenter__header">
-        <div className="cf-chatCenter__title">
-          <b style={{ fontSize: 12 }}>{activeConversation?.title ?? t('chat.noSessionSelected')}</b>
-          {isLoading ? <span className="cf-sub">{t('chat.responding')}</span> : null}
-        </div>
-        {error ? (
-          <div className="cf-chatCenter__error">
-            <span className="cf-errorText">{error}</span>
-            <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setError(null)}>
-              {t('common.clear')}
-            </button>
+    <div ref={rootRef} className={`cf-chatCenter${isAlternateShell ? ' cf-chatCenter--alternate' : ''}`}>
+      {!isAlternateShell ? (
+        <header className="cf-chatCenter__header">
+          <div className="cf-chatCenter__title">
+            <b style={{ fontSize: 12 }}>{activeConversation?.title ?? t('chat.noSessionSelected')}</b>
+            {isLoading ? <span className="cf-sub">{t('chat.responding')}</span> : null}
           </div>
-        ) : null}
-      </header>
+          {error ? (
+            <div className="cf-chatCenter__error">
+              <span className="cf-errorText">{error}</span>
+              <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setError(null)}>
+                {t('common.clear')}
+              </button>
+            </div>
+          ) : null}
+        </header>
+      ) : (
+        <>
+          {error ? (
+            <div className="cf-chatCenter__errorBar">
+              <span className="cf-errorText">{error}</span>
+              <button className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setError(null)}>
+                {t('common.clear')}
+              </button>
+            </div>
+          ) : null}
+          <div className="cf-chatCenter__sessionHint" aria-live="polite">
+            <span className="cf-chatCenter__sessionHintTitle">{activeConversation?.title ?? t('chat.noSessionSelected')}</span>
+            {isLoading ? <span className="cf-sub">{t('chat.responding')}</span> : null}
+          </div>
+        </>
+      )}
 
       <div ref={scrollRef} className="cf-chatCenter__messages">
         {messages.length === 0 && streamingMessage === null ? (

@@ -78,6 +78,7 @@ export interface IElectronAPI {
   deleteConnector: (id: string) => Promise<{ success: boolean }>;
   testConnector: (id: string) => Promise<{ success: boolean }>;
   onNavigate: (cb: (path: string) => void) => () => void;
+  setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;
   windowToggleMaximize: () => Promise<void>;
   windowClose: () => Promise<void>;
@@ -232,6 +233,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app:navigate', handler);
     return () => ipcRenderer.removeListener('app:navigate', handler);
   },
+  setShellViewWindowAppearance: (params: { compact: boolean }) =>
+    ipcRenderer.invoke('window:setShellViewAppearance', params),
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowToggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),

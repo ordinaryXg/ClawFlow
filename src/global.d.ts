@@ -79,6 +79,7 @@ export interface IElectronAPI {
   deleteConnector: (id: string) => Promise<{ success: boolean }>;
   testConnector: (id: string) => Promise<{ success: boolean }>;
   onNavigate: (cb: (path: string) => void) => () => void;
+  setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;
   windowToggleMaximize: () => Promise<void>;
   windowClose: () => Promise<void>;

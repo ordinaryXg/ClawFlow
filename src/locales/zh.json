@@ -5,7 +5,28 @@
   "layout": {
     "resizeSidebar": "拖动调整左侧会话栏宽度",
     "resizeRightPanel": "拖动调整右侧信息栏宽度",
-    "resizeWorkspaceSplit": "拖动调整文件树与预览区宽度"
+    "resizeWorkspaceSplit": "拖动调整文件树与预览区宽度",
+    "viewMode": {
+      "shortLabel": "视图",
+      "switchToStandard": "切换为标准布局",
+      "switchToAlternate": "切换为便签式布局（桌面）"
+    }
+  },
+  "sticky": {
+    "workspaceRailAria": "工作空间切换",
+    "addWorkspace": "添加工作空间",
+    "sortDefault": "默认",
+    "sortPlaceholder": "排序（占位，后续可接）",
+    "newSession": "+ 新会话",
+    "workspaceFiles": "工作区文件",
+    "fileListAria": "当前工作区根目录文件",
+    "fileListEmpty": "根目录暂无条目",
+    "fileListError": "无法列出文件",
+    "refreshFiles": "刷新",
+    "pickWorkspaceFirst": "请先选择或添加工作空间",
+    "windowControls": "窗口",
+    "splitResize": "拖动调节文件区与对话区高度",
+    "splitResizeHint": "上下拖动以分配文件列表与对话区域高度"
   },
   "workspace": {
     "title": "工作空间",

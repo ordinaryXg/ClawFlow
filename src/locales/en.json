@@ -5,7 +5,28 @@
   "layout": {
     "resizeSidebar": "Drag to resize the left sessions column",
     "resizeRightPanel": "Drag to resize the right info column",
-    "resizeWorkspaceSplit": "Drag to resize file tree and preview"
+    "resizeWorkspaceSplit": "Drag to resize file tree and preview",
+    "viewMode": {
+      "shortLabel": "View",
+      "switchToStandard": "Switch to standard layout",
+      "switchToAlternate": "Switch to sticky-note layout (desktop)"
+    }
+  },
+  "sticky": {
+    "workspaceRailAria": "Workspace switcher",
+    "addWorkspace": "Add workspace",
+    "sortDefault": "Default",
+    "sortPlaceholder": "Sort (placeholder)",
+    "newSession": "+ New chat",
+    "workspaceFiles": "Workspace files",
+    "fileListAria": "Files at workspace root",
+    "fileListEmpty": "No entries at root",
+    "fileListError": "Could not list files",
+    "refreshFiles": "Refresh",
+    "pickWorkspaceFirst": "Select or add a workspace first",
+    "windowControls": "Window",
+    "splitResize": "Resize file list vs chat height",
+    "splitResizeHint": "Drag vertically to split space between files and chat"
   },
   "workspace": {
     "title": "Workspace",
