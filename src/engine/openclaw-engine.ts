@@ -472,6 +472,65 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     await this.executeCommand(['models', 'set', JSON.stringify(modelId)], { checkExitCode: true });
   }
 
+  /**
+   * 从 OpenClaw 配置中弱化/移除此列表项：
+   * - 若为当前默认模型，先切到列表中另一条（避免悬空默认）。
+   * - 依次尝试 `models fallbacks remove`、`models aliases remove`（与 upstream CLI 子命令对齐）。
+   * - 再按模型 id 前缀做提供方层面的手动 Token 清理（可能与「缺少 Key」行一致）。
+   */
+  async removeListedModelEntry(params: {
+    modelId: string;
+    profileId?: string;
+  }): Promise<{ cliRemoved: boolean; defaultSwitched: boolean }> {
+    const modelId = params.modelId.trim();
+    if (!modelId) throw new Error('Missing model id');
+
+    const summary = await this.getModelsSummary();
+    let defaultSwitched = false;
+    if (summary.defaultModelId === modelId) {
+      const others = summary.models.map((m) => m.id).filter((id) => id && id !== modelId);
+      if (others.length === 0) {
+        throw new Error('MODEL_REMOVE_BLOCKED_ONLY_LISTED_MODEL');
+      }
+      await this.setDefaultModel({ modelId: others[0] });
+      defaultSwitched = true;
+    }
+
+    const quoted = JSON.stringify(modelId);
+    const tail = modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1).trim() : modelId;
+
+    const attempts: string[][] = [
+      ['models', 'fallbacks', 'remove', quoted],
+      ['models', 'aliases', 'remove', quoted],
+    ];
+    if (tail && tail !== modelId) {
+      attempts.push(['models', 'aliases', 'remove', JSON.stringify(tail)]);
+    }
+
+    let cliRemoved = false;
+    for (const args of attempts) {
+      try {
+        await this.executeCommand(args, { checkExitCode: true });
+        cliRemoved = true;
+      } catch {
+        /* next */
+      }
+    }
+
+    const provider = modelId.split('/')[0]?.trim();
+    if (provider) {
+      const profileIdRaw = typeof params.profileId === 'string' ? params.profileId.trim() : '';
+      const resolvedProfileId = profileIdRaw || `${provider}:manual`;
+      try {
+        await this.removeModelAuthToken({ provider, profileId: resolvedProfileId });
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    return { cliRemoved, defaultSwitched };
+  }
+
   private extractJsonPayload(text: string): string | null {
     const s = String(text ?? '').trim();
     if (!s) return null;
@@ -1154,6 +1213,13 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
   ipcMain.handle('openclaw:setDefaultModel', async (_event, params: { modelId: string }) => {
     await getGlobalOpenClawCliEngine().setDefaultModel({ modelId: params.modelId });
     return { success: true };
+  });
+
+  ipcMain.handle('openclaw:removeListedModel', async (_event, params: { modelId: string; profileId?: string }) => {
+    return await getGlobalOpenClawCliEngine().removeListedModelEntry({
+      modelId: params.modelId,
+      profileId: params.profileId,
+    });
   });
 
   ipcMain.handle('openclaw:pickCliPath', async (event) => {

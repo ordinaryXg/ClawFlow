@@ -15,6 +15,7 @@ export interface IElectronAPI {
   setModelAuthToken: (params: { provider: string; token: string; profileId?: string; label?: string }) => Promise<{ success: boolean }>;
   removeModelAuthToken: (params: { provider: string; profileId?: string }) => Promise<{ removed: boolean }>;
   setDefaultModel: (params: { modelId: string }) => Promise<{ success: boolean }>;
+  removeListedModel: (params: { modelId: string; profileId?: string }) => Promise<{ cliRemoved: boolean; defaultSwitched: boolean }>;
   getModels: () => Promise<any>;
   // 对话相关
   sendMessage: (message: string, sessionId?: string, modelId?: string) => Promise<any>;

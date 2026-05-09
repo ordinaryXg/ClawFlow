@@ -1,26 +1,49 @@
+import type { ReactNode } from 'react';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import i18n from '../../i18n';
 import './styles.css';
-import { useConnectorStore } from '../../store/modules/connectorStore';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
-import { useSkillStore } from '../../store/modules/skillStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import { mergeConfiguredModelsForDisplay } from '../../utils/modelDisplay';
+
+const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
+type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
+
+const NAV_LABEL_KEYS: Record<SettingsSectionId, string> = {
+  account: 'settings.navAccount',
+  system: 'settings.navSystem',
+  memory: 'settings.navMemory',
+  models: 'settings.navModels',
+  integrations: 'settings.navIntegrations',
+  data: 'settings.navData',
+  help: 'settings.navHelp',
+};
+
+const SECTION_META: Record<SettingsSectionId, { titleKey: string; hintKey: string }> = {
+  account: { titleKey: 'settings.sectionAccountTitle', hintKey: 'settings.sectionAccountHint' },
+  system: { titleKey: 'settings.sectionSystemTitle', hintKey: 'settings.sectionSystemHint' },
+  memory: { titleKey: 'settings.sectionMemoryTitle', hintKey: 'settings.sectionMemoryHint' },
+  models: { titleKey: 'settings.sectionModelsTitle', hintKey: 'settings.sectionModelsHint' },
+  integrations: { titleKey: 'settings.sectionIntegrationsTitle', hintKey: 'settings.sectionIntegrationsHint' },
+  data: { titleKey: 'settings.sectionDataTitle', hintKey: 'settings.sectionDataHint' },
+  help: { titleKey: 'settings.sectionHelpTitle', hintKey: 'settings.sectionHelpHint' },
+};
 
 const SettingsPage: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
   const {
     version,
+    fetchVersion,
     status: gatewayStatus,
     isStarting,
     isStopping,
     error: gatewayError,
     fetchStatus,
-    fetchVersion,
     startGateway,
     stopGateway,
   } = useGatewayStore();
@@ -36,6 +59,13 @@ const SettingsPage: FC = () => {
   } = useSettingsStore();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
+  const workspaceMeta = useWorkspaceStore((s) => s.meta);
+  const workspaceLoading = useWorkspaceStore((s) => s.loading);
+  const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
+  const pickWorkspaceFolder = useWorkspaceStore((s) => s.pickFolder);
+
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
+  const [connectorCount, setConnectorCount] = useState(0);
 
   const [cliPath, setCliPath] = useState(storeCliPath);
   const [timeoutMs, setTimeoutMs] = useState(storeTimeout);
@@ -52,31 +82,6 @@ const SettingsPage: FC = () => {
   const [cliAvailable, setCliAvailable] = useState<boolean | null>(null);
   const [cliError, setCliError] = useState<string>('');
 
-  const { skills, fetchSkills, error: skillError, isLoading: isSkillLoading } = useSkillStore();
-  const {
-    connectors,
-    fetchConnectors,
-    error: connectorError,
-    isLoading: isConnectorLoading,
-  } = useConnectorStore();
-
-  const installedSkillsCount = useMemo(
-    () => skills.filter((s) => s.installed).length,
-    [skills]
-  );
-  const enabledSkillsCount = useMemo(() => skills.filter((s) => s.enabled).length, [skills]);
-  const connectorsCount = connectors.length;
-
-  const gatewayChip = useMemo(() => {
-    if (gatewayStatus === 'running')
-      return <span className="cf-chip cf-chipRunning">{t('gateway.statusRunning')}</span>;
-    if (gatewayStatus === 'stopped')
-      return <span className="cf-chip cf-chipStopped">{t('gateway.statusStopped')}</span>;
-    return <span className="cf-chip cf-chipUnknown">{t('gateway.statusUnknown')}</span>;
-  }, [gatewayStatus, t]);
-
-  const canOperateGateway = cliAvailable !== false;
-
   useEffect(() => {
     setCliPath(storeCliPath);
     setTimeoutMs(storeTimeout);
@@ -84,19 +89,16 @@ const SettingsPage: FC = () => {
 
   useEffect(() => {
     void fetchVersion();
-    void fetchStatus();
-    void fetchSkills();
-    void fetchConnectors();
     if (window.electronAPI?.validateCLI) {
       window.electronAPI
         .validateCLI()
         .then((available: boolean) => {
           setCliAvailable(available);
-          setCliError(available ? '' : t('dashboard.cliNotInPath'));
+          setCliError(available ? '' : t('settings.cliPathMissingDetail'));
         })
         .catch(() => {
           setCliAvailable(false);
-          setCliError(t('dashboard.cliCheckFailed'));
+          setCliError(t('settings.cliPathCheckFailed'));
         });
     }
     void (async () => {
@@ -107,34 +109,56 @@ const SettingsPage: FC = () => {
         setAppVersion('');
       }
     })();
-  }, [fetchConnectors, fetchSkills, fetchStatus, fetchVersion, t]);
+  }, [fetchVersion, t]);
+
+  const reloadModelsFromEngine = useCallback(async () => {
+    try {
+      const res = await window.electronAPI?.getModels?.();
+      const def = typeof res?.defaultModelId === 'string' ? res.defaultModelId : '';
+      if (def) setDefaultModelId(def);
+      const list = Array.isArray(res?.models) ? res.models : [];
+      setConfiguredModels(
+        list
+          .map((m: any) => {
+            const id = String(m?.id ?? m?.key ?? '').trim();
+            if (!id) return null;
+            return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
+          })
+          .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
+      );
+      setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
+      setProviderProfiles(res?.providerProfiles && typeof res.providerProfiles === 'object' ? res.providerProfiles : {});
+    } catch {
+      setConfiguredModels([]);
+      setConfiguredProviders([]);
+      setProviderProfiles({});
+    }
+  }, []);
+
+  const reloadConnectorsCount = useCallback(async () => {
+    try {
+      const res = await window.electronAPI?.getConnectors?.();
+      const arr = res?.connectors;
+      setConnectorCount(Array.isArray(arr) ? arr.length : 0);
+    } catch {
+      setConnectorCount(0);
+    }
+  }, []);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const res = await window.electronAPI?.getModels?.();
-        const def = typeof res?.defaultModelId === 'string' ? res.defaultModelId : '';
-        if (def) setDefaultModelId(def);
-        const list = Array.isArray(res?.models) ? res.models : [];
-        setConfiguredModels(
-          list
-            .map((m: any) => {
-              const id = String(m?.id ?? m?.key ?? '').trim();
-              if (!id) return null;
-              return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
-            })
-            .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
-        );
-        setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
-        setProviderProfiles(res?.providerProfiles && typeof res.providerProfiles === 'object' ? res.providerProfiles : {});
-      } catch {
-        setConfiguredModels([]);
-        setConfiguredProviders([]);
-        setProviderProfiles({});
-      }
-    })();
-    // 切换工作区后刷新：主进程模型数据为全局，但避免界面长期缓存旧快照
-  }, [activeWorkspacePath]);
+    void reloadModelsFromEngine();
+  }, [activeWorkspacePath, reloadModelsFromEngine]);
+
+  useEffect(() => {
+    if (activeSection !== 'integrations') return;
+    void fetchStatus();
+    void reloadConnectorsCount();
+  }, [activeSection, fetchStatus, reloadConnectorsCount]);
+
+  useEffect(() => {
+    if (activeSection !== 'account') return;
+    void refreshWorkspace();
+  }, [activeSection, refreshWorkspace]);
 
   const displayModels = useMemo(
     () =>
@@ -234,8 +258,43 @@ const SettingsPage: FC = () => {
     (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
   };
 
+  const refreshSettingsData = () => {
+    void fetchVersion();
+    void reloadModelsFromEngine();
+    void fetchStatus();
+    void reloadConnectorsCount();
+    if (window.electronAPI?.validateCLI) {
+      window.electronAPI
+        .validateCLI()
+        .then((available: boolean) => {
+          setCliAvailable(available);
+          setCliError(available ? '' : t('settings.cliPathMissingDetail'));
+        })
+        .catch(() => {
+          setCliAvailable(false);
+          setCliError(t('settings.cliPathCheckFailed'));
+        });
+    }
+    (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
+  };
+
+  const scrollToOpenClawPath = () => {
+    setActiveSection('system');
+    window.setTimeout(() => {
+      document.getElementById('settings-system-openclaw')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const gatewayChip = useMemo(() => {
+    if (gatewayStatus === 'running')
+      return <span className="cf-chip cf-chipRunning">{t('gateway.statusRunning')}</span>;
+    if (gatewayStatus === 'stopped')
+      return <span className="cf-chip cf-chipStopped">{t('gateway.statusStopped')}</span>;
+    return <span className="cf-chip cf-chipUnknown">{t('gateway.statusUnknown')}</span>;
+  }, [gatewayStatus, t]);
+
   const handleStartGateway = async () => {
-    if (!canOperateGateway) return;
+    if (cliAvailable === false) return;
     try {
       await startGateway();
       await fetchStatus();
@@ -246,33 +305,13 @@ const SettingsPage: FC = () => {
   };
 
   const handleStopGateway = async () => {
-    if (!canOperateGateway) return;
-    await stopGateway();
-    await fetchStatus();
-  };
-
-  const refreshStatusOverview = () => {
-    void fetchVersion();
-    void fetchStatus();
-    void fetchSkills();
-    void fetchConnectors();
-    if (window.electronAPI?.validateCLI) {
-      window.electronAPI
-        .validateCLI()
-        .then((available: boolean) => {
-          setCliAvailable(available);
-          setCliError(available ? '' : t('dashboard.cliNotInPath'));
-        })
-        .catch(() => {
-          setCliAvailable(false);
-          setCliError(t('dashboard.cliCheckFailed'));
-        });
+    if (cliAvailable === false) return;
+    try {
+      await stopGateway();
+      await fetchStatus();
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('common.sampleDetectFailTitle'), e?.message || t('common.sampleOpFailBody'));
     }
-    (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
-  };
-
-  const scrollToOpenClawPath = () => {
-    document.getElementById('settings-openclaw-path')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const onSaveModel = async () => {
@@ -343,30 +382,50 @@ const SettingsPage: FC = () => {
     }
   };
 
-  const onDeleteProviderToken = async (provider: string) => {
+  const onRemoveStaleModelRow = async (modelId: string, provider: string) => {
+    const id = String(modelId ?? '').trim();
     const p = String(provider ?? '').trim();
-    if (!p) return;
-    const ok = window.confirm(t('settings.modelDeleteConfirm'));
-    if (!ok) return;
+    if (!id || !p) return;
+    const hasLocalToken = Boolean(providerProfiles?.[p]);
+    const flaggedByCli = configuredProviders.includes(p);
+    const providerConfigured = hasLocalToken || flaggedByCli;
+
+    const confirmed = providerConfigured
+      ? window.confirm(t('settings.modelDeleteConfirm'))
+      : window.confirm(t('settings.modelRemoveStaleConfirm'));
+    if (!confirmed) return;
+
     setModelSaving(true);
     try {
-      await window.electronAPI?.removeModelAuthToken?.({ provider: p, profileId: `${p}:manual` });
-      const res = await window.electronAPI?.getModels?.();
-      const def = typeof res?.defaultModelId === 'string' ? res.defaultModelId : '';
-      if (def) setDefaultModelId(def);
-      const list = Array.isArray(res?.models) ? res.models : [];
-      setConfiguredModels(
-        list
-          .map((m: any) => {
-            const id = String(m?.id ?? m?.key ?? '').trim();
-            if (!id) return null;
-            return { id, available: m?.available, tags: Array.isArray(m?.tags) ? m.tags : undefined };
-          })
-          .filter(Boolean) as Array<{ id: string; available?: boolean; tags?: string[] }>
-      );
-      setConfiguredProviders(Array.isArray(res?.configuredProviders) ? res.configuredProviders : []);
-      setProviderProfiles(res?.providerProfiles && typeof res.providerProfiles === 'object' ? res.providerProfiles : {});
-      (window as any).__cf_toast?.success?.(t('settings.modelDeletedTitle'), t('settings.modelDeletedBody'));
+      let cliRemoved = false;
+      try {
+        const pid = providerProfiles[p]?.profileId;
+        const rm = await window.electronAPI?.removeListedModel?.({
+          modelId: id,
+          ...(pid ? { profileId: pid } : {}),
+        });
+        cliRemoved = Boolean(rm?.cliRemoved);
+      } catch (inner: any) {
+        const raw = String(inner?.message ?? inner ?? '');
+        if (raw.includes('MODEL_REMOVE_BLOCKED_ONLY_LISTED_MODEL')) {
+          (window as any).__cf_toast?.error?.(t('settings.modelRemoveBlockedOnlyTitle'), t('settings.modelRemoveBlockedOnlyBody'));
+          return;
+        }
+        throw inner;
+      }
+
+      await reloadModelsFromEngine();
+
+      if (providerConfigured) {
+        (window as any).__cf_toast?.success?.(
+          t('settings.modelDeletedTitle'),
+          cliRemoved ? t('settings.modelDeletedBody') : t('settings.modelRowRemovedPartialBody')
+        );
+      } else if (cliRemoved) {
+        (window as any).__cf_toast?.success?.(t('settings.modelRowRemovedTitle'), t('settings.modelRowRemovedBody'));
+      } else {
+        (window as any).__cf_toast?.success?.(t('settings.modelRowRemovedTitle'), t('settings.modelRowRemovedPartialBody'));
+      }
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.modelDeleteFailTitle'), e?.message || t('common.sampleOpFailBody'));
     } finally {
@@ -374,163 +433,168 @@ const SettingsPage: FC = () => {
     }
   };
 
-  return (
+  const sectionHead = SECTION_META[activeSection];
+
+  const panelModels = (
     <>
-      <div className="cf-topbar">
-        <div className="cf-pageTitle">
-          <h2>{t('settings.title')}</h2>
-          <p>{t('settings.subtitle')}</p>
+      <div className="cf-help">{t('settings.modelsHint')}</div>
+      <div className="cf-help" style={{ marginTop: 6 }}>
+        {t('settings.modelsLocalHint')}
+      </div>
+
+      <div className="cf-settingsModels">
+        <div className="cf-settingsModels__col">
+          <div className="cf-settingsModels__sectionTitle">{t('settings.configuredModels')}</div>
+          <div className="cf-help">
+            {t('settings.currentModel')}: {defaultModelId || t('common.unknown')}
+          </div>
+
+          {displayModels.length === 0 ? (
+            <div className="cf-help">{t('settings.noConfiguredModels')}</div>
+          ) : (
+            <div className="cf-settingsModels__modelList" role="list">
+              {displayModels.map((m) => {
+                const isDefault = Boolean(defaultModelId && m.id === defaultModelId);
+                const provider = String(m.id).split('/')[0] || '';
+                const providerConfigured = Boolean(providerProfiles?.[provider]) || configuredProviders.includes(provider);
+                const providerLabel = providerProfiles?.[provider]?.label;
+                return (
+                  <div
+                    key={m.id}
+                    className={isDefault ? 'cf-settingsModelRow cf-settingsModelRow--active' : 'cf-settingsModelRow'}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      className="cf-settingsModelRow__pick"
+                      disabled={modelSaving}
+                      onClick={() => void onSetDefaultModel(m.id)}
+                      title={t('settings.pickDefault')}
+                    >
+                      <span className="cf-settingsModelRow__id">
+                        {m.id}
+                        {providerLabel ? <span className="cf-settingsModelRow__label"> · {providerLabel}</span> : null}
+                      </span>
+                      {m.available === false ? (
+                        <span className="cf-settingsBadge cf-settingsBadge--warn">{t('settings.modelUnavailable')}</span>
+                      ) : null}
+                      {isDefault ? <span className="cf-settingsBadge">{t('settings.modelDefaultBadge')}</span> : null}
+                    </button>
+
+                    <div className="cf-row" style={{ flexShrink: 0, gap: 8, alignItems: 'center' }}>
+                      {!providerConfigured ? (
+                        <span className="cf-sub" title={t('settings.modelMissingKeyTitle', { provider })}>
+                          {t('settings.modelMissingKeyShort')}
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="cf-btn cf-btnGhost cf-btnSmall"
+                        disabled={modelSaving}
+                        onClick={() => void onRemoveStaleModelRow(m.id, provider)}
+                        title={
+                          providerConfigured
+                            ? t('settings.modelDeleteProviderTitle', { provider })
+                            : t('settings.modelRemoveStaleHint', { model: m.id })
+                        }
+                      >
+                        {t('common.delete')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-        <div className="cf-row cf-settingsPage__actions">
-          <button className="cf-btn cf-btnGhost" type="button" onClick={() => refreshStatusOverview()}>
-            {t('common.refresh')}
-          </button>
-          <button className="cf-btn cf-btnGhost" type="button" onClick={onReset}>
-            {t('settings.reset')}
-          </button>
-          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => void onSave()}>
-            {t('settings.save')}
+
+        <div className="cf-settingsModels__col">
+          <div className="cf-settingsModels__sectionTitle">{t('settings.addProviderTitle')}</div>
+          <div className="cf-help">{t('settings.addProviderHint')}</div>
+          <div style={{ height: 10 }} />
+
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.modelProfileName')}
+          </div>
+          <input
+            className="cf-input"
+            value={modelProfileLabel}
+            onChange={(e) => setModelProfileLabel(e.target.value)}
+            placeholder={t('settings.modelProfileNamePh')}
+          />
+          <div className="cf-help">{t('settings.modelProfileNameHint')}</div>
+          <div style={{ height: 10 }} />
+
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.modelProvider')}
+          </div>
+          <select className="cf-select" value={modelProvider} onChange={(e) => setModelProvider(e.target.value as 'deepseek' | 'openai')}>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+          </select>
+
+          <div style={{ height: 10 }} />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.modelToken')}
+          </div>
+          <input
+            className="cf-input"
+            value={modelToken}
+            onChange={(e) => setModelToken(e.target.value)}
+            placeholder={t('settings.modelTokenPh')}
+          />
+          <div className="cf-help">{t('settings.modelTokenHint')}</div>
+
+          <div style={{ height: 12 }} />
+          <button className="cf-btn cf-btnPrimary" type="button" disabled={modelSaving} onClick={() => void onSaveModel()}>
+            {modelSaving ? t('settings.modelSaving') : t('settings.modelSave')}
           </button>
         </div>
       </div>
+    </>
+  ) as ReactNode;
 
-      {cliAvailable === false ? (
-        <div className="cf-banner">
-          <div>
-            <b>{t('dashboard.noOpenClaw')}</b>
-            <span>{cliError || t('dashboard.cliNotInPath')}</span>
-          </div>
-          <button className="cf-btn cf-btnGold" type="button" onClick={scrollToOpenClawPath}>
-            {t('dashboard.goSetPath')}
-          </button>
-        </div>
-      ) : null}
-
-      {(gatewayError || skillError || connectorError) && cliAvailable !== false ? (
-        <div
-          className="cf-banner"
-          style={{
-            marginTop: 12,
-            borderColor: 'rgba(194,75,75,.45)',
-            background: 'rgba(194,75,75,.10)',
-          }}
-        >
-          <div>
-            <b>{t('dashboard.partialLoadFailed')}</b>
-            <span>
-              {gatewayError ? `${t('dashboard.errGateway')}${gatewayError} ` : ''}
-              {skillError ? `${t('dashboard.errSkills')}${skillError} ` : ''}
-              {connectorError ? `${t('dashboard.errConnectors')}${connectorError}` : ''}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="cf-btn cf-btnDanger"
-            onClick={() =>
-              (window as any).__cf_toast?.error?.(t('dashboard.suggestTitle'), t('dashboard.suggestBody'))
-            }
-          >
-            {t('dashboard.suggestTitle')}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="cf-settingsPage__globalStripe" role="note">
-        {t('settings.globalScopeStripe')}
-      </div>
-
-      <section className="cf-grid cf-settingsPage__grid">
-        <div className="cf-card cf-col12">
-          <h3>{t('settings.statusOverviewTitle')}</h3>
-          <div className="cf-help">{t('settings.statusOverviewHint')}</div>
+  let detailPanels: ReactNode = null;
+  if (activeSection === 'account') {
+    detailPanels = (
+      <>
+        <div className="cf-card">
+          <h3>{t('settings.workspaceNameLabel')}</h3>
           <div className="cf-divider" />
-
-          <div className="cf-grid">
-            <div className="cf-card cf-col4" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
-              <h3>{t('dashboard.openclawVersion')}</h3>
-              <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                <span className="cf-sub">
-                  {cliAvailable === false ? t('dashboard.notInstalled') : version || t('dashboard.checking')}
-                </span>
-                <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchVersion()}>
-                  {t('dashboard.recheck')}
-                </button>
-              </div>
-              <div className="cf-divider" />
-              <div className="cf-sub">{t('dashboard.missingHint')}</div>
-            </div>
-
-            <div className="cf-card cf-col8" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
-              <h3>{t('dashboard.gatewayStatus')}</h3>
-              <div className="cf-row" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <div className="cf-row" style={{ alignItems: 'center', gap: 10 }}>
-                  {gatewayChip}
-                  <span className="cf-sub">
-                    {isStarting
-                      ? t('dashboard.starting')
-                      : isStopping
-                        ? t('dashboard.stopping')
-                        : t('dashboard.statusSource')}
-                  </span>
-                </div>
-                <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-                  <button type="button" className="cf-btn" onClick={() => void fetchStatus()}>
-                    {t('dashboard.refreshStatus')}
-                  </button>
-                  <button
-                    type="button"
-                    className="cf-btn cf-btnPrimary"
-                    disabled={!canOperateGateway || gatewayStatus === 'running' || isStopping || isStarting}
-                    onClick={() => void handleStartGateway()}
-                  >
-                    {t('dashboard.startGateway')}
-                  </button>
-                  <button
-                    type="button"
-                    className="cf-btn cf-btnDanger"
-                    disabled={!canOperateGateway || gatewayStatus === 'stopped' || isStopping || isStarting}
-                    onClick={() => void handleStopGateway()}
-                  >
-                    {t('dashboard.stop')}
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {workspaceLoading ? t('dashboard.loading') : workspaceMeta?.name || t('settings.noWorkspaceSelected')}
           </div>
-
+          <div className="cf-sub" style={{ marginBottom: 8 }}>
+            <strong>{t('settings.dataCurrentWorkspace')}</strong>
+          </div>
+          <div className="cf-settingsModels__mono" style={{ wordBreak: 'break-all', marginBottom: 12 }}>
+            {activeWorkspacePath || '—'}
+          </div>
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button className="cf-btn cf-btnGhost" type="button" onClick={() => void refreshWorkspace()}>
+              {t('settings.refreshWorkspaceMeta')}
+            </button>
+            <button className="cf-btn" type="button" onClick={() => void pickWorkspaceFolder()}>
+              {t('settings.pickWorkspaceFolder')}
+            </button>
+          </div>
+        </div>
+        <div className="cf-card">
+          <h3>{t('settings.about')}</h3>
           <div className="cf-divider" />
-
-          <div className="cf-grid">
-            <div className="cf-card cf-col4" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
-              <h3>{t('dashboard.overview')}</h3>
-              <div className="cf-sub">
-                {t('dashboard.skillsCount')}：{installedSkillsCount} / {enabledSkillsCount}
-                {isSkillLoading ? ` · ${t('dashboard.loading')}` : ''}
-              </div>
-              <div className="cf-sub">
-                {t('dashboard.connectorsCount')}：{connectorsCount}
-                {isConnectorLoading ? ` · ${t('dashboard.loading')}` : ''}
-              </div>
-            </div>
-            <div className="cf-card cf-col8" style={{ background: 'var(--panel2, rgba(255,255,255,.02))' }}>
-              <h3>{t('dashboard.quickLinks')}</h3>
-              <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-                <button type="button" className="cf-btn cf-btnPrimary" onClick={() => navigate('/chat')}>
-                  {t('dashboard.enterChat')}
-                </button>
-                <button type="button" className="cf-btn" onClick={() => navigate('/skills')}>
-                  {t('dashboard.manageSkills')}
-                </button>
-                <button type="button" className="cf-btn" onClick={() => navigate('/connectors')}>
-                  {t('dashboard.manageConnectors')}
-                </button>
-              </div>
-              <div className="cf-help">{t('dashboard.goalHint')}</div>
+          <div className="cf-row" style={{ gap: 24, flexWrap: 'wrap' }}>
+            <div className="cf-sub">
+              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>
+              ：{appVersion || '—'}
             </div>
           </div>
         </div>
-
-        <div className="cf-card cf-col6">
+      </>
+    );
+  } else if (activeSection === 'system') {
+    detailPanels = (
+      <>
+        <div className="cf-card">
           <h3>{t('settings.appearance')}</h3>
           <div className="cf-divider" />
 
@@ -572,14 +636,20 @@ const SettingsPage: FC = () => {
               <button
                 type="button"
                 className={language === 'zh' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
-                onClick={() => updateSettings({ language: 'zh' })}
+                onClick={() => {
+                  updateSettings({ language: 'zh' });
+                  void i18n.changeLanguage('zh');
+                }}
               >
                 {t('common.chinese')}
               </button>
               <button
                 type="button"
                 className={language === 'en' ? 'cf-btn cf-btnGold cf-btnSmall' : 'cf-btn cf-btnSmall'}
-                onClick={() => updateSettings({ language: 'en' })}
+                onClick={() => {
+                  updateSettings({ language: 'en' });
+                  void i18n.changeLanguage('en');
+                }}
               >
                 {t('common.english')}
               </button>
@@ -587,8 +657,59 @@ const SettingsPage: FC = () => {
           </div>
         </div>
 
-        <div className="cf-card cf-col6" id="settings-openclaw-path">
+        <div className="cf-card">
+          <h3>{t('settings.execution')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.timeout')}
+          </div>
+          <input
+            className="cf-input"
+            type="number"
+            min={1000}
+            step={1000}
+            value={timeoutMs}
+            onChange={(e) => setTimeoutMs(Number(e.target.value || 0))}
+          />
+          <div className="cf-help">{t('settings.timeoutHelp')}</div>
+          <div style={{ height: 10 }} />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.logLevel')}
+          </div>
+          <select
+            className="cf-select"
+            value={logLevel}
+            onChange={(e) => updateSettings({ logLevel: e.target.value as typeof logLevel })}
+          >
+            <option value="debug">debug</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+          <div className="cf-help">{t('settings.logLevelHelp')}</div>
+        </div>
+
+        <div className="cf-card" id="settings-system-openclaw">
           <h3>{t('settings.openclaw')}</h3>
+          <div className="cf-divider" />
+
+          <div className="cf-row" style={{ alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div className="cf-sub" style={{ marginBottom: 4 }}>
+                <strong style={{ color: 'var(--text)' }}>{t('settings.openclawCliVersionTitle')}</strong>
+              </div>
+              <div className="cf-sub">
+                {cliAvailable === false ? t('settings.cliVersionNotInstalled') : version || t('settings.cliVersionChecking')}
+              </div>
+              <div className="cf-help" style={{ marginTop: 6 }}>
+                {t('settings.openclawCliVersionHint')}
+              </div>
+            </div>
+            <button type="button" className="cf-btn cf-btnSmall" onClick={() => void fetchVersion()}>
+              {t('settings.recheckCliVersion')}
+            </button>
+          </div>
+
           <div className="cf-divider" />
 
           <div className="cf-sub" style={{ marginBottom: 6 }}>
@@ -641,39 +762,7 @@ const SettingsPage: FC = () => {
           </div>
         </div>
 
-        <div className="cf-card cf-col6">
-          <h3>{t('settings.execution')}</h3>
-          <div className="cf-divider" />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.timeout')}
-          </div>
-          <input
-            className="cf-input"
-            type="number"
-            min={1000}
-            step={1000}
-            value={timeoutMs}
-            onChange={(e) => setTimeoutMs(Number(e.target.value || 0))}
-          />
-          <div className="cf-help">{t('settings.timeoutHelp')}</div>
-          <div style={{ height: 10 }} />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.logLevel')}
-          </div>
-          <select
-            className="cf-select"
-            value={logLevel}
-            onChange={(e) => updateSettings({ logLevel: e.target.value as typeof logLevel })}
-          >
-            <option value="debug">debug</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
-          <div className="cf-help">{t('settings.logLevelHelp')}</div>
-        </div>
-
-        <div className="cf-card cf-col6">
+        <div className="cf-card">
           <h3>{t('settings.security')}</h3>
           <div className="cf-divider" />
           <div className="cf-sub">{t('settings.security1')}</div>
@@ -690,131 +779,185 @@ const SettingsPage: FC = () => {
             {t('settings.rulesBtn')}
           </button>
         </div>
-
-        <div className="cf-card cf-col12">
-          <h3>{t('settings.modelsTitle')}</h3>
-          <div className="cf-divider" />
-          <div className="cf-help">{t('settings.modelsHint')}</div>
-          <div className="cf-help" style={{ marginTop: 6 }}>
-            {t('settings.modelsLocalHint')}
-          </div>
-
-          <div className="cf-settingsModels">
-            {/* Left: configured models + default selection */}
-            <div className="cf-settingsModels__col">
-              <div className="cf-settingsModels__sectionTitle">{t('settings.configuredModels')}</div>
-              <div className="cf-help">
-                {t('settings.currentModel')}: {defaultModelId || t('common.unknown')}
-              </div>
-
-              {displayModels.length === 0 ? (
-                <div className="cf-help">{t('settings.noConfiguredModels')}</div>
-              ) : (
-                <div className="cf-settingsModels__modelList" role="list">
-                  {displayModels.map((m) => {
-                    const isDefault = Boolean(defaultModelId && m.id === defaultModelId);
-                    const provider = String(m.id).split('/')[0] || '';
-                    const providerConfigured = Boolean(providerProfiles?.[provider]) || configuredProviders.includes(provider);
-                    const providerLabel = providerProfiles?.[provider]?.label;
-                    return (
-                      <div
-                        key={m.id}
-                        className={isDefault ? 'cf-settingsModelRow cf-settingsModelRow--active' : 'cf-settingsModelRow'}
-                        role="listitem"
-                      >
-                        <button
-                          type="button"
-                          className="cf-settingsModelRow__pick"
-                          disabled={modelSaving}
-                          onClick={() => void onSetDefaultModel(m.id)}
-                          title={t('settings.pickDefault')}
-                        >
-                          <span className="cf-settingsModelRow__id">
-                            {m.id}
-                            {providerLabel ? <span className="cf-settingsModelRow__label"> · {providerLabel}</span> : null}
-                          </span>
-                          {m.available === false ? (
-                            <span className="cf-settingsBadge cf-settingsBadge--warn">{t('settings.modelUnavailable')}</span>
-                          ) : null}
-                          {isDefault ? <span className="cf-settingsBadge">{t('settings.modelDefaultBadge')}</span> : null}
-                        </button>
-
-                        {providerConfigured ? (
-                          <button
-                            type="button"
-                            className="cf-btn cf-btnGhost cf-btnSmall"
-                            disabled={modelSaving}
-                            onClick={() => void onDeleteProviderToken(provider)}
-                            title={t('settings.modelDeleteProviderTitle', { provider })}
-                          >
-                            {t('common.delete')}
-                          </button>
-                        ) : (
-                          <span className="cf-sub" title={t('settings.modelMissingKeyTitle', { provider })}>
-                            {t('settings.modelMissingKeyShort')}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Right: add/configure provider */}
-            <div className="cf-settingsModels__col">
-              <div className="cf-settingsModels__sectionTitle">{t('settings.addProviderTitle')}</div>
-              <div className="cf-help">{t('settings.addProviderHint')}</div>
-              <div style={{ height: 10 }} />
-
-              <div className="cf-sub" style={{ marginBottom: 6 }}>{t('settings.modelProfileName')}</div>
-              <input
-                className="cf-input"
-                value={modelProfileLabel}
-                onChange={(e) => setModelProfileLabel(e.target.value)}
-                placeholder={t('settings.modelProfileNamePh')}
-              />
-              <div className="cf-help">{t('settings.modelProfileNameHint')}</div>
-              <div style={{ height: 10 }} />
-
-              <div className="cf-sub" style={{ marginBottom: 6 }}>{t('settings.modelProvider')}</div>
-              <select className="cf-select" value={modelProvider} onChange={(e) => setModelProvider(e.target.value as any)}>
-                <option value="deepseek">DeepSeek</option>
-                <option value="openai">OpenAI</option>
-              </select>
-
-              <div style={{ height: 10 }} />
-              <div className="cf-sub" style={{ marginBottom: 6 }}>{t('settings.modelToken')}</div>
-              <input
-                className="cf-input"
-                value={modelToken}
-                onChange={(e) => setModelToken(e.target.value)}
-                placeholder={t('settings.modelTokenPh')}
-              />
-              <div className="cf-help">{t('settings.modelTokenHint')}</div>
-
-              <div style={{ height: 12 }} />
-              <button className="cf-btn cf-btnPrimary" type="button" disabled={modelSaving} onClick={() => void onSaveModel()}>
-                {modelSaving ? t('settings.modelSaving') : t('settings.modelSave')}
-              </button>
-            </div>
-          </div>
+      </>
+    );
+  } else if (activeSection === 'memory') {
+    detailPanels = (
+      <div className="cf-card">
+        <div className="cf-help" style={{ marginBottom: 8 }}>
+          {t('settings.memoryBullet1')}
         </div>
-
-        <div className="cf-card cf-col12">
+        <div className="cf-help" style={{ marginBottom: 8 }}>
+          {t('settings.memoryBullet2')}
+        </div>
+        <div className="cf-help">{t('settings.memoryBullet3')}</div>
+      </div>
+    );
+  } else if (activeSection === 'models') {
+    detailPanels = (
+      <div className="cf-card">
+        <h3>{t('settings.modelsTitle')}</h3>
+        <div className="cf-divider" />
+        {panelModels}
+      </div>
+    );
+  } else if (activeSection === 'integrations') {
+    detailPanels = (
+      <div className="cf-card">
+        <h3>{t('settings.gatewayLabel')}</h3>
+        <div className="cf-divider" />
+        <div className="cf-settingsIntegrationRow">
+          {gatewayChip}
+          <button className="cf-btn cf-btnSmall" type="button" disabled={cliAvailable === false} onClick={() => void fetchStatus()}>
+            {t('dashboard.refreshStatus')}
+          </button>
+          <button
+            className="cf-btn cf-btnSmall"
+            type="button"
+            disabled={cliAvailable === false || isStarting}
+            onClick={() => void handleStartGateway()}
+          >
+            {isStarting ? t('dashboard.starting') : t('dashboard.startGateway')}
+          </button>
+          <button
+            className="cf-btn cf-btnSmall"
+            type="button"
+            disabled={cliAvailable === false || isStopping || gatewayStatus !== 'running'}
+            onClick={() => void handleStopGateway()}
+          >
+            {isStopping ? t('dashboard.stopping') : t('dashboard.stop')}
+          </button>
+        </div>
+        {gatewayError ? <div className="cf-errorText" style={{ marginBottom: 8 }}>{gatewayError}</div> : null}
+        {cliAvailable === false ? <div className="cf-help" style={{ marginBottom: 8 }}>{t('settings.integrationsCliRequired')}</div> : null}
+        <div className="cf-help" style={{ marginBottom: 12 }}>
+          {t('settings.connectorsCountHint', { count: connectorCount })}
+        </div>
+        <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void reloadConnectorsCount()}>
+          {t('settings.refreshIntegrationStatus')}
+        </button>
+        <div style={{ height: 12 }} />
+        <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => navigate('/connectors')}>
+            {t('settings.openConnectors')}
+          </button>
+          <button className="cf-btn" type="button" onClick={() => navigate('/skills')}>
+            {t('settings.openSkills')}
+          </button>
+        </div>
+      </div>
+    );
+  } else if (activeSection === 'data') {
+    detailPanels = (
+      <div className="cf-card">
+        <div className="cf-help" style={{ marginBottom: 8 }}>
+          {t('settings.dataCurrentWorkspace')}：
+          <span className="cf-settingsModels__mono" style={{ wordBreak: 'break-all', display: 'block', marginTop: 4 }}>
+            {activeWorkspacePath || '—'}
+          </span>
+        </div>
+        <div className="cf-help" style={{ marginBottom: 6 }}>
+          {t('settings.dataWorkspaceBullet')}
+        </div>
+        <div className="cf-help">{t('settings.dataGlobalBullet')}</div>
+      </div>
+    );
+  } else if (activeSection === 'help') {
+    detailPanels = (
+      <>
+        <div className="cf-card">
           <h3>{t('settings.about')}</h3>
           <div className="cf-divider" />
           <div className="cf-row" style={{ gap: 24, flexWrap: 'wrap' }}>
             <div className="cf-sub">
-              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>：{appVersion || '—'}
-            </div>
-            <div className="cf-sub">
-              <strong style={{ color: 'var(--text)' }}>{t('settings.versionLabel')}</strong>：{version || '—'}
+              <strong style={{ color: 'var(--text)' }}>{t('settings.appVersion')}</strong>
+              ：{appVersion || '—'}
             </div>
             <div className="cf-sub">{t('settings.license')}</div>
           </div>
+          <div className="cf-help" style={{ marginTop: 10 }}>
+            {t('common.viewGuide')}
+          </div>
         </div>
-      </section>
+        <div className="cf-card">
+          <h3>{t('settings.feedbackComingSoonTitle')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-help">{t('settings.feedbackComingSoonBody')}</div>
+          <div style={{ height: 12 }} />
+          <button
+            type="button"
+            className="cf-btn"
+            onClick={() =>
+              (window as any).__cf_toast?.success?.(
+                t('settings.feedbackComingSoonTitle'),
+                t('settings.feedbackComingSoonBody')
+              )
+            }
+          >
+            {t('settings.feedbackComingSoonTitle')}
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="cf-topbar">
+        <div className="cf-pageTitle">
+          <h2>{t('settings.title')}</h2>
+          <p>{t('settings.subtitleSplit')}</p>
+        </div>
+        <div className="cf-row cf-settingsPage__actions">
+          <button className="cf-btn cf-btnGhost" type="button" onClick={() => refreshSettingsData()}>
+            {t('common.refresh')}
+          </button>
+          <button className="cf-btn cf-btnGhost" type="button" onClick={onReset}>
+            {t('settings.reset')}
+          </button>
+          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => void onSave()}>
+            {t('settings.save')}
+          </button>
+        </div>
+      </div>
+
+      {cliAvailable === false ? (
+        <div className="cf-banner">
+          <div>
+            <b>{t('settings.cliBannerMissingTitle')}</b>
+            <span>{cliError || t('settings.cliPathMissingDetail')}</span>
+          </div>
+          <button className="cf-btn cf-btnGold" type="button" onClick={scrollToOpenClawPath}>
+            {t('settings.goConfigureCliPath')}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="cf-settingsPage__globalStripe" role="note">
+        {t('settings.globalScopeStripe')}
+      </div>
+
+      <div className="cf-settingsSplit" role="presentation">
+        <nav className="cf-settingsNav" aria-label={t('settings.title')}>
+          {SETTINGS_SECTION_IDS.map((sid) => (
+            <button
+              key={sid}
+              type="button"
+              className={`cf-settingsNav__btn${activeSection === sid ? ' cf-settingsNav__btn--active' : ''}`}
+              onClick={() => setActiveSection(sid)}
+            >
+              {t(NAV_LABEL_KEYS[sid])}
+            </button>
+          ))}
+        </nav>
+        <div className="cf-settingsDetail">
+          <header className="cf-settingsDetail__head">
+            <h2>{t(sectionHead.titleKey)}</h2>
+            <p>{t(sectionHead.hintKey)}</p>
+          </header>
+          <div className="cf-settingsDetail__panels">{detailPanels}</div>
+        </div>
+      </div>
     </>
   );
 };

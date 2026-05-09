@@ -2,6 +2,103 @@
   align-items: center;
 }
 
+.cf-settingsSplit {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.cf-settingsNav {
+  width: 216px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.cf-settingsNav__btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-left: 3px solid transparent;
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cf-settingsNav__btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cf-settingsNav__btn--active {
+  background: rgba(30, 91, 69, 0.12);
+  border-left-color: var(--gold, #c9a227);
+}
+
+.cf-settingsDetail {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px 18px;
+}
+
+.cf-settingsDetail__head h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.cf-settingsDetail__head p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cf-settingsDetail__panels .cf-card {
+  margin-bottom: 12px;
+}
+
+.cf-settingsDetail__panels .cf-card:last-child {
+  margin-bottom: 0;
+}
+
+.cf-settingsIntegrationRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 760px) {
+  .cf-settingsSplit {
+    flex-direction: column;
+  }
+
+  .cf-settingsNav {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    border-right: none;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  }
+
+  .cf-settingsNav__btn {
+    border-bottom: none;
+    border-right: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  }
+
+  .cf-settingsNav__btn:nth-child(even) {
+    border-right: none;
+  }
+}
+
 .cf-settingsPage__globalStripe {
   margin-top: 12px;
   padding: 10px 12px;
