@@ -267,6 +267,10 @@
   color:rgba(63,185,80,.95);
   background:rgba(63,185,80,.14);
 }
+.cf-sideTree__wsRowAct--tools:hover:not(:disabled){
+  color:rgba(45,179,160,.95);
+  background:rgba(45,179,160,.14);
+}
 .cf-sideTree__wsRowAct--del:hover:not(:disabled){
   color:var(--text);
   background:rgba(200,72,72,.18);

@@ -189,7 +189,8 @@ class GatewayDaemon extends EventEmitter {
             return;
           }
           const conversationId = String(body?.conversationId ?? '').trim() || 'webhook-default';
-          const mode = (String(body?.mode ?? '').trim().toLowerCase() || 'ask') as 'ask' | 'plan' | 'multitask';
+          let mode = (String(body?.mode ?? '').trim().toLowerCase() || 'plan') as 'ask' | 'plan' | 'multitask';
+          if (mode === 'ask') mode = 'plan';
           const modelId = typeof body?.modelId === 'string' ? body.modelId : undefined;
 
           this.emit('channel:message', { channelId: 'webhook', conversationId, text });
@@ -328,7 +329,8 @@ class GatewayDaemon extends EventEmitter {
     const requestId = String(msg.requestId ?? '').trim();
     const conversationId = String(msg.conversationId ?? '').trim();
     const text = String(msg.text ?? '').trim();
-    const mode = (String(msg.mode ?? 'ask').trim().toLowerCase() || 'ask') as 'ask' | 'plan' | 'multitask';
+    let mode = (String(msg.mode ?? 'plan').trim().toLowerCase() || 'plan') as 'ask' | 'plan' | 'multitask';
+    if (mode === 'ask') mode = 'plan';
     const intent = (String((msg as any).intent ?? 'strong').trim().toLowerCase() || 'strong') as
       | 'fast'
       | 'strong'
@@ -361,26 +363,10 @@ class GatewayDaemon extends EventEmitter {
     };
 
     try {
-      if (mode === 'multitask' || mode === 'plan') {
-        const out = await getGlobalClawFlowEngine().sendMessage({
-          conversationId,
-          userText: text,
-          mode,
-          ...(modelId ? { modelId } : {}),
-          onDelta: sendDelta,
-          abortSignal: abort.signal,
-          intent,
-          ...(policyOverrides ? { policyOverrides } : {}),
-        });
-        this.abortByRequestId.delete(requestId);
-        this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
-        return;
-      }
-
-      const full = await getGlobalClawFlowEngine().sendMessageTextStream({
+      const out = await getGlobalClawFlowEngine().sendMessage({
         conversationId,
         userText: text,
-        mode: 'ask',
+        mode: mode === 'multitask' ? 'multitask' : 'plan',
         ...(modelId ? { modelId } : {}),
         onDelta: sendDelta,
         abortSignal: abort.signal,
@@ -388,7 +374,7 @@ class GatewayDaemon extends EventEmitter {
         ...(policyOverrides ? { policyOverrides } : {}),
       });
       this.abortByRequestId.delete(requestId);
-      this.send(ws, { type: 'chat:final', requestId, conversationId, message: full ?? '' });
+      this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
     } catch (e: any) {
       const aborted = abort.signal.aborted || String(e?.message ?? e) === 'CANCELLED';
       this.abortByRequestId.delete(requestId);

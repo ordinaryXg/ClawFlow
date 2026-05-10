@@ -147,7 +147,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   }
 
   async listConversations(): Promise<StoredConversation[]> {
-    return await this.store.readAll();
+    return await this.store.normalizeToSingletonIfNeeded();
   }
 
   async upsertConversation(conversation: StoredConversation): Promise<void> {

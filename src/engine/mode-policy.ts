@@ -70,6 +70,6 @@ export function autoPickMode(text: string): AutoPick {
   if (hasPlanningSignals || len > 220) {
     return { pickedMode: 'plan', reason: '检测到规划/对比/较长输入，自动选择 Plan。' };
   }
-  return { pickedMode: 'ask', reason: '任务较简单，自动选择 Ask。' };
+  return { pickedMode: 'plan', reason: 'Defaulting to Plan (Ask mode is temporarily disabled).' };
 }
 

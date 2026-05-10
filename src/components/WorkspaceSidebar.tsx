@@ -1,10 +1,12 @@
 import { FC, useEffect, useMemo, useState } from 'react';
-import { CommentOutlined, DeleteOutlined, FolderOutlined, PlusOutlined } from '@ant-design/icons';
+import { CommentOutlined, DeleteOutlined, FolderOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
+import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
+import type { WorkspaceToolSelection } from '../shared/workspace-tools';
 
 type Props = {
   sidebarWidthPx: number;
@@ -16,19 +18,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const {
-    conversations,
-    activeConversationId,
-    fetchConversations,
-    switchConversation,
-    deleteConversation,
-    createConversation,
-  } = useChatStore();
+  const { conversations, activeConversationId, fetchConversations, switchConversation } = useChatStore();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
   const workspaceRecent = useWorkspaceStore((s) => s.recent);
-  const pickWorkspaceFolder = useWorkspaceStore((s) => s.pickFolder);
+  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
+  const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
   const removeWorkspace = useWorkspaceStore((s) => s.removeWorkspace);
@@ -37,6 +33,11 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
   const [convBranchOpen, setConvBranchOpen] = useState(true);
   const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
+  const [toolModal, setToolModal] = useState<{
+    open: boolean;
+    path: string | null;
+    mode: 'create' | 'edit';
+  }>({ open: false, path: null, mode: 'create' });
 
   useEffect(() => {
     void fetchConversations();
@@ -72,19 +73,33 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   }, [workspaceRecent, activeWorkspacePath]);
 
   const onNewWorkspace = async () => {
-    await pickWorkspaceFolder();
-    await refreshWorkspace();
+    const picked = await pickWorkspacePath();
+    if (!picked) return;
+    setToolModal({ open: true, path: picked, mode: 'create' });
   };
 
-  const onDeleteConversation = (id: string) => {
-    deleteConversation(id);
-    (window as any).__cf_toast?.success?.(t('chat.deletedTitle'), t('chat.deletedBody'));
-  };
-
-  const onNewSessionInWorkspace = async (folderPath: string) => {
-    await setWorkspace(folderPath);
-    await createConversation();
-    navigate('/chat');
+  const onConfirmWorkspaceToolsModal = async (tools: WorkspaceToolSelection) => {
+    const { path: p, mode } = toolModal;
+    setToolModal({ open: false, path: null, mode: 'create' });
+    if (!p) return;
+    if (mode === 'create') {
+      await commitNewWorkspace(p, tools);
+      await fetchConversations();
+      navigate('/chat');
+      return;
+    }
+    const res = await window.electronAPI?.workspaceSetToolSelection?.(p, tools);
+    if (res?.ok) {
+      (window as unknown as { __cf_toast?: { success?: (a: string, b?: string) => void } }).__cf_toast?.success?.(
+        t('workspace.toolsSavedTitle'),
+        t('workspace.toolsSavedBody')
+      );
+    } else {
+      (window as unknown as { __cf_toast?: { error?: (a: string, b?: string) => void } }).__cf_toast?.error?.(
+        t('workspace.toolsSaveFailed'),
+        res && 'error' in res ? res.error : undefined
+      );
+    }
   };
 
   const onRemoveWorkspaceRow = async (folderPath: string) => {
@@ -186,16 +201,16 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                           <div className="cf-sideTree__wsRowActions">
                             <button
                               type="button"
-                              className="cf-sideTree__wsRowAct cf-sideTree__wsRowAct--new"
-                              title={t('chat.newSession')}
-                              aria-label={t('chat.newSession')}
+                              className="cf-sideTree__wsRowAct cf-sideTree__wsRowAct--tools"
+                              title={t('chat.workspaceToolSettings')}
+                              aria-label={t('chat.workspaceToolSettings')}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                void onNewSessionInWorkspace(p);
+                                setToolModal({ open: true, path: p, mode: 'edit' });
                               }}
                             >
-                              <PlusOutlined />
+                              <SettingOutlined />
                             </button>
                             <button
                               type="button"
@@ -269,19 +284,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                                           {t('chat.msgCount', { count: conv.messages.length })}
                                         </div>
                                       </div>
-                                      <button
-                                        type="button"
-                                        className="cf-btn cf-btnGhost cf-convItem__deleteBtn"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const ok = window.confirm(t('chat.confirmDelete'));
-                                          if (ok) onDeleteConversation(conv.id);
-                                        }}
-                                        title={t('chat.deleteSession')}
-                                        aria-label={t('chat.deleteSession')}
-                                      >
-                                        <DeleteOutlined />
-                                      </button>
                                     </div>
                                   </li>
                                 );
@@ -298,6 +300,14 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
           ) : null}
         </div>
       </div>
+
+      <WorkspaceNewToolsModal
+        open={toolModal.open}
+        folderPath={toolModal.path}
+        mode={toolModal.mode}
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onConfirm={(tools) => void onConfirmWorkspaceToolsModal(tools)}
+      />
     </aside>
   );
 };

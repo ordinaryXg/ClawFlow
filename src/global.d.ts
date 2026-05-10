@@ -105,8 +105,24 @@ export interface IElectronAPI {
   workspaceAddFromAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+  workspaceStatAbsolutePath: (
+    absPath: string
+  ) => Promise<{ ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }>;
   workspacePickFolder: () => Promise<string | null>;
-  workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  workspaceEnsureInitialized: (
+    folderPath: string,
+    opts?: { tools?: import('./shared/workspace-tools').WorkspaceToolSelection }
+  ) => Promise<{ meta: unknown }>;
+  workspaceGetToolSelection: (
+    folderPath: string
+  ) => Promise<
+    | { ok: true; tools: Record<import('./shared/workspace-tools').WorkspaceToolId, boolean> }
+    | { ok: false; error: string }
+  >;
+  workspaceSetToolSelection: (
+    folderPath: string,
+    tools: import('./shared/workspace-tools').WorkspaceToolSelection
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceListDir: (
     relativePath?: string
   ) => Promise<{ ok: boolean; entries: Array<{ name: string; kind: 'file' | 'dir' }>; error?: string }>;

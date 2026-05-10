@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { autoPickMode, type ChatIntent } from '../../engine/mode-policy';
 import { useSettingsStore } from './settingsStore';
 
-export type ChatInteractionMode = 'ask' | 'plan' | 'multitask' | 'auto';
+export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
 
 type GatewayWsEvent =
   | { type: 'chat:ack'; requestId: string; conversationId: string }
@@ -21,9 +21,9 @@ type GatewayWsSend =
       requestId: string;
       conversationId: string;
       text: string;
-      mode: ChatInteractionMode;
+      mode: 'plan' | 'multitask';
       intent?: ChatIntent;
-      autoPick?: { pickedMode: 'ask' | 'plan' | 'multitask'; reason: string };
+      autoPick?: { pickedMode: 'plan' | 'multitask'; reason: string };
       policyOverrides?: unknown;
       modelId?: string;
     }
@@ -106,6 +106,23 @@ function normWorkspacePath(p: string | null | undefined): string {
 function cancelAssistantReveal() {
   revealCleanup?.();
   revealCleanup = null;
+}
+
+/** UI 已隐藏 Ask；发往引擎/Gateway 仅使用 plan 或 multitask。 */
+function resolveEnginePlanMultitask(
+  mode: ChatInteractionMode,
+  text: string
+): {
+  actual: 'plan' | 'multitask';
+  autoPick: { pickedMode: 'plan' | 'multitask'; reason: string } | null;
+} {
+  if (mode === 'auto') {
+    const auto = autoPickMode(text);
+    const picked: 'plan' | 'multitask' = auto.pickedMode === 'multitask' ? 'multitask' : 'plan';
+    return { actual: picked, autoPick: { reason: auto.reason, pickedMode: picked } };
+  }
+  if (mode === 'multitask') return { actual: 'multitask', autoPick: null };
+  return { actual: 'plan', autoPick: null };
 }
 
 type Pending = {
@@ -232,7 +249,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   isLoading: false,
   streamingMessage: null,
   error: null,
-  interactionMode: 'ask',
+  interactionMode: 'plan',
 
   setInteractionMode: (mode) => set({ interactionMode: mode }),
 
@@ -299,35 +316,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     let conversationId = activeConversationId;
     if (!conversationId) {
-      const newConversation: Conversation = {
-        id: uuidv4(),
-        title: content.slice(0, 20) || '新对话',
-        messages: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-      conversationId = newConversation.id;
-      try {
-        const a = await window.electronAPI?.workspaceGetActive?.();
-        optimisticConversationWorkspace.set(newConversation.id, normWorkspacePath(typeof a?.path === 'string' ? a.path : ''));
-      } catch {
-        optimisticConversationWorkspace.set(newConversation.id, '');
-      }
-      set((state) => ({
-        conversations: [...state.conversations, newConversation],
-        activeConversationId: conversationId,
-        messages: [],
-        error: null,
-      }));
-      try {
-        await window.electronAPI?.engineUpsertConversation?.(newConversation);
-      } catch {
-        /* best-effort */
-      }
+      await get().fetchConversations();
+      conversationId = get().activeConversationId;
     }
 
     if (!conversationId) {
-      set({ isLoading: false, error: '无法创建会话' });
+      set({ isLoading: false, error: '当前工作区没有可用对话，请稍后重试或切换工作区。' });
       return;
     }
     const sessionId = conversationId;
@@ -433,13 +427,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         } catch {
           policyOverrides = null;
         }
-        const auto = interactionMode === 'auto' ? autoPickMode(content) : null;
-        const actualMode: 'ask' | 'plan' | 'multitask' = (auto?.pickedMode as any) ?? (interactionMode as any);
+        const { actual: actualMode, autoPick } = resolveEnginePlanMultitask(interactionMode, content);
         const sendMeta = {
           conversationId: sessionId,
           mode: actualMode,
           intent,
-          ...(auto ? { autoPick: auto } : {}),
+          ...(autoPick ? { autoPick: autoPick } : {}),
           modelId: modelId ?? null,
           textLen: content.length,
         };
@@ -488,7 +481,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           text: content,
           mode: actualMode,
           intent,
-          ...(auto ? { autoPick: auto } : {}),
+          ...(autoPick ? { autoPick: autoPick } : {}),
           ...(policyOverrides ? { policyOverrides } : {}),
           ...(modelId ? { modelId } : {}),
         };
@@ -496,10 +489,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         return;
       }
 
+      const { actual: ipcMode } = resolveEnginePlanMultitask(interactionMode, content);
       const response = await window.electronAPI?.engineSendMessage?.({
         conversationId: sessionId,
         userText: content,
-        mode: interactionMode === 'auto' ? autoPickMode(content).pickedMode : interactionMode,
+        mode: ipcMode,
         ...(modelId ? { modelId } : {}),
       });
       const t1 = performance.now();
@@ -560,33 +554,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   createConversation: async () => {
     cancelAssistantReveal();
-    const newConversation: Conversation = {
-      id: uuidv4(),
-      title: '新对话',
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    try {
-      const a = await window.electronAPI?.workspaceGetActive?.();
-      optimisticConversationWorkspace.set(newConversation.id, normWorkspacePath(typeof a?.path === 'string' ? a.path : ''));
-    } catch {
-      optimisticConversationWorkspace.set(newConversation.id, '');
-    }
-    set((state) => ({
-      conversations: [...state.conversations, newConversation],
-      activeConversationId: newConversation.id,
-      messages: [],
-      streamingMessage: null,
-      error: null,
-    }));
-
-    try {
-      await window.electronAPI?.engineUpsertConversation?.(newConversation);
-    } catch {
-      /* best-effort：乐观合并仍可在 fetch 前保留侧栏展示 */
-    }
+    await get().fetchConversations();
   },
 
   switchConversation: (id: string) => {

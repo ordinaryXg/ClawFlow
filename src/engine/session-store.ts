@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { conversationsStorePath } from '../workspace-service';
 
 export type StoredMessageRole = 'user' | 'assistant' | 'tool';
@@ -50,6 +51,44 @@ export class SessionStore {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * 每个工作区仅保留一条会话：0 条则创建；多条则按创建时间保留首条 id，合并全部消息后写回。
+   */
+  async normalizeToSingletonIfNeeded(): Promise<StoredConversation[]> {
+    const all = await this.readAll();
+    if (all.length === 0) {
+      const now = Date.now();
+      const c: StoredConversation = {
+        id: randomUUID(),
+        title: '对话',
+        messages: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.writeAll([c]);
+      return [c];
+    }
+    if (all.length === 1) return all;
+
+    const byCreated = [...all].sort((a, b) => a.createdAt - b.createdAt);
+    const keeper = byCreated[0];
+    const msgMap = new Map<string, StoredMessage>();
+    for (const conv of byCreated) {
+      for (const m of conv.messages ?? []) {
+        if (m && typeof m.id === 'string' && !msgMap.has(m.id)) msgMap.set(m.id, m);
+      }
+    }
+    const mergedMessages = Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    const next: StoredConversation = {
+      ...keeper,
+      messages: mergedMessages,
+      updatedAt: Date.now(),
+      title: keeper.title?.trim() ? keeper.title : '对话',
+    };
+    await this.writeAll([next]);
+    return [next];
   }
 
   async writeAll(conversations: StoredConversation[]): Promise<void> {

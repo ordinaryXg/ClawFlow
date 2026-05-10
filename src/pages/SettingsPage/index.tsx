@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { Checkbox } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import i18n from '../../i18n';
@@ -7,7 +8,15 @@ import './styles.css';
 import { useGatewayStore } from '../../store/modules/gatewayStore';
 import { useSettingsStore } from '../../store/modules/settingsStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
+import { useChatStore } from '../../store/modules/chatStore';
 import { CfSelectWithHints } from '../../components/CfSelectWithHints';
+import WorkspaceNewToolsModal from '../../components/workspace/WorkspaceNewToolsModal';
+import {
+  DEFAULT_WORKSPACE_TOOL_SELECTION,
+  WORKSPACE_TOOL_IDS,
+  type WorkspaceToolId,
+  type WorkspaceToolSelection,
+} from '../../shared/workspace-tools';
 const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
@@ -62,9 +71,20 @@ const SettingsPage: FC = () => {
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
-  const pickWorkspaceFolder = useWorkspaceStore((s) => s.pickFolder);
+  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
+  const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
+  const fetchConversations = useChatStore((s) => s.fetchConversations);
 
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
+  const [toolModal, setToolModal] = useState<{
+    open: boolean;
+    path: string | null;
+    mode: 'create';
+  }>({ open: false, path: null, mode: 'create' });
+  const [accountToolsSel, setAccountToolsSel] = useState<Record<WorkspaceToolId, boolean>>({
+    ...DEFAULT_WORKSPACE_TOOL_SELECTION,
+  });
+  const [accountToolsSaving, setAccountToolsSaving] = useState(false);
   const [connectorCount, setConnectorCount] = useState(0);
 
   const [appVersion, setAppVersion] = useState<string>('');
@@ -193,11 +213,61 @@ const SettingsPage: FC = () => {
     (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
   };
 
+  useEffect(() => {
+    const p = activeWorkspacePath?.trim();
+    if (!p) {
+      setAccountToolsSel({ ...DEFAULT_WORKSPACE_TOOL_SELECTION });
+      return;
+    }
+    void (async () => {
+      const res = await window.electronAPI?.workspaceGetToolSelection?.(p);
+      if (res?.ok === true && res.tools) {
+        setAccountToolsSel({ ...DEFAULT_WORKSPACE_TOOL_SELECTION, ...res.tools });
+      } else {
+        setAccountToolsSel({ ...DEFAULT_WORKSPACE_TOOL_SELECTION });
+      }
+    })();
+  }, [activeWorkspacePath]);
+
   const refreshSettingsData = () => {
     void reloadBuiltinCatalog();
     void fetchStatus();
     void reloadConnectorsCount();
     (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
+  };
+
+  const onPickWorkspaceFolder = async () => {
+    const picked = await pickWorkspacePath();
+    if (!picked) return;
+    setToolModal({ open: true, path: picked, mode: 'create' });
+  };
+
+  const onConfirmWorkspaceTools = async (tools: WorkspaceToolSelection) => {
+    const p = toolModal.path;
+    setToolModal({ open: false, path: null, mode: 'create' });
+    if (!p) return;
+    await commitNewWorkspace(p, tools);
+    await fetchConversations();
+    (window as any).__cf_toast?.success?.(t('settings.workspacePickOkTitle'), t('settings.workspacePickOkBody'));
+  };
+
+  const onSaveAccountWorkspaceTools = async () => {
+    const p = activeWorkspacePath?.trim();
+    if (!p) return;
+    setAccountToolsSaving(true);
+    try {
+      const res = await window.electronAPI?.workspaceSetToolSelection?.(p, accountToolsSel);
+      if (res?.ok) {
+        (window as any).__cf_toast?.success?.(t('workspace.toolsSavedTitle'), t('workspace.toolsSavedBody'));
+      } else {
+        (window as any).__cf_toast?.error?.(
+          t('workspace.toolsSaveFailed'),
+          res && 'error' in res ? res.error : undefined
+        );
+      }
+    } finally {
+      setAccountToolsSaving(false);
+    }
   };
 
   // OpenClaw CLI settings removed (desktop runs fully built-in).
@@ -662,10 +732,42 @@ const SettingsPage: FC = () => {
             <button className="cf-btn cf-btnGhost" type="button" onClick={() => void refreshWorkspace()}>
               {t('settings.refreshWorkspaceMeta')}
             </button>
-            <button className="cf-btn" type="button" onClick={() => void pickWorkspaceFolder()}>
+            <button className="cf-btn" type="button" onClick={() => void onPickWorkspaceFolder()}>
               {t('settings.pickWorkspaceFolder')}
             </button>
           </div>
+        </div>
+        <div className="cf-card">
+          <h3>{t('settings.workspaceToolCapabilities')}</h3>
+          <div className="cf-divider" />
+          <p className="cf-sub" style={{ marginBottom: 12 }}>
+            {t('settings.workspaceToolCapabilitiesHint')}
+          </p>
+          {!activeWorkspacePath?.trim() ? (
+            <div className="cf-help">{t('settings.noWorkspaceSelected')}</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+                {WORKSPACE_TOOL_IDS.map((id) => (
+                  <Checkbox
+                    key={id}
+                    checked={accountToolsSel[id]}
+                    onChange={(e) => setAccountToolsSel((s) => ({ ...s, [id]: e.target.checked }))}
+                  >
+                    {t(`workspace.tool_${id}`)}
+                  </Checkbox>
+                ))}
+              </div>
+              <button
+                className="cf-btn cf-btnPrimary"
+                type="button"
+                disabled={accountToolsSaving}
+                onClick={() => void onSaveAccountWorkspaceTools()}
+              >
+                {t('settings.saveWorkspaceTools')}
+              </button>
+            </>
+          )}
         </div>
         <div className="cf-card">
           <h3>{t('settings.about')}</h3>
@@ -972,6 +1074,14 @@ const SettingsPage: FC = () => {
           <div className="cf-settingsDetail__panels">{detailPanels}</div>
         </div>
       </div>
+
+      <WorkspaceNewToolsModal
+        open={toolModal.open}
+        folderPath={toolModal.path}
+        mode="create"
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onConfirm={(tools) => void onConfirmWorkspaceTools(tools)}
+      />
     </>
   );
 };

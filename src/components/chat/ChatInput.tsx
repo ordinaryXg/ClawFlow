@@ -5,7 +5,7 @@ import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import { CfSelectWithHints } from '../CfSelectWithHints';
 import './chat.css';
 
-const CHAT_MODES: ChatInteractionMode[] = ['ask', 'plan', 'multitask', 'auto'];
+const CHAT_MODES: ChatInteractionMode[] = ['plan', 'multitask', 'auto'];
 
 /** 对话模式：重叠对话气泡，象征多模式对话 */
 function IconChatMode() {
@@ -92,21 +92,17 @@ const ChatInput: FC<Props> = ({
       CHAT_MODES.map((m) => ({
         value: m,
         label:
-          m === 'ask'
-            ? t('chat.modeAsk')
-            : m === 'plan'
-              ? t('chat.modePlan')
-              : m === 'multitask'
-                ? t('chat.modeMultitask')
-                : t('chat.modeAuto'),
+          m === 'plan'
+            ? t('chat.modePlan')
+            : m === 'multitask'
+              ? t('chat.modeMultitask')
+              : t('chat.modeAuto'),
         hint:
-          m === 'ask'
-            ? t('chat.modeCapabilityAsk')
-            : m === 'plan'
-              ? t('chat.modeCapabilityPlan')
-              : m === 'multitask'
-                ? t('chat.modeCapabilityMultitask')
-                : t('chat.modeCapabilityAuto'),
+          m === 'plan'
+            ? t('chat.modeCapabilityPlan')
+            : m === 'multitask'
+              ? t('chat.modeCapabilityMultitask')
+              : t('chat.modeCapabilityAuto'),
       })),
     [t],
   );

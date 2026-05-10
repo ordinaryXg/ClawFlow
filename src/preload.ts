@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { SkillMarketFetchResult } from './skill-market-shared';
+import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
@@ -97,8 +98,18 @@ export interface IElectronAPI {
   workspaceAddFromAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+  workspaceStatAbsolutePath: (
+    absPath: string
+  ) => Promise<{ ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }>;
   workspacePickFolder: () => Promise<string | null>;
-  workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
+  workspaceEnsureInitialized: (folderPath: string, opts?: { tools?: WorkspaceToolSelection }) => Promise<{ meta: unknown }>;
+  workspaceGetToolSelection: (
+    folderPath: string
+  ) => Promise<{ ok: true; tools: Record<WorkspaceToolId, boolean> } | { ok: false; error: string }>;
+  workspaceSetToolSelection: (
+    folderPath: string,
+    tools: WorkspaceToolSelection
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceListDir: (
     relativePath?: string
   ) => Promise<{ ok: boolean; entries: Array<{ name: string; kind: 'file' | 'dir' }>; error?: string }>;
@@ -267,8 +278,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ) => ipcRenderer.invoke('workspace:addFromAbsolutePath', absPath) as Promise<
     { ok: true; path: string } | { ok: false; error: string }
   >,
+  workspaceStatAbsolutePath: (absPath: string) =>
+    ipcRenderer.invoke('workspace:statAbsolutePath', absPath) as Promise<
+      { ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }
+    >,
   workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
-  workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),
+  workspaceEnsureInitialized: (folderPath: string, opts?: { tools?: WorkspaceToolSelection }) =>
+    ipcRenderer.invoke('workspace:ensureInitialized', folderPath, opts),
+  workspaceGetToolSelection: (folderPath: string) =>
+    ipcRenderer.invoke('workspace:getToolSelection', folderPath) as Promise<
+      { ok: true; tools: Record<WorkspaceToolId, boolean> } | { ok: false; error: string }
+    >,
+  workspaceSetToolSelection: (folderPath: string, tools: WorkspaceToolSelection) =>
+    ipcRenderer.invoke('workspace:setToolSelection', folderPath, tools) as Promise<{ ok: true } | { ok: false; error: string }>,
   workspaceListDir: (relativePath?: string) => ipcRenderer.invoke('workspace:listDir', relativePath),
   workspaceReadFilePreview: (relativePath: string) => ipcRenderer.invoke('workspace:readFilePreview', relativePath),
   workspaceResolveAbsolutePath: (relativePath: string) => ipcRenderer.invoke('workspace:resolveAbsolutePath', relativePath),

@@ -8,8 +8,103 @@ import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
+import { mergeToolSelection, type WorkspaceToolId, type WorkspaceToolSelection } from './shared/workspace-tools';
+
+export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
 export const CLAWFLOW_DIR = '.clawflow';
+
+const TOOL_README = `# 工作区工具说明
+
+本目录由 ClawFlow 在工作区初始化时生成，用于描述当前工作区可用的能力边界（可随版本扩展）。
+
+- 各能力详见同目录下的 Markdown 文件。
+- \`manifest.json\` 记录启用状态（新建工作区时可在界面勾选）。
+`;
+
+const TOOL_DOCS_MD = `# 文档读写能力
+
+在工作区根及子目录内列出、读取、写入、重命名与删除文件（受沙箱与安全规则约束）。
+
+适用于：整理笔记、批量处理文本、生成项目脚手架说明等。
+`;
+
+const TOOL_BROWSER_MD = `# 浏览器能力
+
+通过受控的无头/自动化浏览器访问网页、抓取可见内容、执行简单页面操作（具体以引擎与策略为准）。
+
+适用于：抓取公开文档、对照网页说明完成任务等。
+`;
+
+const TOOL_GIT_MD = `# Git 操作能力
+
+在工作区内执行受允许的 Git 命令（如状态、差异、提交、分支等，具体以工具策略为准）。
+
+适用于：查看变更、撰写提交说明、分支管理等。
+`;
+
+function toolBundleDir(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), '.tool');
+}
+
+/**
+ * 确保 \`.tool/\` 与说明文件存在；若传入 tools 或目录尚不存在，则写入 manifest。
+ */
+export async function ensureWorkspaceToolBundle(
+  workspaceRoot: string,
+  tools?: WorkspaceToolSelection | null
+): Promise<void> {
+  const root = path.resolve(workspaceRoot);
+  const dir = toolBundleDir(root);
+  let dirExists = false;
+  try {
+    const st = await fs.promises.stat(dir);
+    dirExists = st.isDirectory();
+  } catch {
+    dirExists = false;
+  }
+  const merged = mergeToolSelection(tools ?? undefined);
+  const shouldWriteManifest = tools != null || !dirExists;
+  await fs.promises.mkdir(dir, { recursive: true });
+  if (shouldWriteManifest) {
+    const manifest = { version: 1 as const, tools: merged, updatedAt: Date.now() };
+    await fs.promises.writeFile(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
+  }
+
+  const writeIfMissing = async (name: string, body: string) => {
+    const fp = path.join(dir, name);
+    try {
+      await fs.promises.access(fp);
+    } catch {
+      await fs.promises.writeFile(fp, body, 'utf-8');
+    }
+  };
+
+  await writeIfMissing('README.md', TOOL_README);
+  await writeIfMissing('docs.md', TOOL_DOCS_MD);
+  await writeIfMissing('browser.md', TOOL_BROWSER_MD);
+  await writeIfMissing('git.md', TOOL_GIT_MD);
+}
+
+/** 读取 `.tool/manifest.json` 中的 tools；缺失则返回默认全开 */
+export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<Record<WorkspaceToolId, boolean>> {
+  const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
+  try {
+    const buf = await fs.promises.readFile(fp, 'utf-8');
+    const parsed = JSON.parse(buf) as { tools?: unknown };
+    if (parsed && typeof parsed === 'object' && parsed.tools && typeof parsed.tools === 'object') {
+      return mergeToolSelection(parsed.tools as WorkspaceToolSelection);
+    }
+  } catch {
+    /* no manifest */
+  }
+  return mergeToolSelection(undefined);
+}
+
+/** 更新能力勾选并写入 `.tool/manifest.json`（并确保说明文件存在） */
+export async function writeWorkspaceToolSelection(workspaceRoot: string, tools: WorkspaceToolSelection): Promise<void> {
+  await ensureWorkspaceToolBundle(workspaceRoot, tools);
+}
 
 export interface WorkspaceMeta {
   id: string;
@@ -263,7 +358,10 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
  * 创建当前工作区 `.clawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
  * 同时在**工作区根目录下的 `.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  */
-export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise<WorkspaceMeta> {
+export async function ensureWorkspaceInitialized(
+  workspaceRoot: string,
+  opts?: { tools?: WorkspaceToolSelection }
+): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
@@ -273,6 +371,8 @@ export async function ensureWorkspaceInitialized(workspaceRoot: string): Promise
   await fs.promises.mkdir(ocDir, { recursive: true });
 
   migrateLegacyConversationsOnce(root);
+
+  await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
 
   try {
     const { created } = await ensureWorkspaceAgentRoleTemplates(root);

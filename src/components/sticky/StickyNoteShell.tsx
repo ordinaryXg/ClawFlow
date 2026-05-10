@@ -1,12 +1,14 @@
 import { FC, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../../utils/workspace-path';
 import ViewModeFab from '../ViewModeFab';
+import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import StickyFileStrip from './StickyFileStrip';
+import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
 
 function pushToast(type: 'success' | 'error', title: string, message?: string): void {
@@ -48,13 +50,18 @@ const StickyNoteShell: FC = () => {
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
   const workspaceRecent = useWorkspaceStore((s) => s.recent);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
-  const pickFolder = useWorkspaceStore((s) => s.pickFolder);
-  const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
+  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
+  const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
 
-  const { fetchConversations, createConversation } = useChatStore();
+  const { fetchConversations } = useChatStore();
 
   const splitWrapRef = useRef<HTMLDivElement | null>(null);
   const [addDropOver, setAddDropOver] = useState(false);
+  const [toolModal, setToolModal] = useState<{
+    open: boolean;
+    path: string | null;
+    mode: 'create' | 'edit';
+  }>({ open: false, path: null, mode: 'create' });
   const [filePaneHeightPx, setFilePaneHeightPx] = useState(loadFilePaneHeight);
   const filePaneHeightRef = useRef(filePaneHeightPx);
   filePaneHeightRef.current = filePaneHeightPx;
@@ -132,9 +139,28 @@ const StickyNoteShell: FC = () => {
   };
 
   const onAddWorkspace = async () => {
-    await pickFolder();
-    await refreshWorkspace();
-    navigate('/chat');
+    const picked = await pickWorkspacePath();
+    if (!picked) return;
+    setToolModal({ open: true, path: picked, mode: 'create' });
+  };
+
+  const onConfirmWorkspaceToolsModal = async (tools: WorkspaceToolSelection) => {
+    const { path: p, mode } = toolModal;
+    setToolModal({ open: false, path: null, mode: 'create' });
+    if (!p) return;
+    if (mode === 'create') {
+      await commitNewWorkspace(p, tools);
+      await fetchConversations();
+      navigate('/chat');
+      pushToast('success', t('sticky.workspaceDropAddOk'));
+      return;
+    }
+    const res = await window.electronAPI?.workspaceSetToolSelection?.(p, tools);
+    if (res?.ok) {
+      pushToast('success', t('workspace.toolsSavedTitle'), t('workspace.toolsSavedBody'));
+    } else {
+      pushToast('error', t('workspace.toolsSaveFailed'), res && 'error' in res ? res.error : undefined);
+    }
   };
 
   const onAddDragOver = (e: React.DragEvent) => {
@@ -170,30 +196,21 @@ const StickyNoteShell: FC = () => {
       pushToast('error', t('sticky.workspaceDropAddNoPath'));
       return;
     }
-    const res = await api.workspaceAddFromAbsolutePath?.(abs);
-    if (!res || res.ok === false) {
-      const err = res && 'error' in res ? res.error : '';
-      if (err === 'not_directory' || err === 'not_found') {
-        pushToast('error', t('sticky.workspaceDropAddNotFolder'));
-      } else {
-        pushToast('error', t('sticky.workspaceDropAddFailed'), err || undefined);
-      }
+    const stat = await api.workspaceStatAbsolutePath?.(abs);
+    if (!stat || stat.ok === false) {
+      pushToast('error', t('sticky.workspaceDropAddFailed'));
       return;
     }
-    await refreshWorkspace();
-    await fetchConversations();
-    navigate('/chat');
-    pushToast('success', t('sticky.workspaceDropAddOk'));
+    if (!stat.isDirectory) {
+      pushToast('error', t('sticky.workspaceDropAddNotFolder'));
+      return;
+    }
+    setToolModal({ open: true, path: stat.path, mode: 'create' });
   };
 
   const onPickWorkspace = async (folderPath: string) => {
     await setWorkspace(folderPath);
     await fetchConversations();
-    navigate('/chat');
-  };
-
-  const onNewSession = async () => {
-    await createConversation();
     navigate('/chat');
   };
 
@@ -235,12 +252,27 @@ const StickyNoteShell: FC = () => {
             <span className="cf-stickyMain__title">{workspaceLabel}</span>
           </div>
           <div className="cf-stickyMain__barRight">
+            <button
+              type="button"
+              className="cf-stickyMain__workspaceToolsBtn"
+              title={
+                activeWorkspacePath?.trim()
+                  ? t('chat.workspaceToolSettings')
+                  : t('sticky.workspaceToolsNeedWs')
+              }
+              aria-label={t('chat.workspaceToolSettings')}
+              disabled={!activeWorkspacePath?.trim()}
+              onClick={() => {
+                const p = activeWorkspacePath?.trim();
+                if (!p) return;
+                setToolModal({ open: true, path: p, mode: 'edit' });
+              }}
+            >
+              <SettingOutlined />
+            </button>
             <span className="cf-stickyMain__sortPill" title={t('sticky.sortPlaceholder')}>
               {t('sticky.sortDefault')}
             </span>
-            <button type="button" className="cf-stickyMain__newBtn" onClick={() => void onNewSession()}>
-              {t('sticky.newSession')}
-            </button>
             <ViewModeFab variant="stickyBar" />
           </div>
         </header>
@@ -266,6 +298,14 @@ const StickyNoteShell: FC = () => {
           </section>
         </div>
       </div>
+
+      <WorkspaceNewToolsModal
+        open={toolModal.open}
+        folderPath={toolModal.path}
+        mode={toolModal.mode}
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onConfirm={(tools) => void onConfirmWorkspaceToolsModal(tools)}
+      />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 
 export interface WorkspaceMetaLite {
   id: string;
@@ -14,7 +15,10 @@ interface WorkspaceState {
   loading: boolean;
   refresh: () => Promise<void>;
   setWorkspace: (folderPath: string) => Promise<void>;
-  pickFolder: () => Promise<void>;
+  /** 仅弹出系统选目录，不初始化工作区 */
+  pickWorkspacePath: () => Promise<string | null>;
+  /** 初始化（含 .tool）并切换为当前工作区 */
+  commitNewWorkspace: (folderPath: string, tools: WorkspaceToolSelection) => Promise<void>;
   removeWorkspace: (folderPath: string) => Promise<{ ok: true; deletedFromDisk: boolean } | { ok: false; error: string }>;
 }
 
@@ -55,13 +59,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  pickFolder: async () => {
-    const picked = await window.electronAPI?.workspacePickFolder?.();
-    if (!picked) return;
+  pickWorkspacePath: async () => {
+    return (await window.electronAPI?.workspacePickFolder?.()) ?? null;
+  },
+
+  commitNewWorkspace: async (folderPath: string, tools: WorkspaceToolSelection) => {
     set({ loading: true });
     try {
-      await window.electronAPI?.workspaceEnsureInitialized?.(picked);
-      await get().setWorkspace(picked);
+      await window.electronAPI?.workspaceEnsureInitialized?.(folderPath, { tools });
+      await get().setWorkspace(folderPath);
     } finally {
       set({ loading: false });
     }
