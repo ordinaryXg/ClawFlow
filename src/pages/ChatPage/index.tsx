@@ -9,6 +9,7 @@ import ChatInput from '../../components/chat/ChatInput';
 import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
 import ToolApprovalBar from '../../components/chat/ToolApprovalBar';
+import TodoTriggersStickyFloat from '../../components/chat/TodoTriggersStickyFloat';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import './styles.css';
 
@@ -275,6 +276,7 @@ const ChatPage: FC = () => {
       )}
 
       <div ref={scrollRef} className="cf-chatCenter__messages">
+        {isAlternateShell ? <TodoTriggersStickyFloat /> : null}
         {messages.length === 0 && streamingActivity === null && !toolApprovalForActive ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>

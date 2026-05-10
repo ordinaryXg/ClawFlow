@@ -186,6 +186,17 @@ export interface IElectronAPI {
     assistantExcerpt: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
+  todoTriggersList: () => Promise<{ triggers: unknown[] }>;
+  todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  onTodoTriggerFired: (
+    cb: (payload: {
+      workspaceRoot: string;
+      triggerId: string;
+      title: string;
+      text: string;
+      submitToModel: boolean;
+    }) => void
+  ) => () => void;
 }
 
 declare global {

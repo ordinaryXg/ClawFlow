@@ -1,0 +1,40 @@
+.cf-todoFloat {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  pointer-events: none;
+  padding: 6px 10px 28px;
+  background: linear-gradient(
+    to bottom,
+    rgba(13, 31, 56, 0.78) 0%,
+    rgba(13, 31, 56, 0.35) 55%,
+    transparent 100%
+  );
+}
+
+.cf-todoFloat__inner {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 56px;
+  overflow: hidden;
+}
+
+.cf-todoFloat__chip {
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: 999px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(45, 179, 160, 0.28);
+  border: 1px solid rgba(45, 179, 160, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}

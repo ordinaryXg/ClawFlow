@@ -52,6 +52,28 @@
     "mergeBackDragHandle": "Drag to merge back",
     "detachDefaultForbidden": "The default workspace cannot be torn off into a separate sticky"
   },
+  "todoTriggers": {
+    "stickyFloatAria": "Pending todo triggers for this workspace",
+    "add": "New",
+    "saved": "Todo triggers saved",
+    "saveFailed": "Save failed",
+    "intervalInvalid": "Interval repeat needs at least 1 minute",
+    "newTitle": "New item",
+    "sectionPending": "Open",
+    "sectionDone": "Done",
+    "selectHint": "Select an item on the left to edit",
+    "fieldTitle": "Title",
+    "fieldEnabled": "Enabled",
+    "fieldRepeat": "Repeat",
+    "repeatOnce": "Once",
+    "repeatInterval": "Interval",
+    "fieldNextFire": "Next fire time",
+    "fieldIntervalMinutes": "Interval (minutes)",
+    "fieldPayload": "Message to insert into chat",
+    "fieldSubmitToModel": "Auto-send to model after insert",
+    "fieldConsumeOnFire": "Mark done after fire (interval only)",
+    "lastFired": "Last fired: {{time}}"
+  },
   "workspace": {
     "title": "Workspace",
     "default": "Default",
@@ -269,6 +291,7 @@
     "rightTabs": {
       "title": "Chat side panel",
       "workspaceDir": "Workspace dir",
+      "todoTriggers": "Todo triggers",
       "headlessBrowser": "Headless browser",
       "changeLog": "Change log",
       "workspacePath": "Workspace path",

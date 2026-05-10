@@ -175,6 +175,17 @@ export interface IElectronAPI {
     assistantExcerpt: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
+  todoTriggersList: () => Promise<{ triggers: unknown[] }>;
+  todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  onTodoTriggerFired: (
+    cb: (payload: {
+      workspaceRoot: string;
+      triggerId: string;
+      title: string;
+      text: string;
+      submitToModel: boolean;
+    }) => void
+  ) => () => void;
 }
 
 // 通过 contextBridge 安全地暴露 API
@@ -345,5 +356,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('workspace:changed', handler);
     return () => ipcRenderer.removeListener('workspace:changed', handler);
+  },
+  todoTriggersList: () => ipcRenderer.invoke('todoTriggers:list'),
+  todoTriggersSaveAll: (triggers: unknown[]) => ipcRenderer.invoke('todoTriggers:saveAll', triggers),
+  onTodoTriggerFired: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      if (typeof p.workspaceRoot !== 'string' || typeof p.text !== 'string') return;
+      cb({
+        workspaceRoot: p.workspaceRoot,
+        triggerId: typeof p.triggerId === 'string' ? p.triggerId : '',
+        title: typeof p.title === 'string' ? p.title : '',
+        text: p.text,
+        submitToModel: Boolean(p.submitToModel),
+      });
+    };
+    ipcRenderer.on('todo-trigger:fired', handler);
+    return () => ipcRenderer.removeListener('todo-trigger:fired', handler);
   },
 } as IElectronAPI);

@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useGatewayStore } from '../store/modules/gatewayStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useChatStore } from '../store/modules/chatStore';
+import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
 import { startShellColumnDrag, usePersistedShellWidth } from '../hooks/usePersistedShellWidth';
 import ErrorBoundary from './common/ErrorBoundary';
 import ToastHost from './common/ToastHost';
@@ -83,9 +84,22 @@ const Layout: FC = () => {
     const off = window.electronAPI?.onWorkspaceChanged?.(() => {
       void refreshWorkspace();
       void fetchConversations();
+      void useTodoTriggerStore.getState().load();
     });
     return () => off?.();
   }, [refreshWorkspace, fetchConversations]);
+
+  useEffect(() => {
+    const off = window.electronAPI?.onTodoTriggerFired?.((p) => {
+      void useChatStore.getState().applyTodoTrigger({
+        workspaceRoot: p.workspaceRoot,
+        text: p.text,
+        submitToModel: Boolean(p.submitToModel),
+      });
+      void useTodoTriggerStore.getState().load();
+    });
+    return () => off?.();
+  }, []);
 
   useEffect(() => {
     const off = window.electronAPI?.onNavigate?.((path) => navigate(path));

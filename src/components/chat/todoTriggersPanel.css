@@ -1,0 +1,155 @@
+.cf-todoPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.cf-todoPanel__empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cf-todoPanel__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cf-todoPanel__split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+}
+
+.cf-todoPanel__listCol {
+  width: 38%;
+  min-width: 120px;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  padding-right: 8px;
+}
+
+.cf-todoPanel__gutter {
+  width: 0;
+  flex-shrink: 0;
+}
+
+.cf-todoPanel__sectionTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 6px 4px 4px;
+  flex-shrink: 0;
+}
+
+.cf-todoPanel__sectionTitle--done {
+  margin-top: 6px;
+  opacity: 0.85;
+}
+
+.cf-todoPanel__list {
+  flex: 1;
+  min-height: 48px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cf-todoPanel__row {
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cf-todoPanel__row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cf-todoPanel__row--active {
+  border-color: rgba(45, 179, 160, 0.5);
+  background: rgba(45, 179, 160, 0.12);
+}
+
+.cf-todoPanel__row--off {
+  opacity: 0.55;
+}
+
+.cf-todoPanel__row--done {
+  opacity: 0.5;
+  color: var(--muted);
+}
+
+.cf-todoPanel__rowTitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-todoPanel__editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 10px;
+}
+
+.cf-todoPanel__editor--readonly {
+  opacity: 0.55;
+}
+
+.cf-todoPanel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cf-todoPanel__field--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-todoPanel__field input[type='text'],
+.cf-todoPanel__field input[type='number'],
+.cf-todoPanel__field input[type='datetime-local'],
+.cf-todoPanel__field select,
+.cf-todoPanel__field textarea {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--text);
+}
+
+.cf-todoPanel__field textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.cf-todoPanel__meta {
+  margin-top: 4px;
+}

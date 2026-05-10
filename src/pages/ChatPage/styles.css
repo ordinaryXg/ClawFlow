@@ -67,6 +67,12 @@
   min-height:80px;
 }
 
+/* 便签：为顶部待办浮层留出空间 */
+.cf-chatCenter--alternate .cf-chatCenter__messages{
+  position:relative;
+  padding-top:48px;
+}
+
 .cf-chatCenter__resize{
   flex-shrink:0;
   height:6px;

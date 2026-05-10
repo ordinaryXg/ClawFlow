@@ -129,6 +129,8 @@ export interface ChatState {
   setError: (error: string | null) => void;
   setInteractionMode: (mode: ChatInteractionMode) => void;
   respondToolApproval: (approved: boolean) => void;
+  /** 待办触发器：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
+  applyTodoTrigger: (payload: { workspaceRoot: string; text: string; submitToModel: boolean }) => Promise<void>;
 }
 
 let revealCleanup: (() => void) | null = null;
@@ -779,6 +781,60 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
   setError: (error: string | null) => {
     set({ error });
+  },
+
+  applyTodoTrigger: async (payload: { workspaceRoot: string; text: string; submitToModel: boolean }) => {
+    const rawText = String(payload?.text ?? '').trim();
+    if (!rawText) return;
+    let activeWs = '';
+    try {
+      const a = await window.electronAPI?.workspaceGetActive?.();
+      activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
+    } catch {
+      return;
+    }
+    if (activeWs !== normWorkspacePath(payload.workspaceRoot)) return;
+    if (payload.submitToModel) {
+      await get().sendMessage(rawText, null);
+      return;
+    }
+    cancelAssistantReveal();
+    let conversationId = get().activeConversationId;
+    if (!conversationId) {
+      await get().fetchConversations();
+      conversationId = get().activeConversationId;
+    }
+    if (!conversationId) return;
+    const sessionId = conversationId;
+    const userMessage: Message = {
+      id: uuidv4(),
+      role: 'user',
+      content: rawText,
+      timestamp: Date.now(),
+    };
+    set((state) => {
+      const updatedConversations = state.conversations.map((conv) => {
+        if (conv.id === sessionId) {
+          return {
+            ...conv,
+            messages: [...conv.messages, userMessage],
+            updatedAt: Date.now(),
+          };
+        }
+        return conv;
+      });
+      return {
+        conversations: updatedConversations,
+        messages: [...state.messages, userMessage],
+        error: null,
+      };
+    });
+    try {
+      const conv = get().conversations.find((c) => c.id === sessionId);
+      if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
+    } catch {
+      /* ignore */
+    }
   },
 };
 });

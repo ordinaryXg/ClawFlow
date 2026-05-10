@@ -171,6 +171,11 @@ export function conversationsStorePath(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'conversations.json');
 }
 
+/** 待办触发器列表（每工作区一份） */
+export function todoTriggersStorePath(workspaceRoot: string): string {
+  return path.join(clawflowDir(workspaceRoot), 'todo-triggers.v1.json');
+}
+
 export function openclawStateDir(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'openclaw');
 }

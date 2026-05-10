@@ -52,6 +52,28 @@
     "mergeBackDragHandle": "拖回主窗口合并",
     "detachDefaultForbidden": "默认工作区不能拖出为独立便签"
   },
+  "todoTriggers": {
+    "stickyFloatAria": "当前工作区待办触发器（未完成）",
+    "add": "新建",
+    "saved": "待办触发器已保存",
+    "saveFailed": "保存失败",
+    "intervalInvalid": "间隔重复需填写至少 1 分钟",
+    "newTitle": "新待办",
+    "sectionPending": "未完成",
+    "sectionDone": "已完成",
+    "selectHint": "在左侧选择一条待办以编辑配置",
+    "fieldTitle": "标题",
+    "fieldEnabled": "启用",
+    "fieldRepeat": "重复",
+    "repeatOnce": "仅一次",
+    "repeatInterval": "按间隔",
+    "fieldNextFire": "下次触发时间",
+    "fieldIntervalMinutes": "间隔（分钟）",
+    "fieldPayload": "触发内容（写入对话）",
+    "fieldSubmitToModel": "触发后自动请求模型回复",
+    "fieldConsumeOnFire": "触发后标记为完成（仅间隔模式可选）",
+    "lastFired": "上次触发：{{time}}"
+  },
   "workspace": {
     "title": "工作空间",
     "default": "默认",
@@ -269,6 +291,7 @@
     "rightTabs": {
       "title": "对话辅助面板",
       "workspaceDir": "工作空间目录",
+      "todoTriggers": "待办触发器",
       "headlessBrowser": "无头浏览器",
       "changeLog": "变更记录表",
       "workspacePath": "工作空间目录",
