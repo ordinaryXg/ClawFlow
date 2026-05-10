@@ -49,6 +49,8 @@ function IconModel() {
   );
 }
 
+const STARTER_IDS = [1, 2, 3, 4, 5] as const;
+
 interface Props {
   disabled?: boolean;
   onSend: (content: string) => Promise<void> | void;
@@ -59,6 +61,8 @@ interface Props {
   onInteractionModeChange: (mode: ChatInteractionMode) => void;
   intent: 'fast' | 'strong' | 'cheap';
   onIntentChange: (intent: 'fast' | 'strong' | 'cheap') => void;
+  /** 当前会话尚无消息时，在输入框上方展示快捷提示条 */
+  showStarterPrompts?: boolean;
 }
 
 const ChatInput: FC<Props> = ({
@@ -71,6 +75,7 @@ const ChatInput: FC<Props> = ({
   onInteractionModeChange,
   intent,
   onIntentChange,
+  showStarterPrompts,
 }) => {
   const { t } = useTranslation();
   const shellVariant = useShellLayoutVariant();
@@ -145,6 +150,20 @@ const ChatInput: FC<Props> = ({
 
   return (
     <div className={`cf-chatInput${stickyCompactRow ? ' cf-chatInput--stickyFoot' : ''}`}>
+      {showStarterPrompts ? (
+        <div className="cf-chatInput__starters" role="group" aria-label={t('chat.starterChipsAria')}>
+          {STARTER_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className="cf-chatInput__starterChip"
+              onClick={() => setValue(t(`chat.starterPrompt${id}`))}
+            >
+              {t(`chat.starterChip${id}`)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <textarea
         className="cf-textarea"
         value={value}

@@ -358,6 +358,34 @@ function registerWorkspaceIPC(): void {
     return { success: true, path: resolved };
   });
 
+  /** 拖入文件夹到「+」：校验为目录后初始化并切为当前工作区 */
+  ipcMain.handle('workspace:addFromAbsolutePath', async (_e, absPath: string) => {
+    const resolved = path.resolve(String(absPath || ''));
+    let st: fs.Stats | null;
+    try {
+      st = await fs.promises.stat(resolved);
+    } catch {
+      return { ok: false as const, error: 'not_found' };
+    }
+    if (!st.isDirectory()) {
+      return { ok: false as const, error: 'not_directory' };
+    }
+    try {
+      await workspaceService.ensureWorkspaceInitialized(resolved);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+    workspaceService.setActiveWorkspace(resolved);
+    setActiveWorkspaceRoot(resolved);
+    syncClawFlowEngineWorkspaceRoot(resolved);
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('workspace:changed', { path: resolved }));
+    void getGlobalOpenClawCliEngine()
+      .stopGateway()
+      .catch((e) => console.warn('[workspace] stopGateway (best-effort) failed:', e?.message || e));
+    return { ok: true as const, path: resolved };
+  });
+
   ipcMain.handle('workspace:pickFolder', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return await workspaceService.pickWorkspaceFolder(win);
@@ -478,8 +506,17 @@ function registerWorkspaceIPC(): void {
 
   ipcMain.handle('workspace:deletePath', async (_e, params: { relativePath: string }) => {
     const root = getActiveWorkspaceRoot();
-    const rel = String(params?.relativePath ?? '');
-    const abs = resolveAbs(root, rel);
+    const rel = String(params?.relativePath ?? '').trim();
+    if (!rel) {
+      return { ok: false as const, error: 'empty_path' };
+    }
+    let abs: string;
+    try {
+      abs = resolveAbs(root, rel);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
     try {
       await fs.promises.rm(abs, { recursive: true, force: true });
       return { ok: true as const };

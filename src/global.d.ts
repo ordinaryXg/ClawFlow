@@ -102,6 +102,9 @@ export interface IElectronAPI {
     | { ok: false; error: string }
   >;
   workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspaceAddFromAbsolutePath: (
+    absPath: string
+  ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
   workspacePickFolder: () => Promise<string | null>;
   workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
   workspaceListDir: (

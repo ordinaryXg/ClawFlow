@@ -94,6 +94,9 @@ export interface IElectronAPI {
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   workspaceListRecent: () => Promise<string[]>;
   workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspaceAddFromAbsolutePath: (
+    absPath: string
+  ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
   workspacePickFolder: () => Promise<string | null>;
   workspaceEnsureInitialized: (folderPath: string) => Promise<{ meta: unknown }>;
   workspaceListDir: (
@@ -259,6 +262,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
   workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),
   workspaceSetActive: (folderPath: string) => ipcRenderer.invoke('workspace:setActive', folderPath),
+  workspaceAddFromAbsolutePath: (
+    absPath: string
+  ) => ipcRenderer.invoke('workspace:addFromAbsolutePath', absPath) as Promise<
+    { ok: true; path: string } | { ok: false; error: string }
+  >,
   workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
   workspaceEnsureInitialized: (folderPath: string) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath),
   workspaceListDir: (relativePath?: string) => ipcRenderer.invoke('workspace:listDir', relativePath),

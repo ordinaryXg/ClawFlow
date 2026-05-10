@@ -317,6 +317,7 @@ const ChatPage: FC = () => {
             onInteractionModeChange={setInteractionMode}
             intent={chatIntent}
             onIntentChange={(v) => updateSettings({ chatIntent: v })}
+            showStarterPrompts={messages.length === 0 && streamingMessage === null}
           />
         </div>
       </footer>

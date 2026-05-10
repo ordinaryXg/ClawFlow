@@ -1,4 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AppstoreOutlined,
   CaretDownOutlined,
@@ -7,6 +8,7 @@ import {
   FolderOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import { App } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 type Entry = { name: string; kind: 'file' | 'dir' };
@@ -27,6 +29,10 @@ function loadLayoutMode(): StickyFileLayoutMode {
 
 function relPath(parent: string, name: string): string {
   return parent ? `${parent}/${name}` : name;
+}
+
+function normRelPath(r: string): string {
+  return r.replace(/\\/g, '/');
 }
 
 /** 便签列表隐藏系统目录（仍存在于磁盘，仅不在 UI 展示） */
@@ -70,6 +76,7 @@ type Props = {
 
 const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -78,8 +85,15 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
   const [dirLoading, setDirLoading] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [fileDragOver, setFileDragOver] = useState(false);
+  const [selectedRel, setSelectedRel] = useState<string | null>(null);
+  const [fileCtx, setFileCtx] = useState<null | { x: number; y: number; rel: string }>(null);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
+
+  useEffect(() => {
+    setSelectedRel(null);
+    setFileCtx(null);
+  }, [workspacePath]);
 
   const persistLayout = (m: StickyFileLayoutMode) => {
     setLayoutMode(m);
@@ -222,6 +236,98 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
     setFileDragOver(false);
   };
 
+  const revealInExplorer = useCallback(async (rel: string) => {
+    try {
+      await window.electronAPI?.workspaceRevealInExplorer?.(rel);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const copyTextToClipboard = useCallback(async (text: string) => {
+    const s = String(text ?? '');
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(s);
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    try {
+      await window.electronAPI?.clipboardWriteText?.(s);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const copyRelPath = useCallback(
+    async (rel: string) => {
+      await copyTextToClipboard(rel);
+      pushToast('success', t('common.copiedTitle'), t('common.copiedBody'));
+    },
+    [copyTextToClipboard, t]
+  );
+
+  const copyFullPath = useCallback(
+    async (rel: string) => {
+      try {
+        const res = await window.electronAPI?.workspaceResolveAbsolutePath?.(rel);
+        if (res?.absolutePath) {
+          await copyTextToClipboard(res.absolutePath);
+          pushToast('success', t('common.copiedTitle'), t('common.copiedBody'));
+        }
+      } catch {
+        pushToast('error', t('common.copyFailedTitle'), t('common.copyFailedBody'));
+      }
+    },
+    [copyTextToClipboard, t]
+  );
+
+  const closeFileCtx = useCallback(() => setFileCtx(null), []);
+
+  const pruneExpandedForDeleted = useCallback((deletedRel: string) => {
+    const norm = deletedRel.replace(/\\/g, '/');
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      for (const p of [...n]) {
+        const pn = p.replace(/\\/g, '/');
+        if (pn === norm || pn.startsWith(`${norm}/`)) n.delete(p);
+      }
+      return n;
+    });
+  }, []);
+
+  const requestDelete = useCallback(
+    (rel: string) => {
+      closeFileCtx();
+      modal.confirm({
+        title: t('sticky.fileDeleteConfirmTitle'),
+        content: rel,
+        okText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        okType: 'danger',
+        onOk: async () => {
+          const res = await window.electronAPI?.workspaceDeletePath?.(rel);
+          if (!res?.ok) {
+            pushToast('error', t('sticky.fileDeleteFailed'), res?.error);
+            throw new Error(res?.error || 'delete failed');
+          }
+          pruneExpandedForDeleted(rel);
+          setSelectedRel((s) => {
+            if (!s) return null;
+            const sn = normRelPath(s);
+            const del = normRelPath(rel);
+            if (sn === del || sn.startsWith(`${del}/`)) return null;
+            return s;
+          });
+          await load();
+        },
+      });
+    },
+    [closeFileCtx, load, modal, pruneExpandedForDeleted, t]
+  );
+
   const onOpen = async (rel: string) => {
     try {
       await window.electronAPI?.workspaceRevealInExplorer?.(rel);
@@ -240,6 +346,18 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
       }
       return next;
     });
+  };
+
+  const onBodyMouseDown = (e: React.MouseEvent) => {
+    const el = e.target as HTMLElement;
+    if (
+      el.closest('.cf-stickyFiles__rowBtn') ||
+      el.closest('.cf-stickyFiles__gridCell') ||
+      el.closest('.cf-stickyFiles__chev')
+    ) {
+      return;
+    }
+    setSelectedRel(null);
   };
 
   const rootClass = useMemo(() => {
@@ -264,6 +382,7 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
       const isExp = expanded.has(rel);
       const kids = childMap[rel];
       const loadingDir = dirLoading[rel];
+      const isSelected = selectedRel === rel;
 
       const dropTargetRel = isDir ? rel : parentRel;
 
@@ -299,8 +418,17 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
             )}
             <button
               type="button"
-              className="cf-stickyFiles__rowBtn cf-stickyFiles__rowBtn--tree"
-              onClick={() => void onOpen(rel)}
+              className={`cf-stickyFiles__rowBtn cf-stickyFiles__rowBtn--tree${isSelected ? ' cf-stickyFiles__rowBtn--selected' : ''}`}
+              aria-selected={isSelected}
+              onClick={() => setSelectedRel(rel)}
+              onContextMenu={(ev) => {
+                ev.preventDefault();
+                setFileCtx({ x: ev.clientX, y: ev.clientY, rel });
+              }}
+              onDoubleClick={(ev) => {
+                ev.preventDefault();
+                void onOpen(rel);
+              }}
               title={rel}
             >
               {isDir ? (
@@ -357,6 +485,7 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
       {err ? <div className="cf-stickyFiles__err">{err}</div> : null}
       <div
         className="cf-stickyFiles__body"
+        onMouseDown={onBodyMouseDown}
         onDragEnter={onBodyDragEnter}
         onDragLeave={onBodyDragLeave}
         onDragOver={onDragOverTarget}
@@ -376,12 +505,22 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
             ) : null}
             {entries.map((e) => {
               const rel = e.name;
+              const isSelected = selectedRel === rel;
               return (
                 <button
                   key={rel}
                   type="button"
-                  className="cf-stickyFiles__gridCell"
-                  onClick={() => void onOpen(rel)}
+                  className={`cf-stickyFiles__gridCell${isSelected ? ' cf-stickyFiles__gridCell--selected' : ''}`}
+                  aria-selected={isSelected}
+                  onClick={() => setSelectedRel(rel)}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    setFileCtx({ x: ev.clientX, y: ev.clientY, rel });
+                  }}
+                  onDoubleClick={(ev) => {
+                    ev.preventDefault();
+                    void onOpen(rel);
+                  }}
                   title={rel}
                 >
                   {e.kind === 'dir' ? (
@@ -403,6 +542,66 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
           </ul>
         )}
       </div>
+      {fileCtx
+        ? createPortal(
+            <div
+              className="cf-ctxMenu__backdrop"
+              onMouseDown={closeFileCtx}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                closeFileCtx();
+              }}
+            >
+              <div
+                className="cf-ctxMenu cf-stickyFiles__ctxMenu"
+                style={{ left: fileCtx.x, top: fileCtx.y, zIndex: 5000 }}
+                role="menu"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="cf-ctxMenu__item"
+                  onClick={() => {
+                    void revealInExplorer(fileCtx.rel);
+                    closeFileCtx();
+                  }}
+                >
+                  {t('sticky.fileCtxReveal')}
+                </button>
+                <div className="cf-ctxMenu__sep" />
+                <button
+                  type="button"
+                  className="cf-ctxMenu__item"
+                  onClick={() => {
+                    void copyRelPath(fileCtx.rel);
+                    closeFileCtx();
+                  }}
+                >
+                  {t('sticky.fileCtxCopyRel')}
+                </button>
+                <button
+                  type="button"
+                  className="cf-ctxMenu__item"
+                  onClick={() => {
+                    void copyFullPath(fileCtx.rel);
+                    closeFileCtx();
+                  }}
+                >
+                  {t('sticky.fileCtxCopyFull')}
+                </button>
+                <div className="cf-ctxMenu__sep" />
+                <button
+                  type="button"
+                  className="cf-ctxMenu__item cf-ctxMenu__item--danger"
+                  onClick={() => requestDelete(fileCtx.rel)}
+                >
+                  {t('sticky.fileCtxDelete')}
+                </button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 };

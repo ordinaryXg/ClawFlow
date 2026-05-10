@@ -1,5 +1,5 @@
 import { FC } from 'react';
-import { ConfigProvider } from 'antd';
+import { App as AntdApp, ConfigProvider } from 'antd';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import I18nThemeBootstrap from './components/I18nThemeBootstrap';
 import Layout from './components/Layout';
@@ -14,19 +14,21 @@ const App: FC = () => {
   const theme = useSettingsStore((s) => s.theme);
   return (
     <ConfigProvider theme={getAntdTheme(theme)}>
-      <HashRouter>
-        <I18nThemeBootstrap />
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Navigate to="/chat" replace />} />
-            <Route path="/dashboard" element={<Navigate to="/settings" replace />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/skills" element={<SkillsPage />} />
-            <Route path="/connectors" element={<ConnectorsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
-      </HashRouter>
+      <AntdApp>
+        <HashRouter>
+          <I18nThemeBootstrap />
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Navigate to="/chat" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/settings" replace />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/skills" element={<SkillsPage />} />
+              <Route path="/connectors" element={<ConnectorsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </HashRouter>
+      </AntdApp>
     </ConfigProvider>
   );
 };

@@ -9,6 +9,18 @@ import ViewModeFab from '../ViewModeFab';
 import StickyFileStrip from './StickyFileStrip';
 import './stickyNoteShell.css';
 
+function pushToast(type: 'success' | 'error', title: string, message?: string): void {
+  const api = (window as unknown as { __cf_toast?: { success: (t: string, m?: string) => void; error: (t: string, m?: string) => void } })
+    .__cf_toast;
+  if (!api) return;
+  if (type === 'success') api.success(title, message);
+  else api.error(title, message);
+}
+
+function hasFileDrag(e: React.DragEvent): boolean {
+  return [...e.dataTransfer.types].includes('Files');
+}
+
 const STICKY_FILE_PANE_H_KEY = 'clawflow.stickyFilePaneHeightPx';
 const DEFAULT_FILE_PANE_H = 176;
 const MIN_FILE_PANE_H = 88;
@@ -42,6 +54,7 @@ const StickyNoteShell: FC = () => {
   const { fetchConversations, createConversation } = useChatStore();
 
   const splitWrapRef = useRef<HTMLDivElement | null>(null);
+  const [addDropOver, setAddDropOver] = useState(false);
   const [filePaneHeightPx, setFilePaneHeightPx] = useState(loadFilePaneHeight);
   const filePaneHeightRef = useRef(filePaneHeightPx);
   filePaneHeightRef.current = filePaneHeightPx;
@@ -124,6 +137,55 @@ const StickyNoteShell: FC = () => {
     navigate('/chat');
   };
 
+  const onAddDragOver = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    setAddDropOver(true);
+  };
+
+  const onAddDragLeave = (e: React.DragEvent) => {
+    if (!hasFileDrag(e)) return;
+    const cur = e.currentTarget;
+    const rel = e.relatedTarget;
+    if (rel && cur instanceof Node && cur.contains(rel as Node)) return;
+    setAddDropOver(false);
+  };
+
+  const onAddDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setAddDropOver(false);
+    if (!hasFileDrag(e)) return;
+    const api = window.electronAPI;
+    if (!api?.getPathForFile || e.dataTransfer.files.length === 0) {
+      pushToast('error', t('sticky.workspaceDropAddNoPath'));
+      return;
+    }
+    let abs: string;
+    try {
+      abs = api.getPathForFile(e.dataTransfer.files[0]);
+    } catch {
+      pushToast('error', t('sticky.workspaceDropAddNoPath'));
+      return;
+    }
+    const res = await api.workspaceAddFromAbsolutePath?.(abs);
+    if (!res || res.ok === false) {
+      const err = res && 'error' in res ? res.error : '';
+      if (err === 'not_directory' || err === 'not_found') {
+        pushToast('error', t('sticky.workspaceDropAddNotFolder'));
+      } else {
+        pushToast('error', t('sticky.workspaceDropAddFailed'), err || undefined);
+      }
+      return;
+    }
+    await refreshWorkspace();
+    await fetchConversations();
+    navigate('/chat');
+    pushToast('success', t('sticky.workspaceDropAddOk'));
+  };
+
   const onPickWorkspace = async (folderPath: string) => {
     await setWorkspace(folderPath);
     await fetchConversations();
@@ -154,10 +216,13 @@ const StickyNoteShell: FC = () => {
         })}
         <button
           type="button"
-          className="cf-stickyRail__add"
+          className={`cf-stickyRail__add${addDropOver ? ' cf-stickyRail__add--dropOver' : ''}`}
           onClick={() => void onAddWorkspace()}
+          onDragOver={onAddDragOver}
+          onDragLeave={onAddDragLeave}
+          onDrop={(ev) => void onAddDrop(ev)}
           aria-label={t('sticky.addWorkspace')}
-          title={t('workspace.openFolder')}
+          title={t('sticky.addWorkspaceDropHint')}
         >
           <PlusOutlined />
         </button>
