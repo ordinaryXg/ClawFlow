@@ -8,18 +8,31 @@ import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
-import { mergeToolSelection, type WorkspaceToolId, type WorkspaceToolSelection } from './shared/workspace-tools';
+import {
+  mergeToolSelection,
+  WORKSPACE_TOOL_IDS,
+  type WorkspaceToolId,
+  type WorkspaceToolSelection,
+} from './shared/workspace-tools';
 
 export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
 export const CLAWFLOW_DIR = '.clawflow';
 
-const TOOL_README = `# 工作区工具说明
+const TOOL_README = `# 工作区工具说明（.tool）
 
-本目录由 ClawFlow 在工作区初始化时生成，用于描述当前工作区可用的能力边界（可随版本扩展）。
+与根目录下另外两类目录分工如下：
 
-- 各能力详见同目录下的 Markdown 文件。
-- \`manifest.json\` 记录启用状态（新建工作区时可在界面勾选）。
+| 目录 | 作用 |
+|------|------|
+| \`.clawflow/\` | 应用内部状态：会话 JSON、工作区元数据、工具操作留痕等（机器读写为主）。 |
+| \`.roleAgent/\` | 角色与行为约定（Markdown），每次请求注入 system，由你编辑。 |
+| \`.tool/\`（本目录） | **能力契约**：人类可读的说明 + \`manifest.json\` 中的开关；引擎会按开关过滤可注册的模型工具并在执行前再次校验。 |
+
+本目录由 ClawFlow 初始化；各能力详见 \`docs.md\` / \`browser.md\` / \`git.md\`。
+
+- \`manifest.json\`：\`tools.docs\` / \`tools.browser\` / \`tools.git\` 布尔值；侧栏、便签与设置中的「能力」勾选会写回此文件。
+- 未列在 manifest 中的多余字段会被忽略；新增工具类型时需升级应用以识别。
 `;
 
 const TOOL_DOCS_MD = `# 文档读写能力
@@ -93,7 +106,14 @@ export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<
     const buf = await fs.promises.readFile(fp, 'utf-8');
     const parsed = JSON.parse(buf) as { tools?: unknown };
     if (parsed && typeof parsed === 'object' && parsed.tools && typeof parsed.tools === 'object') {
-      return mergeToolSelection(parsed.tools as WorkspaceToolSelection);
+      const raw = parsed.tools as Record<string, unknown>;
+      const known = new Set<string>(WORKSPACE_TOOL_IDS as unknown as string[]);
+      for (const k of Object.keys(raw)) {
+        if (!known.has(k)) {
+          console.warn(`[workspace-service] manifest.json: ignoring unknown tools key "${k}"`);
+        }
+      }
+      return mergeToolSelection(raw as WorkspaceToolSelection);
     }
   } catch {
     /* no manifest */
@@ -126,9 +146,9 @@ export function getRegistryPath(): string {
   return path.join(app.getPath('userData'), REGISTRY_FILENAME);
 }
 
-/** 默认 workspace：位于 userData 下的固定文件夹（兼容旧版全局对话路径迁移）。 */
+/** 默认 workspace：位于 userData 下的固定文件夹名 `WorkSpace`（旧版曾为 `Default Workspace`，可手动删除遗留目录）。 */
 export function getDefaultWorkspacePath(): string {
-  return path.join(app.getPath('userData'), 'Default Workspace');
+  return path.join(app.getPath('userData'), 'WorkSpace');
 }
 
 /** 比较两个 workspace 根路径是否相同（Windows 忽略大小写）。 */

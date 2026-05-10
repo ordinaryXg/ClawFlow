@@ -2,6 +2,7 @@ import type { ModelProvider } from './provider';
 import type { ChatCompletionRequest, ChatCompletionResult, ToolSchema } from './types';
 import { apiModelFromClawId } from './model-id';
 import { readOpenAiSseContentStream } from '../streaming/openai-sse';
+import { readOpenAiSseAgentStream } from '../streaming/openai-sse-agent';
 
 function cloneJson<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
@@ -188,6 +189,56 @@ export class DeepSeekProvider implements ModelProvider {
     });
 
     return { content, raw: { streamed: true } };
+  }
+
+  async agentStreamChatCompletion(
+    req: ChatCompletionRequest,
+    handlers: {
+      onReasoningDelta?: (text: string) => void;
+      onContentDelta?: (text: string) => void;
+      signal?: AbortSignal;
+    }
+  ): Promise<ChatCompletionResult> {
+    const apiKey = await this.resolvedKey();
+    if (!apiKey) throw new Error('DeepSeek API key is not configured');
+
+    const useBeta = Boolean(req.modeConfig.useBetaBaseUrl);
+    const url = `${this.getBaseUrl(useBeta)}/chat/completions`;
+
+    const body: Record<string, unknown> = {
+      model: apiModelFromClawId(req.model),
+      messages: req.messages,
+      stream: true,
+    };
+
+    if (req.modeConfig.tools?.length) {
+      body.tools = sanitizeToolsForDeepSeekRequest(req.modeConfig.tools);
+      body.tool_choice = 'auto';
+    }
+    if (req.modeConfig.reasoning_effort) body.reasoning_effort = req.modeConfig.reasoning_effort;
+    if (req.modeConfig.thinking) body.thinking = req.modeConfig.thinking;
+    if (req.modeConfig.jsonMode) body.response_format = { type: 'json_object' };
+
+    logDeepSeekOutgoing(url, 'chat/completions (agent stream)', body);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      ...(handlers.signal ? { signal: handlers.signal } : {}),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`DeepSeek agent stream HTTP ${res.status}: ${text.slice(0, 800)}`);
+    }
+
+    return readOpenAiSseAgentStream(res.body, {
+      onReasoningDelta: handlers.onReasoningDelta,
+      onContentDelta: handlers.onContentDelta,
+    });
   }
 }
 

@@ -4,6 +4,7 @@ import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import { Message } from '../../store/modules/chatStore';
+import ThinkingBlock from './ThinkingBlock';
 import './chat.css';
 
 interface Props {
@@ -40,6 +41,9 @@ const MessageItem: FC<Props> = ({ message }) => {
           <span className="cf-sub">{time}</span>
         </div>
 
+        {!isUser && message.reasoningContent?.trim() ? (
+          <ThinkingBlock text={message.reasoningContent.trim()} streaming={false} />
+        ) : null}
         <div className="cf-msgItem__content">
           <Markdown
             options={{

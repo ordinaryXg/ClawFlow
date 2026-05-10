@@ -27,7 +27,8 @@ const ChatPage: FC = () => {
     activeConversationId,
     messages,
     isLoading,
-    streamingMessage,
+    streamingActivity,
+    streamingThinking,
     error,
     fetchConversations,
     switchConversation,
@@ -134,7 +135,7 @@ const ChatPage: FC = () => {
   useEffect(() => {
     if (!stickToBottomRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, streamingMessage]);
+  }, [messages.length, streamingActivity, streamingThinking]);
 
   const reloadChatModels = useCallback(async () => {
     try {
@@ -264,7 +265,7 @@ const ChatPage: FC = () => {
       )}
 
       <div ref={scrollRef} className="cf-chatCenter__messages">
-        {messages.length === 0 && streamingMessage === null ? (
+        {messages.length === 0 && streamingActivity === null ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>
               <h3 style={{ marginBottom: 6 }}>{t('chat.emptyMainTitle')}</h3>
@@ -274,7 +275,7 @@ const ChatPage: FC = () => {
         ) : (
           <>
             <MessageList messages={messages} />
-            <StreamingMessage content={streamingMessage} />
+            <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
             <div ref={bottomRef} />
           </>
         )}
@@ -317,7 +318,7 @@ const ChatPage: FC = () => {
             onInteractionModeChange={setInteractionMode}
             intent={chatIntent}
             onIntentChange={(v) => updateSettings({ chatIntent: v })}
-            showStarterPrompts={messages.length === 0 && streamingMessage === null}
+            showStarterPrompts={messages.length === 0 && streamingActivity === null && !isLoading}
           />
         </div>
       </footer>

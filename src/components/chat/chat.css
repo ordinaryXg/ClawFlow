@@ -260,6 +260,102 @@
   word-break: break-word;
 }
 
+.cf-stream__content--muted {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.cf-stream__content--activity {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  opacity: 0.88;
+  margin-top: 6px;
+}
+
+.cf-stream__thinking {
+  margin-top: 4px;
+}
+
+/* 历史消息与流式区共用的「思考」折叠块 */
+.cf-thinkingBlock {
+  margin: 0 0 8px;
+  border-radius: var(--radiusSm, 4px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.cf-thinkingBlock__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  min-height: 30px;
+}
+
+.cf-thinkingBlock__bar:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.cf-thinkingBlock__chevron {
+  flex-shrink: 0;
+  width: 1em;
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+.cf-thinkingBlock__label {
+  flex-shrink: 0;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.cf-thinkingBlock__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.cf-thinkingBlock__body {
+  padding: 0 10px 10px 30px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+  opacity: 0.88;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cf-thinkingBlock__pre {
+  margin: 0 10px 10px 30px;
+  padding: 8px 10px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 320px;
+}
+
 .cf-textarea{
   width:100%;
   background:rgba(255,255,255,.03);

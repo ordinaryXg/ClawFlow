@@ -13,5 +13,11 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
 };
 
 export function mergeToolSelection(sel?: WorkspaceToolSelection): Record<WorkspaceToolId, boolean> {
-  return { ...DEFAULT_WORKSPACE_TOOL_SELECTION, ...(sel ?? {}) };
+  const out: Record<WorkspaceToolId, boolean> = { ...DEFAULT_WORKSPACE_TOOL_SELECTION };
+  if (!sel || typeof sel !== 'object') return out;
+  for (const id of WORKSPACE_TOOL_IDS) {
+    const v = (sel as Record<string, unknown>)[id];
+    if (typeof v === 'boolean') out[id] = v;
+  }
+  return out;
 }

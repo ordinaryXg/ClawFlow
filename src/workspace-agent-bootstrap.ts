@@ -84,9 +84,8 @@ You are not the user's voice in groups. Be careful with personal context from \`
 
 ## Tools
 
-- Follow tool descriptions and args strictly.
+- **What the model may call** is gated by \`.tool/manifest.json\` (docs / browser / git) and enforced by the engine; details live in \`.tool/README.md\` and \`docs.md\` / \`browser.md\` / \`git.md\`. Follow descriptions and arguments strictly, and only use tools you were actually given in this turn.
 - Keep environment-specific notes in \`.roleAgent/TOOLS.md\`.
-- To **open a website inside ClawFlow** (right panel embedded browser), call \`open_embedded_browser\` with an https URL (e.g. \`https://www.baidu.com\`). Use \`web_search\` for keyword search, not for opening a known site.
 
 ## Make It Yours
 

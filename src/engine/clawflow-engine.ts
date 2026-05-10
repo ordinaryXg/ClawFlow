@@ -2,14 +2,18 @@ import { ipcMain } from 'electron';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import EventEmitter from 'events';
-import { getDefaultWorkspacePath } from '../workspace-service';
+import { getDefaultWorkspacePath, readWorkspaceToolManifest } from '../workspace-service';
+import { filterToolSchemasByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
+import { STREAM_REASONING_END, STREAM_REASONING_START } from '../utils/reasoning-stream-demux';
+import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content';
+import { createStreamReasoningPhaseEmitter } from '../utils/reasoning-stream-phase-emitter';
 import { SessionStore, StoredConversation, StoredMessage } from './session-store';
 import { ProviderRouter } from './provider-router';
 import { DeepSeekProvider } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import type { ModelProvider } from './providers/provider';
-import type { ChatCompletionRequest, ChatMessage, ModeConfig } from './providers/types';
+import type { ChatCompletionRequest, ChatCompletionResult, ChatMessage, ModeConfig } from './providers/types';
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
@@ -190,15 +194,21 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     mode: InteractionMode;
     modelIdHint: string | null;
     engine: 'clawflow' | 'clawflow-stub';
+    reasoning_content?: string;
   }): Promise<void> {
     const convs = await this.store.readAll();
     const idx = convs.findIndex((c) => c.id === params.conversationId);
     const now = Date.now();
+    const rc =
+      typeof params.reasoning_content === 'string' && params.reasoning_content.trim()
+        ? params.reasoning_content.trim()
+        : undefined;
     const assistantMsg: StoredMessage = {
       id: randomUUID(),
       role: 'assistant',
       content: params.reply,
       timestamp: now,
+      ...(rc ? { reasoning_content: rc } : {}),
       meta: { engine: params.engine, mode: params.mode, modelId: params.modelIdHint },
     };
     if (idx >= 0) {
@@ -355,6 +365,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     const provider = providerId ? this.router.get(providerId) : null;
 
     let reply = '';
+    const reasoningSteps: string[] = [];
     if (provider && providerId) {
       const loopMessages: ChatMessage[] = await this.buildHistoryMessages(
         params.conversationId,
@@ -371,9 +382,10 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         intent: params.intent ?? 'strong',
         overrides: overridesForMode,
       });
+      const workspaceToolSelection = await readWorkspaceToolManifest(this.config.workspaceRoot);
       // Ensure tools come from the current runtime (avoid creating a second runtime for schemas).
       if (baseModeConfig.toolsEnabled) {
-        baseModeConfig.tools = this.tools.listSchemas();
+        baseModeConfig.tools = filterToolSchemasByWorkspaceManifest(this.tools.listSchemas(), workspaceToolSelection);
       }
       for (let step = 0; step < 6; step++) {
         if (params.abortSignal?.aborted) throw new Error('CANCELLED');
@@ -382,27 +394,51 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           messages: loopMessages,
           modeConfig: baseModeConfig,
         };
-        const res = await provider.chatCompletion(req, { signal: params.abortSignal });
+
+        let res: ChatCompletionResult;
+        if (typeof provider.agentStreamChatCompletion === 'function') {
+          const phase = createStreamReasoningPhaseEmitter(params.onDelta);
+          try {
+            res = await provider.agentStreamChatCompletion(req, {
+              signal: params.abortSignal,
+              onReasoningDelta: phase.onReasoningDelta,
+              onContentDelta: phase.onContentDelta,
+            });
+          } finally {
+            phase.close();
+          }
+        } else {
+          res = await provider.chatCompletion(req, { signal: params.abortSignal });
+          const rcStep = typeof res.reasoning_content === 'string' ? res.reasoning_content.trim() : '';
+          if (rcStep) {
+            params.onDelta?.(`${STREAM_REASONING_START}${rcStep}${STREAM_REASONING_END}`);
+          }
+        }
+
+        const { displayContent, reasoningCombined } = mergeCompletionReasoning(res.content, res.reasoning_content);
+        if (reasoningCombined) {
+          reasoningSteps.push(reasoningCombined);
+        }
 
         const toolCalls = res.tool_calls ?? null;
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: res.content ?? '',
-          ...(res.reasoning_content ? { reasoning_content: res.reasoning_content } : {}),
+          content: displayContent,
+          ...(reasoningCombined ? { reasoning_content: reasoningCombined } : {}),
           ...(toolCalls ? { tool_calls: toolCalls as any } : {}),
         };
         loopMessages.push(assistantMsg);
 
         if (!toolCalls || toolCalls.length === 0) {
-          reply = res.content || '';
+          reply = displayContent || '';
           break;
         }
 
         // Persist this assistant turn (tool_calls + reasoning) so replay/history stays complete.
         try {
           const storedAssistant = this.toStoredAssistantMessage({
-            content: res.content ?? '',
-            reasoning_content: typeof res.reasoning_content === 'string' ? res.reasoning_content : undefined,
+            content: displayContent,
+            reasoning_content: reasoningCombined || undefined,
             tool_calls: toolCalls as any,
             mode,
             modelIdHint: modelId,
@@ -419,6 +455,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           onDelta: params.onDelta,
           abortSignal: params.abortSignal,
           openEmbeddedBrowser: params.openEmbeddedBrowser,
+          workspaceToolSelection,
         });
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];
@@ -449,6 +486,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       mode,
       modelIdHint: modelId,
       engine: reply.startsWith('【ClawFlowEngine:stub】') ? 'clawflow-stub' : 'clawflow',
+      reasoning_content: reasoningSteps.length ? reasoningSteps.join('\n\n—\n\n') : undefined,
     });
     return { message: reply };
   }
@@ -514,28 +552,42 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
     const p = provider as ModelProvider;
     let reply = '';
+    let apiReasoning = '';
     if (typeof p.streamChatCompletion === 'function') {
       const res = await p.streamChatCompletion(req, params.onDelta, { signal: params.abortSignal });
       reply = res.content || '';
+      apiReasoning = typeof res.reasoning_content === 'string' ? res.reasoning_content : '';
     } else {
       const res = await provider.chatCompletion(req, { signal: params.abortSignal });
       reply = res.content || '';
+      apiReasoning = typeof res.reasoning_content === 'string' ? res.reasoning_content : '';
       if (reply) await emitChunked(reply);
     }
 
     if (!reply.trim()) {
       reply = `【ClawFlowEngine:stub】mode=${streamMode} model=${modelId}\n\n你说：${params.userText}`;
       await emitChunked(reply);
+      await this.appendAssistantMessage({
+        conversationId: params.conversationId,
+        reply,
+        mode,
+        modelIdHint: modelId,
+        engine: 'clawflow-stub',
+      });
+      return reply;
     }
 
+    const merged = mergeCompletionReasoning(reply, apiReasoning);
+    const replyPersist = merged.displayContent.trim() ? merged.displayContent : reply;
     await this.appendAssistantMessage({
       conversationId: params.conversationId,
-      reply,
+      reply: replyPersist,
       mode,
       modelIdHint: modelId,
       engine: reply.startsWith('【ClawFlowEngine:stub】') ? 'clawflow-stub' : 'clawflow',
+      reasoning_content: merged.reasoningCombined || undefined,
     });
-    return reply;
+    return replyPersist;
   }
 }
 

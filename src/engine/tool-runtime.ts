@@ -9,6 +9,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createHash, randomUUID } from 'crypto';
 import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './openclaw-apply-patch';
+import type { WorkspaceToolId } from '../shared/workspace-tools';
+import { toolNameAllowedByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -19,6 +21,8 @@ export type ToolExecutionContext = {
   abortSignal?: AbortSignal;
   /** 在主窗口内嵌浏览器（右侧 webview）中打开 URL；由 IPC 注入，无则仅能走系统浏览器 */
   openEmbeddedBrowser?: (url: string) => void;
+  /** 与 `.tool/manifest.json` 对齐；未传则不在此层校验（引擎应始终传入） */
+  workspaceToolSelection?: Record<WorkspaceToolId, boolean>;
 };
 
 export type ToolResult = { tool_call_id: string; content: string };
@@ -251,6 +255,13 @@ export class ToolRuntime {
         results.push({ tool_call_id: call.id, content: `Tool not found: ${name}` });
         continue;
       }
+      if (ctx.workspaceToolSelection && !toolNameAllowedByWorkspaceManifest(name, ctx.workspaceToolSelection)) {
+        results.push({
+          tool_call_id: call.id,
+          content: `Workspace capability disabled for tool "${name}". Enable it in workspace settings (writes .tool/manifest.json).`,
+        });
+        continue;
+      }
       let args: any = {};
       try {
         args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
@@ -282,6 +293,7 @@ export class ToolRuntime {
   }
 }
 
+/** 注册的 \`function.name\` 须与 \`shared/workspace-tool-manifest-bridge.ts\` 中映射同步。 */
 export function createDefaultToolRuntime(): ToolRuntime {
   const rt = new ToolRuntime();
 

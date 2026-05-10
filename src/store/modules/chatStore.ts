@@ -4,6 +4,8 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { autoPickMode, type ChatIntent } from '../../engine/mode-policy';
+import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
+import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
 
 export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
@@ -34,6 +36,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  /** 模型思考过程（DeepSeek reasoning 等），与正文分开展示 */
+  reasoningContent?: string;
 }
 
 export interface Conversation {
@@ -54,12 +58,27 @@ function normalizeConversation(raw: unknown): Conversation | null {
       const r = m as Record<string, unknown>;
       return r?.role === 'user' || r?.role === 'assistant';
     })
-    .map((m: any) => ({
-      id: typeof m?.id === 'string' ? m.id : uuidv4(),
-      role: m.role as 'user' | 'assistant',
-      content: String(m?.content ?? ''),
-      timestamp: typeof m?.timestamp === 'number' ? m.timestamp : Date.now(),
-    }));
+    .map((m: any) => {
+      const id = typeof m?.id === 'string' ? m.id : uuidv4();
+      const ts = typeof m?.timestamp === 'number' ? m.timestamp : Date.now();
+      if (m?.role === 'user') {
+        return {
+          id,
+          role: 'user' as const,
+          content: String(m?.content ?? ''),
+          timestamp: ts,
+        };
+      }
+      const merged = mergeCompletionReasoning(m?.content, m?.reasoning_content);
+      const rc = merged.reasoningCombined.trim() || undefined;
+      return {
+        id,
+        role: 'assistant' as const,
+        content: merged.displayContent,
+        timestamp: ts,
+        ...(rc ? { reasoningContent: rc } : {}),
+      };
+    });
   const now = Date.now();
   return {
     id: c.id,
@@ -75,7 +94,10 @@ export interface ChatState {
   activeConversationId: string | null;
   messages: Message[];
   isLoading: boolean;
-  streamingMessage: string | null;
+  /** 流式：工具进度等非思考文本 */
+  streamingActivity: string | null;
+  /** 流式：思考过程（已由 demux 剥离标记） */
+  streamingThinking: string | null;
   error: string | null;
   interactionMode: ChatInteractionMode;
 
@@ -103,6 +125,22 @@ function normWorkspacePath(p: string | null | undefined): string {
     .toLowerCase();
 }
 
+/** 渲染进程 Conversation → 主进程持久化消息字段（reasoning_content 等） */
+function conversationForEngineUpsert(conv: Conversation) {
+  return {
+    ...conv,
+    messages: conv.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+      ...(m.role === 'assistant' && m.reasoningContent?.trim()
+        ? { reasoning_content: m.reasoningContent.trim() }
+        : {}),
+    })),
+  };
+}
+
 function cancelAssistantReveal() {
   revealCleanup?.();
   revealCleanup = null;
@@ -127,6 +165,7 @@ function resolveEnginePlanMultitask(
 
 type Pending = {
   conversationId: string;
+  demuxer: ReasoningStreamDemux;
   onDelta: (text: string) => void;
   onFinal: (full: string) => void;
 };
@@ -247,7 +286,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   activeConversationId: null,
   messages: [],
   isLoading: false,
-  streamingMessage: null,
+  streamingActivity: null,
+  streamingThinking: null,
   error: null,
   interactionMode: 'plan',
 
@@ -349,14 +389,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         conversations: updatedConversations,
         messages: [...state.messages, userMessage],
         isLoading: true,
-        streamingMessage: null,
+        streamingActivity: null,
+        streamingThinking: null,
         error: null,
       };
     });
 
     try {
       const conv = get().conversations.find((c) => c.id === sessionId);
-      if (conv) await window.electronAPI?.engineUpsertConversation?.(conv);
+      if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
     } catch {
       // best-effort
     }
@@ -364,12 +405,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     try {
       const t0 = performance.now();
 
-      const finalizeReply = (fullText: string, log?: { ipcMs: number; label: string }) => {
+      const finalizeReply = (
+        fullText: string,
+        log?: { ipcMs: number; label: string },
+        reasoningText?: string | null
+      ) => {
+        const rc = typeof reasoningText === 'string' && reasoningText.trim() ? reasoningText.trim() : undefined;
         const assistantMessage: Message = {
           id: uuidv4(),
           role: 'assistant',
           content: fullText,
           timestamp: Date.now(),
+          ...(rc ? { reasoningContent: rc } : {}),
         };
 
         set((state) => {
@@ -388,7 +435,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             conversations: updatedConversations,
             messages: [...state.messages, assistantMessage],
             isLoading: false,
-            streamingMessage: null,
+            streamingActivity: null,
+            streamingThinking: null,
           };
         });
 
@@ -418,7 +466,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       if (useBuiltinStream) {
         cancelAssistantReveal();
-        set({ streamingMessage: '' });
+        set({ streamingActivity: '', streamingThinking: null });
         const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
         const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
         let policyOverrides: any = null;
@@ -453,23 +501,49 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         }
         activeRequestByConversation.set(sessionId, requestId);
 
+        const demuxer = new ReasoningStreamDemux();
+        let deltaBuf = '';
+        let rafId = 0;
+        const flushDeltaBuf = () => {
+          rafId = 0;
+          if (!deltaBuf) return;
+          const chunk = deltaBuf;
+          deltaBuf = '';
+          demuxer.push(chunk);
+          set({
+            streamingActivity: demuxer.getActivity(),
+            streamingThinking: demuxer.getThinkingDisplay() || null,
+          });
+          if (/\[tool:(done|fail)\]/.test(chunk)) {
+            window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+          }
+        };
         pendingById.set(requestId, {
           conversationId: sessionId,
+          demuxer,
           onDelta: (text) => {
-            set((s) => ({ streamingMessage: (s.streamingMessage ?? '') + text }));
-            // Best-effort: tool execution in ClawFlowEngine emits [tool:*] markers into delta.
-            // When tools may have mutated workspace files, ask the UI file tree to refresh.
-            if (/\[tool:(done|fail)\]/.test(String(text ?? ''))) {
-              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
-            }
+            deltaBuf += String(text ?? '');
+            if (!rafId) rafId = requestAnimationFrame(flushDeltaBuf);
           },
           onFinal: (full) => {
+            if (rafId) {
+              cancelAnimationFrame(rafId);
+              rafId = 0;
+            }
+            if (deltaBuf) {
+              demuxer.push(deltaBuf);
+              deltaBuf = '';
+              set({
+                streamingActivity: demuxer.getActivity(),
+                streamingThinking: demuxer.getThinkingDisplay() || null,
+              });
+            }
             if (activeRequestByConversation.get(sessionId) === requestId) {
               activeRequestByConversation.delete(sessionId);
             }
             const t1 = performance.now();
-            finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' });
-            // Final reply likely implies any tool-driven file mutations are complete.
+            const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
+            finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' }, reasoningPersist);
             window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
           },
         });
@@ -505,7 +579,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       cancelAssistantReveal();
 
-      set({ streamingMessage: '' });
+      set({ streamingActivity: '', streamingThinking: null });
       // eslint-disable-next-line no-console
       console.debug('[chat-debug] send(reveal)', {
         conversationId: sessionId,
@@ -532,7 +606,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         const u = Math.min(1, (performance.now() - revealStart) / revealDurationMs);
         const smooth = u * u * (3 - 2 * u);
         const n = Math.min(replyText.length, Math.max(0, Math.round(replyText.length * smooth)));
-        set({ streamingMessage: replyText.slice(0, n) });
+        set({ streamingActivity: replyText.slice(0, n), streamingThinking: null });
         if (u >= 1) {
           revealCleanup = null;
           finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
@@ -546,7 +620,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       cancelAssistantReveal();
       set({
         isLoading: false,
-        streamingMessage: null,
+        streamingActivity: null,
+        streamingThinking: null,
         error: error?.message || '发送消息失败',
       });
     }
@@ -566,7 +641,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       set({
         activeConversationId: id,
         messages: conversation.messages,
-        streamingMessage: null,
+        streamingActivity: null,
+        streamingThinking: null,
         error: null,
       });
     }
@@ -590,7 +666,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         messages: newActiveId
           ? updatedConversations.find((conv) => conv.id === newActiveId)?.messages || []
           : [],
-        streamingMessage: null,
+        streamingActivity: null,
+        streamingThinking: null,
         error: null,
       };
     });
@@ -610,9 +687,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set({
       conversations: conversations.map((conv) => (conv.id === activeConversationId ? cleared : conv)),
       messages: [],
-      streamingMessage: null,
+      streamingActivity: null,
+      streamingThinking: null,
     });
-    void window.electronAPI?.engineUpsertConversation?.(cleared);
+    void window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(cleared));
   },
 
   setError: (error: string | null) => {
