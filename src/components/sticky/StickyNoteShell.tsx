@@ -4,12 +4,18 @@ import { useTranslation } from 'react-i18next';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
+import { useShellViewStore } from '../../store/modules/shellViewStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../../utils/workspace-path';
 import ViewModeFab from '../ViewModeFab';
 import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import StickyFileStrip from './StickyFileStrip';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
+
+/** 主便签：拖出卫星窗口 */
+const STICKY_TEAR_MIME = 'application/x-clawflow-sticky-tear';
+/** 卫星便签：拖回主便签栏合并 */
+const STICKY_MERGE_MIME = 'application/x-clawflow-sticky-merge';
 
 function pushToast(type: 'success' | 'error', title: string, message?: string): void {
   const api = (window as unknown as { __cf_toast?: { success: (t: string, m?: string) => void; error: (t: string, m?: string) => void } })
@@ -67,14 +73,155 @@ const StickyNoteShell: FC = () => {
   filePaneHeightRef.current = filePaneHeightPx;
   const splitDragRef = useRef<{ startY: number; startH: number } | null>(null);
 
+  const setMode = useShellViewStore((s) => s.setMode);
+
+  const [stickyBootstrap, setStickyBootstrap] = useState<{
+    role: 'main' | 'satellite';
+    satelliteWorkspace: string | null;
+  } | null>(null);
+  const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
+  const [detachedPaths, setDetachedPaths] = useState<string[]>([]);
+  const [railMergeOver, setRailMergeOver] = useState(false);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.stickyGetBootstrap) return;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        const [boot, detached, defPath] = await Promise.all([
+          api.stickyGetBootstrap(),
+          api.stickyGetDetachedPaths?.() ?? Promise.resolve({ paths: [] as string[] }),
+          api.workspaceGetDefaultPath?.() ?? Promise.resolve(null),
+        ]);
+        setStickyBootstrap(boot);
+        setDetachedPaths(Array.isArray(detached.paths) ? detached.paths : []);
+        setDefaultWorkspacePath(typeof defPath === 'string' && defPath.trim() ? defPath.trim() : null);
+      } catch {
+        setStickyBootstrap({ role: 'main', satelliteWorkspace: null });
+      }
+    })();
+    unsub = api.onStickyDetachedPaths?.((p) => setDetachedPaths(Array.isArray(p.paths) ? p.paths : []));
+    return () => unsub?.();
+  }, []);
+
+  const isSatellite =
+    stickyBootstrap?.role === 'satellite' && Boolean(stickyBootstrap?.satelliteWorkspace?.trim());
+
+  useEffect(() => {
+    if (!isSatellite || !stickyBootstrap?.satelliteWorkspace) return;
+    setMode('alternate');
+    void setWorkspace(stickyBootstrap.satelliteWorkspace, { fromMainShell: false });
+  }, [isSatellite, stickyBootstrap?.satelliteWorkspace, setMode, setWorkspace]);
+
+  const isDefaultWorkspace = useCallback(
+    (p: string) =>
+      defaultWorkspacePath != null && workspacePathsLikelyEqual(p, defaultWorkspacePath),
+    [defaultWorkspacePath]
+  );
+
+  const isPathDetached = useCallback(
+    (p: string) => detachedPaths.some((d) => workspacePathsLikelyEqual(d, p)),
+    [detachedPaths]
+  );
+
   const workspaceRows = useMemo(() => {
+    if (isSatellite && stickyBootstrap?.satelliteWorkspace) {
+      return [stickyBootstrap.satelliteWorkspace];
+    }
     const r = [...(workspaceRecent ?? [])];
     const act = activeWorkspacePath;
     if (act && !r.some((p) => workspacePathsLikelyEqual(p, act))) {
       r.unshift(act);
     }
-    return r;
-  }, [workspaceRecent, activeWorkspacePath]);
+    return r.filter((p) => !detachedPaths.some((d) => workspacePathsLikelyEqual(d, p)));
+  }, [workspaceRecent, activeWorkspacePath, detachedPaths, isSatellite, stickyBootstrap?.satelliteWorkspace]);
+
+  const canTearOffTab = useCallback(
+    (path: string) =>
+      stickyBootstrap?.role === 'main' &&
+      defaultWorkspacePath != null &&
+      !isDefaultWorkspace(path) &&
+      !isPathDetached(path),
+    [stickyBootstrap?.role, defaultWorkspacePath, isDefaultWorkspace, isPathDetached]
+  );
+
+  const onWorkspaceTabDragStart = useCallback(
+    (path: string, kind: 'tear' | 'merge') => {
+      return (e: React.DragEvent) => {
+        const mime = kind === 'tear' ? STICKY_TEAR_MIME : STICKY_MERGE_MIME;
+        e.dataTransfer.setData(mime, path);
+        e.dataTransfer.setData('text/plain', path);
+        e.dataTransfer.effectAllowed = 'copyMove';
+      };
+    },
+    []
+  );
+
+  const onWorkspaceTabDragEnd = useCallback(
+    (path: string) => {
+      return (e: React.DragEvent) => {
+        if (!canTearOffTab(path)) return;
+        const ax = window.screenX;
+        const ay = window.screenY;
+        const aw = window.outerWidth;
+        const ah = window.outerHeight;
+        const sx = e.screenX;
+        const sy = e.screenY;
+        const margin = 16;
+        const outside =
+          sx < ax + margin || sy < ay + margin || sx > ax + aw - margin || sy > ay + ah - margin;
+        if (!outside) return;
+        void (async () => {
+          const res = await window.electronAPI?.stickyOpenSatellite?.({ workspacePath: path });
+          if (res && 'ok' in res && !res.ok && res.error === 'cannot_detach_default') {
+            pushToast('error', t('sticky.detachDefaultForbidden'));
+          }
+        })();
+      };
+    },
+    [canTearOffTab, t]
+  );
+
+  const railAcceptsMergeDrag = useCallback((e: React.DragEvent) => {
+    return [...e.dataTransfer.types].includes(STICKY_MERGE_MIME);
+  }, []);
+
+  const onRailDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!railAcceptsMergeDrag(e)) return;
+      if (stickyBootstrap?.role !== 'main') return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setRailMergeOver(true);
+    },
+    [railAcceptsMergeDrag, stickyBootstrap?.role]
+  );
+
+  const onRailDragLeave = useCallback((e: React.DragEvent) => {
+    const cur = e.currentTarget;
+    const rel = e.relatedTarget;
+    if (rel && cur instanceof Node && cur.contains(rel as Node)) return;
+    setRailMergeOver(false);
+  }, []);
+
+  const onRailDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setRailMergeOver(false);
+      if (stickyBootstrap?.role !== 'main') return;
+      if (!railAcceptsMergeDrag(e)) return;
+      const raw = e.dataTransfer.getData(STICKY_MERGE_MIME) || e.dataTransfer.getData('text/plain');
+      const path = String(raw ?? '').trim();
+      if (!path) return;
+      const res = await window.electronAPI?.stickyMergeSatellite?.({ workspacePath: path });
+      if (res && 'ok' in res && res.ok && res.closed) {
+        await fetchConversations();
+        await useWorkspaceStore.getState().refresh();
+      }
+    },
+    [fetchConversations, railAcceptsMergeDrag, stickyBootstrap?.role]
+  );
 
   const workspaceLabel =
     (workspaceMeta?.name && String(workspaceMeta.name).trim()) ||
@@ -216,33 +363,53 @@ const StickyNoteShell: FC = () => {
 
   return (
     <div className="cf-stickyShell">
-      <nav className="cf-stickyRail" aria-label={t('sticky.workspaceRailAria')}>
+      <nav
+        className={['cf-stickyRail', railMergeOver ? 'cf-stickyRail--mergeOver' : ''].filter(Boolean).join(' ')}
+        aria-label={t('sticky.workspaceRailAria')}
+        onDragOver={(ev) => onRailDragOver(ev)}
+        onDragLeave={onRailDragLeave}
+        onDrop={(ev) => void onRailDrop(ev)}
+      >
         {workspaceRows.map((path) => {
           const active = activeWorkspacePath && workspacePathsLikelyEqual(path, activeWorkspacePath);
+          const tearable = canTearOffTab(path);
+          const draggable = isSatellite || tearable;
+          const titleExtra = isSatellite
+            ? t('sticky.mergeBackHint')
+            : tearable
+              ? t('sticky.tearOffHint')
+              : path;
           return (
             <button
               key={path}
               type="button"
-              className={`cf-stickyRail__tab${active ? ' cf-stickyRail__tab--active' : ''}`}
+              draggable={draggable}
+              onDragStart={draggable ? onWorkspaceTabDragStart(path, isSatellite ? 'merge' : 'tear') : undefined}
+              onDragEnd={tearable ? onWorkspaceTabDragEnd(path) : undefined}
+              className={`cf-stickyRail__tab${active ? ' cf-stickyRail__tab--active' : ''}${
+                draggable ? ' cf-stickyRail__tab--draggable' : ''
+              }`}
               onClick={() => void onPickWorkspace(path)}
-              title={path}
+              title={titleExtra}
             >
               <span className="cf-stickyRail__tabText">{workspaceFolderLabel(path)}</span>
             </button>
           );
         })}
-        <button
-          type="button"
-          className={`cf-stickyRail__add${addDropOver ? ' cf-stickyRail__add--dropOver' : ''}`}
-          onClick={() => void onAddWorkspace()}
-          onDragOver={onAddDragOver}
-          onDragLeave={onAddDragLeave}
-          onDrop={(ev) => void onAddDrop(ev)}
-          aria-label={t('sticky.addWorkspace')}
-          title={t('sticky.addWorkspaceDropHint')}
-        >
-          <PlusOutlined />
-        </button>
+        {!isSatellite ? (
+          <button
+            type="button"
+            className={`cf-stickyRail__add${addDropOver ? ' cf-stickyRail__add--dropOver' : ''}`}
+            onClick={() => void onAddWorkspace()}
+            onDragOver={onAddDragOver}
+            onDragLeave={onAddDragLeave}
+            onDrop={(ev) => void onAddDrop(ev)}
+            aria-label={t('sticky.addWorkspace')}
+            title={t('sticky.addWorkspaceDropHint')}
+          >
+            <PlusOutlined />
+          </button>
+        ) : null}
       </nav>
 
       <div className="cf-stickyMain">

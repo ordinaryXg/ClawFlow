@@ -31,6 +31,7 @@ import {
   type PublicWebSearchConfig,
   type ResolvedClawFlowWebSearch,
 } from './web-search';
+import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
 
 export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-search';
 
@@ -75,9 +76,9 @@ export interface ClawFlowEngine {
   getConfig(): Readonly<ClawFlowEnginePublicConfig>;
   setWorkspaceRoot(workspaceRoot: string): void;
 
-  listConversations(): Promise<StoredConversation[]>;
-  upsertConversation(conversation: StoredConversation): Promise<void>;
-  deleteConversation(conversationId: string): Promise<void>;
+  listConversations(workspaceRoot?: string): Promise<StoredConversation[]>;
+  upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void>;
+  deleteConversation(conversationId: string, workspaceRoot?: string): Promise<void>;
 
   sendMessage(params: {
     conversationId: string;
@@ -92,6 +93,8 @@ export interface ClawFlowEngine {
     /** 若提供：在每次执行工具前暂停并回调；未提供则视为自动同意（如 IPC 无 UI 场景） */
     onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
     openEmbeddedBrowser?: (url: string) => void;
+    /** 多窗口：会话与工具以此根目录为准；缺省用引擎当前 config */
+    workspaceRoot?: string;
   }): Promise<{ message: string }>;
 
   /** Gateway / 主进程在用户确认或拒绝后调用，解除 sendMessage 内工具前等待 */
@@ -106,6 +109,7 @@ export interface ClawFlowEngine {
     modelId?: string;
     mode: 'ask';
     onDelta: (delta: string) => void;
+    workspaceRoot?: string;
   }): Promise<string>;
 
   listChatModelCatalog(): Promise<{
@@ -121,9 +125,20 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     webSearch: ResolvedClawFlowWebSearch;
   };
   private store: SessionStore;
+  private sessionStores = new Map<string, SessionStore>();
   private router: ProviderRouter;
   private tools = createDefaultToolRuntime();
   private toolApprovalResolvers = new Map<string, (approved: boolean) => void>();
+
+  private getSessionStore(workspaceRoot: string): SessionStore {
+    const k = path.resolve(workspaceRoot);
+    let s = this.sessionStores.get(k);
+    if (!s) {
+      s = new SessionStore(k);
+      this.sessionStores.set(k, s);
+    }
+    return s;
+  }
 
   resolveToolApproval(approvalId: string, approved: boolean): void {
     const fn = this.toolApprovalResolvers.get(approvalId);
@@ -146,7 +161,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       verbose: cfg.verbose ?? true,
       webSearch: resolveWebSearchConfig(cfg.webSearch, process.env),
     };
-    this.store = new SessionStore(workspaceRoot);
+    this.store = this.getSessionStore(workspaceRoot);
     this.router = new ProviderRouter();
     // Provider instances are registered here; auth is resolved per-request.
     // Phase 1: DeepSeek is fully implemented. Others are stubs.
@@ -185,26 +200,34 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     const next = path.resolve(workspaceRoot);
     if (next === this.config.workspaceRoot) return;
     this.config.workspaceRoot = next;
-    this.store = new SessionStore(next);
+    this.store = this.getSessionStore(next);
     if (this.config.verbose) console.log('[ClawFlowEngine] workspaceRoot=', next);
   }
 
-  async listConversations(): Promise<StoredConversation[]> {
-    return await this.store.normalizeToSingletonIfNeeded();
+  async listConversations(workspaceRoot?: string): Promise<StoredConversation[]> {
+    const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
+    return await store.normalizeToSingletonIfNeeded();
   }
 
-  async upsertConversation(conversation: StoredConversation): Promise<void> {
-    await this.store.upsertConversation(conversation);
+  async upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void> {
+    const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
+    await store.upsertConversation(conversation);
   }
 
-  async deleteConversation(conversationId: string): Promise<void> {
-    await this.store.deleteConversation(conversationId);
+  async deleteConversation(conversationId: string, workspaceRoot?: string): Promise<void> {
+    const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
+    await store.deleteConversation(conversationId);
   }
 
-  private async buildHistoryMessages(conversationId: string, userText: string): Promise<ChatMessage[]> {
-    const roleSystem = await buildRoleAgentSystemContent(this.config.workspaceRoot);
+  private async buildHistoryMessages(
+    conversationId: string,
+    userText: string,
+    store: SessionStore,
+    roleWorkspaceRoot: string
+  ): Promise<ChatMessage[]> {
+    const roleSystem = await buildRoleAgentSystemContent(roleWorkspaceRoot);
 
-    const convsBefore = await this.store.readAll();
+    const convsBefore = await store.readAll();
     const conv = convsBefore.find((c) => c.id === conversationId) ?? null;
     const tail: ChatMessage[] = (conv?.messages ?? [])
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'tool'))
@@ -227,15 +250,18 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return [{ role: 'system', content: roleSystem }, ...tail];
   }
 
-  private async appendAssistantMessage(params: {
-    conversationId: string;
-    reply: string;
-    mode: InteractionMode;
-    modelIdHint: string | null;
-    engine: 'clawflow' | 'clawflow-stub';
-    reasoning_content?: string;
-  }): Promise<void> {
-    const convs = await this.store.readAll();
+  private async appendAssistantMessage(
+    store: SessionStore,
+    params: {
+      conversationId: string;
+      reply: string;
+      mode: InteractionMode;
+      modelIdHint: string | null;
+      engine: 'clawflow' | 'clawflow-stub';
+      reasoning_content?: string;
+    }
+  ): Promise<void> {
+    const convs = await store.readAll();
     const idx = convs.findIndex((c) => c.id === params.conversationId);
     const now = Date.now();
     const rc =
@@ -258,14 +284,14 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         updatedAt: now,
       };
       convs[idx] = next;
-      await this.store.writeAll(convs);
+      await store.writeAll(convs);
     }
     this.emit('engine:message', params.conversationId, assistantMsg);
   }
 
-  private async appendMessages(conversationId: string, msgs: StoredMessage[]): Promise<void> {
+  private async appendMessages(conversationId: string, msgs: StoredMessage[], store: SessionStore): Promise<void> {
     if (!msgs.length) return;
-    const convs = await this.store.readAll();
+    const convs = await store.readAll();
     const idx = convs.findIndex((c) => c.id === conversationId);
     const now = Date.now();
     if (idx >= 0) {
@@ -276,7 +302,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         updatedAt: now,
       };
       convs[idx] = next;
-      await this.store.writeAll(convs);
+      await store.writeAll(convs);
     }
     for (const m of msgs) {
       this.emit('engine:message', conversationId, m);
@@ -395,12 +421,16 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     openEmbeddedBrowser?: (url: string) => void;
     requestId?: string;
     onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
+    workspaceRoot?: string;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
     // - Otherwise return a deterministic stub
     const mode = params.mode ?? 'ask';
     const modelId = params.modelId ?? 'deepseek/deepseek-chat';
+    const effRoot = path.resolve(params.workspaceRoot ?? this.config.workspaceRoot);
+    const store = this.getSessionStore(effRoot);
+    const toolRuntimeConfig = { ...this.config, workspaceRoot: effRoot };
 
     const providerId = this.router.resolveProviderIdFromModelId(modelId);
     const provider = providerId ? this.router.get(providerId) : null;
@@ -410,7 +440,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     if (provider && providerId) {
       const loopMessages: ChatMessage[] = await this.buildHistoryMessages(
         params.conversationId,
-        params.userText
+        params.userText,
+        store,
+        effRoot
       );
 
       const overridesForMode = (() => {
@@ -423,7 +455,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         intent: params.intent ?? 'strong',
         overrides: overridesForMode,
       });
-      const workspaceToolSelection = await readWorkspaceToolManifest(this.config.workspaceRoot);
+      const workspaceToolSelection = await readWorkspaceToolManifest(effRoot);
       // Ensure tools come from the current runtime (avoid creating a second runtime for schemas).
       if (baseModeConfig.toolsEnabled) {
         baseModeConfig.tools = filterToolSchemasByWorkspaceManifest(this.tools.listSchemas(), workspaceToolSelection);
@@ -485,7 +517,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
             modelIdHint: modelId,
             engine: 'clawflow',
           });
-          await this.appendMessages(params.conversationId, [storedAssistant]);
+          await this.appendMessages(params.conversationId, [storedAssistant], store);
         } catch (e: any) {
           console.warn('[ClawFlowEngine] persist assistant(tool_calls) failed:', e?.message ?? e);
         }
@@ -534,8 +566,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
             }));
           } else {
             toolResults = await this.tools.executeToolCalls(toolCalls as any, {
-              workspaceRoot: this.config.workspaceRoot,
-              config: this.config,
+              workspaceRoot: effRoot,
+              config: toolRuntimeConfig,
               onDelta: params.onDelta,
               abortSignal: params.abortSignal,
               openEmbeddedBrowser: params.openEmbeddedBrowser,
@@ -544,8 +576,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           }
         } else {
           toolResults = await this.tools.executeToolCalls(toolCalls as any, {
-            workspaceRoot: this.config.workspaceRoot,
-            config: this.config,
+            workspaceRoot: effRoot,
+            config: toolRuntimeConfig,
             onDelta: params.onDelta,
             abortSignal: params.abortSignal,
             openEmbeddedBrowser: params.openEmbeddedBrowser,
@@ -562,7 +594,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
         // Persist tool results as discrete messages.
         try {
-          await this.appendMessages(params.conversationId, storedTools);
+          await this.appendMessages(params.conversationId, storedTools, store);
         } catch (e: any) {
           console.warn('[ClawFlowEngine] persist tool results failed:', e?.message ?? e);
         }
@@ -575,7 +607,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
     // Persist final assistant reply as its own message.
     // (Tool-calls + tool results are persisted per-step above for plan/multitask.)
-    await this.appendAssistantMessage({
+    await this.appendAssistantMessage(store, {
       conversationId: params.conversationId,
       reply,
       mode,
@@ -595,7 +627,11 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     abortSignal?: AbortSignal;
     intent?: ChatIntent;
     policyOverrides?: unknown;
+    workspaceRoot?: string;
   }): Promise<string> {
+    const effRoot = path.resolve(params.workspaceRoot ?? this.config.workspaceRoot);
+    const store = this.getSessionStore(effRoot);
+
     const emitChunked = async (text: string) => {
       const full = String(text ?? '');
       if (!full) return;
@@ -628,7 +664,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     if (!provider || !providerId) {
       const reply = `【ClawFlowEngine:stub】mode=${streamMode} model=${modelId}\n\n你说：${params.userText}`;
       await emitChunked(reply);
-      await this.appendAssistantMessage({
+      await this.appendAssistantMessage(store, {
         conversationId: params.conversationId,
         reply,
         mode,
@@ -638,7 +674,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       return reply;
     }
 
-    const loopMessages = await this.buildHistoryMessages(params.conversationId, params.userText);
+    const loopMessages = await this.buildHistoryMessages(params.conversationId, params.userText, store, effRoot);
     const req: ChatCompletionRequest = {
       model: modelId,
       messages: loopMessages,
@@ -662,7 +698,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     if (!reply.trim()) {
       reply = `【ClawFlowEngine:stub】mode=${streamMode} model=${modelId}\n\n你说：${params.userText}`;
       await emitChunked(reply);
-      await this.appendAssistantMessage({
+      await this.appendAssistantMessage(store, {
         conversationId: params.conversationId,
         reply,
         mode,
@@ -674,7 +710,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
     const merged = mergeCompletionReasoning(reply, apiReasoning);
     const replyPersist = merged.displayContent.trim() ? merged.displayContent : reply;
-    await this.appendAssistantMessage({
+    await this.appendAssistantMessage(store, {
       conversationId: params.conversationId,
       reply: replyPersist,
       mode,
@@ -711,17 +747,20 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     return { success: true };
   });
 
-  ipcMain.handle('engine:getConversations', async () => {
-    const conversations = await getGlobalClawFlowEngine().listConversations();
+  ipcMain.handle('engine:getConversations', async (event) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    const conversations = await getGlobalClawFlowEngine().listConversations(root);
     return { conversations };
   });
   ipcMain.handle('engine:getChatModels', async () => getGlobalClawFlowEngine().listChatModelCatalog());
-  ipcMain.handle('engine:upsertConversation', async (_e, conversation: StoredConversation) => {
-    await getGlobalClawFlowEngine().upsertConversation(conversation);
+  ipcMain.handle('engine:upsertConversation', async (event, conversation: StoredConversation) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    await getGlobalClawFlowEngine().upsertConversation(conversation, root);
     return { success: true };
   });
-  ipcMain.handle('engine:deleteConversation', async (_e, conversationId: string) => {
-    await getGlobalClawFlowEngine().deleteConversation(conversationId);
+  ipcMain.handle('engine:deleteConversation', async (event, conversationId: string) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    await getGlobalClawFlowEngine().deleteConversation(conversationId, root);
     return { success: true };
   });
 
@@ -813,8 +852,10 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       event,
       params: { conversationId: string; userText: string; mode?: InteractionMode; modelId?: string }
     ) => {
+      const workspaceRoot = resolveWorkspaceRootForWebContents(event.sender);
       const res = await getGlobalClawFlowEngine().sendMessage({
         ...params,
+        workspaceRoot,
         openEmbeddedBrowser: (url: string) => {
           event.sender.send('embedded-browser:navigate', { url });
         },
@@ -828,6 +869,7 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       event,
       params: { conversationId: string; userText: string; modelId?: string; mode?: 'ask' | 'plan' | 'multitask' }
     ) => {
+      const workspaceRoot = resolveWorkspaceRootForWebContents(event.sender);
       const sendDelta = (text: string) => {
         event.sender.send('engine:chatStream', {
           kind: 'delta',
@@ -847,6 +889,7 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
           userText: params.userText,
           modelId: params.modelId,
           mode,
+          workspaceRoot,
           onDelta: sendDelta,
           openEmbeddedBrowser: (url: string) => {
             event.sender.send('embedded-browser:navigate', { url });
@@ -866,6 +909,7 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
         userText: params.userText,
         modelId: params.modelId,
         mode,
+        workspaceRoot,
         onDelta: (text) => sendDelta(text),
       });
       return { success: true, message: full };

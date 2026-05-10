@@ -35,6 +35,8 @@ type WsClientMessage =
       intent?: 'fast' | 'strong' | 'cheap';
       policyOverrides?: unknown;
       modelId?: string;
+      /** 与当前 UI 工作区一致；缺省用引擎全局 workspaceRoot */
+      workspaceRoot?: string;
     }
   | { type: 'gateway:ping' }
   | { type: 'chat:cancel'; requestId: string }
@@ -354,6 +356,8 @@ class GatewayDaemon extends EventEmitter {
       | 'cheap';
     const policyOverrides = (msg as any).policyOverrides;
     const modelId = typeof msg.modelId === 'string' ? msg.modelId.trim() : '';
+    const workspaceRoot =
+      typeof (msg as any).workspaceRoot === 'string' ? String((msg as any).workspaceRoot).trim() : '';
 
     if (!requestId || !conversationId || !text) {
       this.send(ws, {
@@ -385,6 +389,7 @@ class GatewayDaemon extends EventEmitter {
         userText: text,
         mode: mode === 'multitask' ? 'multitask' : 'plan',
         ...(modelId ? { modelId } : {}),
+        ...(workspaceRoot ? { workspaceRoot } : {}),
         onDelta: sendDelta,
         abortSignal: abort.signal,
         intent,

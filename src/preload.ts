@@ -94,7 +94,20 @@ export interface IElectronAPI {
   quitApp: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   workspaceListRecent: () => Promise<string[]>;
-  workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspaceSetActive: (
+    folderPath: string,
+    opts?: { fromMainShell?: boolean }
+  ) => Promise<{ success: boolean; path: string }>;
+  stickyGetBootstrap: () => Promise<{ role: 'main' | 'satellite'; satelliteWorkspace: string | null }>;
+  stickyGetDetachedPaths: () => Promise<{ paths: string[] }>;
+  stickyOpenSatellite: (params: { workspacePath: string }) => Promise<
+    | { ok: true; focused: boolean }
+    | { ok: false; error: string }
+  >;
+  stickyMergeSatellite: (params: { workspacePath: string }) => Promise<
+    { ok: true; closed: boolean } | { ok: false; error: string }
+  >;
+  onStickyDetachedPaths: (cb: (payload: { paths: string[] }) => void) => () => void;
   workspaceAddFromAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;
@@ -272,7 +285,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
   workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),
-  workspaceSetActive: (folderPath: string) => ipcRenderer.invoke('workspace:setActive', folderPath),
+  workspaceSetActive: (folderPath: string, opts?: { fromMainShell?: boolean }) =>
+    ipcRenderer.invoke('workspace:setActive', folderPath, opts ?? {}),
+  stickyGetBootstrap: () => ipcRenderer.invoke('sticky:getBootstrap'),
+  stickyGetDetachedPaths: () => ipcRenderer.invoke('sticky:getDetachedPaths'),
+  stickyOpenSatellite: (params: { workspacePath: string }) => ipcRenderer.invoke('sticky:openSatellite', params),
+  stickyMergeSatellite: (params: { workspacePath: string }) => ipcRenderer.invoke('sticky:mergeSatellite', params),
+  onStickyDetachedPaths: (cb: (payload: { paths: string[] }) => void) => {
+    const handler = (_e: unknown, payload: unknown) => {
+      if (payload && typeof payload === 'object' && Array.isArray((payload as { paths?: unknown }).paths)) {
+        cb({ paths: (payload as { paths: string[] }).paths });
+      }
+    };
+    ipcRenderer.on('sticky:detachedPaths', handler);
+    return () => ipcRenderer.removeListener('sticky:detachedPaths', handler);
+  },
   workspaceAddFromAbsolutePath: (
     absPath: string
   ) => ipcRenderer.invoke('workspace:addFromAbsolutePath', absPath) as Promise<

@@ -35,6 +35,7 @@ type GatewayWsSend =
       autoPick?: { pickedMode: 'plan' | 'multitask'; reason: string };
       policyOverrides?: unknown;
       modelId?: string;
+      workspaceRoot?: string;
     }
   | { type: 'gateway:ping' }
   | { type: 'chat:toolApprovalResponse'; requestId: string; approvalId: string; approved: boolean };
@@ -540,6 +541,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
       if (useBuiltinStream) {
         cancelAssistantReveal();
         set({ streamingActivity: '', streamingThinking: null });
+        let sendWorkspaceRoot = '';
+        try {
+          const wa = await window.electronAPI?.workspaceGetActive?.();
+          sendWorkspaceRoot = normWorkspacePath(typeof wa?.path === 'string' ? wa.path : '');
+        } catch {
+          sendWorkspaceRoot = '';
+        }
         const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
         const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
         let policyOverrides: any = null;
@@ -633,6 +641,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
           ...(autoPick ? { autoPick: autoPick } : {}),
           ...(policyOverrides ? { policyOverrides } : {}),
           ...(modelId ? { modelId } : {}),
+          ...(sendWorkspaceRoot ? { workspaceRoot: sendWorkspaceRoot } : {}),
         };
         ws.send(JSON.stringify(msg));
         return;

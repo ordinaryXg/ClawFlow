@@ -46,7 +46,10 @@
     "workspaceDropAddNotFolder": "请拖入文件夹（不能是单个文件）",
     "workspaceDropAddFailed": "无法打开该路径作为工作区",
     "workspaceDropAddNoPath": "未能解析拖入路径（请从资源管理器拖入文件夹）",
-    "workspaceToolsNeedWs": "请先选择或添加工作区"
+    "workspaceToolsNeedWs": "请先选择或添加工作区",
+    "tearOffHint": "拖出窗口：将标签拖出本窗口外可打开独立便签（默认工作区不可拖出）",
+    "mergeBackHint": "拖回主便签：将标签拖到主窗口左侧标签栏可合并",
+    "detachDefaultForbidden": "默认工作区不能拖出为独立便签"
   },
   "workspace": {
     "title": "工作空间",

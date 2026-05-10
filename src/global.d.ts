@@ -101,7 +101,19 @@ export interface IElectronAPI {
     | { ok: true; newActivePath: string; deletedFromDisk: boolean }
     | { ok: false; error: string }
   >;
-  workspaceSetActive: (folderPath: string) => Promise<{ success: boolean; path: string }>;
+  workspaceSetActive: (
+    folderPath: string,
+    opts?: { fromMainShell?: boolean }
+  ) => Promise<{ success: boolean; path: string }>;
+  stickyGetBootstrap: () => Promise<{ role: 'main' | 'satellite'; satelliteWorkspace: string | null }>;
+  stickyGetDetachedPaths: () => Promise<{ paths: string[] }>;
+  stickyOpenSatellite: (params: { workspacePath: string }) => Promise<
+    { ok: true; focused: boolean } | { ok: false; error: string }
+  >;
+  stickyMergeSatellite: (params: { workspacePath: string }) => Promise<
+    { ok: true; closed: boolean } | { ok: false; error: string }
+  >;
+  onStickyDetachedPaths: (cb: (payload: { paths: string[] }) => void) => () => void;
   workspaceAddFromAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string } | { ok: false; error: string }>;

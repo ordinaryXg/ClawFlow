@@ -14,7 +14,7 @@ interface WorkspaceState {
   recent: string[];
   loading: boolean;
   refresh: () => Promise<void>;
-  setWorkspace: (folderPath: string) => Promise<void>;
+  setWorkspace: (folderPath: string, opts?: { fromMainShell?: boolean }) => Promise<void>;
   /** 仅弹出系统选目录，不初始化工作区 */
   pickWorkspacePath: () => Promise<string | null>;
   /** 初始化（含 .tool）并切换为当前工作区 */
@@ -49,10 +49,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  setWorkspace: async (folderPath: string) => {
+  setWorkspace: async (folderPath: string, opts?: { fromMainShell?: boolean }) => {
     set({ loading: true });
     try {
-      await window.electronAPI?.workspaceSetActive?.(folderPath);
+      await window.electronAPI?.workspaceSetActive?.(folderPath, opts ?? {});
       await get().refresh();
     } finally {
       set({ loading: false });
@@ -67,7 +67,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ loading: true });
     try {
       await window.electronAPI?.workspaceEnsureInitialized?.(folderPath, { tools });
-      await get().setWorkspace(folderPath);
+      await get().setWorkspace(folderPath, { fromMainShell: true });
     } finally {
       set({ loading: false });
     }

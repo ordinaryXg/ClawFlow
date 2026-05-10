@@ -46,7 +46,10 @@
     "workspaceDropAddNotFolder": "Drop a folder (not a single file)",
     "workspaceDropAddFailed": "Could not open that path as a workspace",
     "workspaceDropAddNoPath": "Could not resolve the drop (drag a folder from File Explorer)",
-    "workspaceToolsNeedWs": "Select or add a workspace first"
+    "workspaceToolsNeedWs": "Select or add a workspace first",
+    "tearOffHint": "Tear off: drag this tab outside the window to open a separate sticky (the default workspace cannot be torn off)",
+    "mergeBackHint": "Merge back: drag this tab onto the main window’s left rail",
+    "detachDefaultForbidden": "The default workspace cannot be torn off into a separate sticky"
   },
   "workspace": {
     "title": "Workspace",
