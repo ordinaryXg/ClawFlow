@@ -5,6 +5,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
 import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../../utils/workspace-path';
+import ViewModeFab from '../ViewModeFab';
 import StickyFileStrip from './StickyFileStrip';
 import './stickyNoteShell.css';
 
@@ -24,17 +25,12 @@ function loadFilePaneHeight(): number {
   return DEFAULT_FILE_PANE_H;
 }
 
-function isWindowsOs(): boolean {
-  return typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
-}
-
 /**
  * 便签式桌面布局：左侧工作区标签（独立滚动）、顶栏、中间上下分栏（文件区 / 对话区，可拖拽调节高度；仅对话消息区滚动）。
  */
 const StickyNoteShell: FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const showWinFrameCaps = isWindowsOs();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
@@ -180,34 +176,7 @@ const StickyNoteShell: FC = () => {
             <button type="button" className="cf-stickyMain__newBtn" onClick={() => void onNewSession()}>
               {t('sticky.newSession')}
             </button>
-            {showWinFrameCaps ? (
-              <div className="cf-stickyMain__winCaps" role="toolbar" aria-label={t('sticky.windowControls')}>
-                <button
-                  type="button"
-                  className="cf-stickyMain__winCap"
-                  aria-label={t('titlebar.minimize')}
-                  onClick={() => void window.electronAPI?.windowMinimize?.()}
-                >
-                  —
-                </button>
-                <button
-                  type="button"
-                  className="cf-stickyMain__winCap"
-                  aria-label={t('titlebar.toggleMaximize')}
-                  onClick={() => void window.electronAPI?.windowToggleMaximize?.()}
-                >
-                  □
-                </button>
-                <button
-                  type="button"
-                  className="cf-stickyMain__winCap cf-stickyMain__winCap--close"
-                  aria-label={t('titlebar.closeWindow')}
-                  onClick={() => void window.electronAPI?.windowClose?.()}
-                >
-                  ✕
-                </button>
-              </div>
-            ) : null}
+            <ViewModeFab variant="stickyBar" />
           </div>
         </header>
 

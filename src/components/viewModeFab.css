@@ -35,6 +35,23 @@
   background: rgba(88, 166, 255, 0.09);
 }
 
+/* 便签顶栏：静态流式，不占 fixed 左下角 */
+.cf-viewModeFab--stickyBar {
+  position: static;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  padding: 5px 8px;
+  gap: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.cf-viewModeFab--stickyBar .cf-viewModeFab__glyph {
+  transform: scale(0.92);
+}
+
 .cf-viewModeFab__glyph {
   position: relative;
   width: 18px;

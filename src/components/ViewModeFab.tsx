@@ -3,19 +3,33 @@ import { useTranslation } from 'react-i18next';
 import { useShellViewStore } from '../store/modules/shellViewStore';
 import './viewModeFab.css';
 
+export type ViewModeFabVariant = 'fab' | 'stickyBar';
+
+type Props = {
+  /** fab：左下角浮动；stickyBar：便签顶栏右上角紧凑按钮 */
+  variant?: ViewModeFabVariant;
+};
+
 /**
- * 左下角浮动按钮：在标准布局与备用视图模式之间切换（备用模式的具体呈现待产品定义）。
+ * 在标准布局与便签式布局之间切换。默认左下角浮动；便签模式下由顶栏嵌入。
  */
-const ViewModeFab: FC = () => {
+const ViewModeFab: FC<Props> = ({ variant = 'fab' }) => {
   const { t } = useTranslation();
   const mode = useShellViewStore((s) => s.mode);
   const toggleMode = useShellViewStore((s) => s.toggleMode);
   const isAlternate = mode === 'alternate';
+  const stickyBar = variant === 'stickyBar';
 
   return (
     <button
       type="button"
-      className={`cf-viewModeFab${isAlternate ? ' cf-viewModeFab--alternate' : ''}`}
+      className={[
+        'cf-viewModeFab',
+        isAlternate ? 'cf-viewModeFab--alternate' : '',
+        stickyBar ? 'cf-viewModeFab--stickyBar' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       onClick={toggleMode}
       aria-pressed={isAlternate}
       title={
@@ -26,7 +40,7 @@ const ViewModeFab: FC = () => {
         <span className="cf-viewModeFab__square" />
         <span className="cf-viewModeFab__square cf-viewModeFab__square--back" />
       </span>
-      <span className="cf-viewModeFab__label">{t('layout.viewMode.shortLabel')}</span>
+      {!stickyBar ? <span className="cf-viewModeFab__label">{t('layout.viewMode.shortLabel')}</span> : null}
     </button>
   );
 };

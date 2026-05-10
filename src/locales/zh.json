@@ -26,7 +26,12 @@
     "pickWorkspaceFirst": "请先选择或添加工作空间",
     "windowControls": "窗口",
     "splitResize": "拖动调节文件区与对话区高度",
-    "splitResizeHint": "上下拖动以分配文件列表与对话区域高度"
+    "splitResizeHint": "上下拖动以分配文件列表与对话区域高度",
+    "fileLayoutTree": "树形列表",
+    "fileLayoutGrid": "九宫格",
+    "fileLayoutGroupAria": "文件列表排版",
+    "fileTreeToggleDir": "展开或折叠文件夹「{{name}}」",
+    "fileTreeEmptyDir": "（空文件夹）"
   },
   "workspace": {
     "title": "工作空间",

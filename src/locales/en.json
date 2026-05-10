@@ -26,7 +26,12 @@
     "pickWorkspaceFirst": "Select or add a workspace first",
     "windowControls": "Window",
     "splitResize": "Resize file list vs chat height",
-    "splitResizeHint": "Drag vertically to split space between files and chat"
+    "splitResizeHint": "Drag vertically to split space between files and chat",
+    "fileLayoutTree": "Tree list",
+    "fileLayoutGrid": "3×3 grid",
+    "fileLayoutGroupAria": "File list layout",
+    "fileTreeToggleDir": "Expand or collapse folder “{{name}}”",
+    "fileTreeEmptyDir": "(empty folder)"
   },
   "workspace": {
     "title": "Workspace",

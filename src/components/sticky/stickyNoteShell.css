@@ -1,18 +1,14 @@
-/* 便签模式：整体偏透，可隐约看到桌面壁纸；毛玻璃略轻以免糊死底图 */
+/* 便签模式：左侧轨完全透底；主列/对话略更不透明，便于阅读 */
 .cf-app.cf-app--shellViewAlternate {
-  --sticky-bg: rgba(11, 21, 40, 0.28);
-  --sticky-panel: rgba(16, 37, 66, 0.4);
-  --sticky-panel2: rgba(13, 31, 56, 0.34);
+  --sticky-panel: rgba(16, 37, 66, 0.55);
+  --sticky-panel2: rgba(13, 31, 56, 0.48);
   --sticky-border: rgba(255, 255, 255, 0.16);
   --sticky-text: rgba(255, 255, 255, 0.94);
   --sticky-muted: rgba(255, 255, 255, 0.58);
   --sticky-accent: #2db3a0;
   --sticky-accent-soft: rgba(45, 179, 160, 0.22);
   --sticky-radius: 10px;
-  --sticky-rail-from: rgba(13, 31, 56, 0.32);
-  --sticky-rail-to: rgba(11, 21, 40, 0.2);
-  --sticky-blur-main: 8px;
-  --sticky-blur-rail: 6px;
+  --sticky-blur-main: 10px;
 }
 
 .cf-app.cf-app--shellViewAlternate .cf-main {
@@ -36,7 +32,8 @@
   align-items: stretch;
   min-width: 0;
   overflow: hidden;
-  background: var(--sticky-bg);
+  /* 不设底色：左侧 cf-stickyRail 才能完全透出桌面 */
+  background: transparent;
   color: var(--sticky-text);
 }
 
@@ -52,10 +49,8 @@
   padding: 10px 0 10px 8px;
   overflow-x: hidden;
   overflow-y: auto;
-  background: linear-gradient(90deg, var(--sticky-rail-from), var(--sticky-rail-to));
+  background: transparent;
   border-right: 1px solid var(--sticky-border);
-  backdrop-filter: blur(var(--sticky-blur-rail));
-  -webkit-backdrop-filter: blur(var(--sticky-blur-rail));
 }
 
 .cf-stickyRail__tab {
@@ -64,7 +59,8 @@
   padding: 6px 4px;
   border: 1px solid transparent;
   border-radius: 8px 0 0 8px;
-  background: rgba(255, 255, 255, 0.05);
+  /* 轨条本身全透，标签略留底以便辨认 */
+  background: rgba(255, 255, 255, 0.1);
   color: var(--sticky-muted);
   cursor: pointer;
   font-size: 11px;
@@ -79,7 +75,7 @@
 
 .cf-stickyRail__tab:hover {
   color: var(--sticky-text);
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .cf-stickyRail__tab--active {
@@ -142,7 +138,7 @@
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--sticky-border);
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.12);
   -webkit-app-region: no-drag;
 }
 
@@ -205,32 +201,6 @@
 .cf-stickyMain__newBtn:hover {
   border-color: var(--sticky-accent);
   background: rgba(45, 179, 160, 0.36);
-}
-
-.cf-stickyMain__winCaps {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 4px;
-}
-.cf-stickyMain__winCap {
-  width: 34px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--sticky-border);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--sticky-text);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-.cf-stickyMain__winCap:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-.cf-stickyMain__winCap--close:hover {
-  background: rgba(194, 75, 75, 0.32);
-  border-color: rgba(194, 75, 75, 0.45);
 }
 
 /* 中间：上文件 / 下对话，整体不滚动；仅对话内部滚动 */
@@ -305,7 +275,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.07);
 }
 
 .cf-stickyFiles--emptyEmbed {
@@ -321,11 +291,16 @@
   flex-shrink: 0;
 }
 
-.cf-stickyFiles--embedFill .cf-stickyFiles__list {
+.cf-stickyFiles--embedFill .cf-stickyFiles__body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cf-stickyFiles--embedFill.cf-stickyFiles--layoutGrid .cf-stickyFiles__body {
+  overflow-y: auto;
 }
 
 .cf-stickyFiles--embedFill .cf-stickyFiles__rowBtn {
@@ -342,11 +317,178 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 6px 12px 4px;
   font-size: 11px;
   font-weight: 600;
   color: var(--sticky-muted);
   letter-spacing: 0.04em;
+}
+
+.cf-stickyFiles__headActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cf-stickyFiles__layoutToggle {
+  display: inline-flex;
+  border: 1px solid var(--sticky-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cf-stickyFiles__layoutBtn {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--sticky-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.cf-stickyFiles__layoutBtn + .cf-stickyFiles__layoutBtn {
+  border-left: 1px solid var(--sticky-border);
+}
+
+.cf-stickyFiles__layoutBtn:hover {
+  color: var(--sticky-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cf-stickyFiles__layoutBtn--active {
+  color: var(--sticky-accent);
+  background: rgba(45, 179, 160, 0.18);
+}
+
+.cf-stickyFiles__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cf-stickyFiles__list--tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 8px 0;
+}
+
+.cf-stickyFiles__treeItem {
+  list-style: none;
+}
+
+.cf-stickyFiles__treeNested {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cf-stickyFiles__treeRow {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.cf-stickyFiles__chev,
+.cf-stickyFiles__chevSpacer {
+  flex-shrink: 0;
+  width: 22px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cf-stickyFiles__chev {
+  border: none;
+  background: transparent;
+  color: var(--sticky-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 10px;
+}
+
+.cf-stickyFiles__chev:hover {
+  color: var(--sticky-text);
+}
+
+.cf-stickyFiles__chevBusy {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.cf-stickyFiles__rowBtn--tree {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  border-radius: 0;
+}
+
+.cf-stickyFiles__treeEmpty {
+  font-size: 11px;
+  color: var(--sticky-muted);
+  padding-bottom: 6px;
+}
+
+.cf-stickyFiles__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px 8px 10px;
+}
+
+.cf-stickyFiles__gridCell {
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 1px solid var(--sticky-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--sticky-text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 10px;
+  text-align: center;
+}
+
+.cf-stickyFiles__gridCell:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(45, 179, 160, 0.35);
+}
+
+.cf-stickyFiles__gridIcon {
+  font-size: 18px;
+  color: var(--sticky-muted);
+}
+
+.cf-stickyFiles__gridName {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  line-height: 1.2;
+  width: 100%;
+}
+
+.cf-stickyFiles__gridEmpty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--sticky-muted);
 }
 
 .cf-stickyFiles__refresh {
@@ -436,10 +578,26 @@
 }
 
 .cf-app.cf-app--shellViewAlternate .cf-chatCenter--alternate .cf-chatCenter__messages {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .cf-app.cf-app--shellViewAlternate .cf-chatCenter--alternate .cf-chatCenter__input {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.14);
   border-top: 1px solid var(--sticky-border);
+}
+
+.cf-app.cf-app--shellViewAlternate .cf-chatInput--stickyFoot .cf-chatInput__fieldIco {
+  border-color: var(--sticky-border);
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--sticky-muted);
+}
+
+.cf-app.cf-app--shellViewAlternate .cf-chatInput--stickyFoot .cf-selectHint.ant-select-single .ant-select-selector {
+  border-color: var(--sticky-border) !important;
+  background: rgba(0, 0, 0, 0.1) !important;
+  color: var(--sticky-text) !important;
+  /* 与 chat.css 便签行统一 30px 高 */
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
 }

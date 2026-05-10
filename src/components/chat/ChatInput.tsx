@@ -1,6 +1,7 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChatInteractionMode } from '../../store/modules/chatStore';
+import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import { CfSelectWithHints } from '../CfSelectWithHints';
 import './chat.css';
 
@@ -72,6 +73,8 @@ const ChatInput: FC<Props> = ({
   onIntentChange,
 }) => {
   const { t } = useTranslation();
+  const shellVariant = useShellLayoutVariant();
+  const stickyCompactRow = shellVariant === 'alternate';
   const [value, setValue] = useState('');
   const [isSending, setIsSending] = useState(false);
 
@@ -141,7 +144,7 @@ const ChatInput: FC<Props> = ({
   };
 
   return (
-    <div className="cf-chatInput">
+    <div className={`cf-chatInput${stickyCompactRow ? ' cf-chatInput--stickyFoot' : ''}`}>
       <textarea
         className="cf-textarea"
         value={value}
@@ -165,6 +168,7 @@ const ChatInput: FC<Props> = ({
             <CfSelectWithHints
               id="cf-chat-mode"
               className="cf-selectHint--compact"
+              popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
               value={interactionMode}
               onChange={(v) => onInteractionModeChange(v as ChatInteractionMode)}
               options={modeOptions}
@@ -181,6 +185,7 @@ const ChatInput: FC<Props> = ({
             <CfSelectWithHints
               id="cf-chat-intent"
               className="cf-selectHint--compact"
+              popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
               value={intent}
               onChange={(v) => onIntentChange(v as 'fast' | 'strong' | 'cheap')}
               options={intentOptions}
@@ -195,7 +200,8 @@ const ChatInput: FC<Props> = ({
               <IconModel />
             </span>
             <CfSelectWithHints
-              className="cf-selectHint--wide"
+              className={stickyCompactRow ? 'cf-selectHint--compact' : 'cf-selectHint--wide'}
+              popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
               value={modelId ?? ''}
               onChange={(v) => onModelChange?.(v ? v : null)}
               options={modelOptions}

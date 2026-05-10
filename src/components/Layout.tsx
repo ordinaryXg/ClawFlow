@@ -175,7 +175,7 @@ const Layout: FC = () => {
         </div>
       </div>
 
-      <ViewModeFab />
+      {!useStickyDesktopLayout ? <ViewModeFab /> : null}
       <ToastHost />
     </>
   );

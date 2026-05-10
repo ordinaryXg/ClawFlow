@@ -150,6 +150,7 @@
   min-width:0;
   flex:1;
 }
+
 /* 图标 + 下拉：同一行、统一高度，与模型选择对齐 */
 .cf-chatInput__fieldGroup{
   display:flex;
@@ -246,5 +247,97 @@
 .cf-textarea:focus{
   border-color:rgba(30,91,69,.55);
   box-shadow:0 0 0 4px rgba(30,91,69,.15);
+}
+
+/*
+ * 便签模式：模式 / 偏好 / 模型 + 发送 同一行、统一外框高度。
+ * 必须放在本文件后部，以覆盖上文 .cf-chatInput__fieldGroup { min-height:32px } 等规则。
+ */
+.cf-chatInput--stickyFoot .cf-chatInput__footer {
+  align-items: stretch;
+  gap: 6px;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__footerLeft {
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: stretch;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldGroup {
+  min-height: 30px;
+  height: 30px;
+  max-height: 30px;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldIco {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldGroup--grow {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+}
+.cf-chatInput--stickyFoot .cf-selectHint {
+  min-width: 0;
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldGroup .cf-selectHint.ant-select-single {
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  display: flex;
+  align-items: stretch;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldGroup .cf-selectHint.ant-select-single .ant-select-selector {
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 7px !important;
+  display: flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  font-size: 11px !important;
+}
+.cf-chatInput--stickyFoot .cf-selectHint .ant-select-selection-wrap {
+  align-self: center;
+}
+.cf-chatInput--stickyFoot .cf-selectHint .ant-select-selection-item,
+.cf-chatInput--stickyFoot .cf-selectHint .ant-select-selection-placeholder {
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  min-height: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__actions {
+  display: flex;
+  align-items: stretch;
+}
+.cf-chatInput--stickyFoot .cf-chatSendBtn {
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cf-chatInput--stickyFoot .cf-chatSendBtn .cf-ico {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
 }
 
