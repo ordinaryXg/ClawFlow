@@ -67,7 +67,7 @@ const ConnectorForm: FC<Props> = ({ open, loading, initial, onClose, onSubmit })
           })
           .catch(() => undefined);
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" initialValues={{ name: '', type: 'github', configJson: '{}' }}>
         <Form.Item

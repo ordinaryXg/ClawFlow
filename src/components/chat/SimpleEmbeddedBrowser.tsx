@@ -19,6 +19,11 @@ const SimpleEmbeddedBrowser: FC<SimpleEmbeddedBrowserProps> = ({
   const [input, setInput] = useState(DEFAULT_URL);
   const [activeSrc, setActiveSrc] = useState(DEFAULT_URL);
 
+  const setWebviewRef = useCallback((el: HTMLElement | null) => {
+    wvRef.current = el;
+    if (el) el.setAttribute('allowpopups', 'true');
+  }, []);
+
   const go = useCallback(() => {
     const u = normalizeHttpUrl(input);
     if (u) setActiveSrc(u);
@@ -66,10 +71,9 @@ const SimpleEmbeddedBrowser: FC<SimpleEmbeddedBrowserProps> = ({
       </div>
       {/* Electron <webview>：需主窗口 webPreferences.webviewTag */}
       <webview
-        ref={wvRef}
+        ref={setWebviewRef}
         className="cf-embeddedBrowser__webview"
         src={activeSrc}
-        allowpopups={true}
       />
     </div>
   );

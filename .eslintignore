@@ -1,6 +1,7 @@
 out/**
 .webpack/**
 dist/**
+dist-pack-build-*/**
 build/**
 coverage/**
 vendor/**

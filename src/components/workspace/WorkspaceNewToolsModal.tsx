@@ -61,7 +61,7 @@ const WorkspaceNewToolsModal: FC<Props> = ({ open, folderPath, mode = 'create', 
       onCancel={onCancel}
       onOk={() => onConfirm(sel)}
       confirmLoading={loading}
-      destroyOnClose
+      destroyOnHidden
       width={480}
     >
       <p className="cf-sub" style={{ marginBottom: 12 }}>

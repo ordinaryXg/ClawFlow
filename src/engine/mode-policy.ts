@@ -40,7 +40,7 @@ export function buildModeConfig(params: {
   overrides?: ModePolicyOverrides;
 }): ModeConfig {
   const intent = params.intent ?? 'strong';
-  let cfg: ModeConfig = applyIntentPreset(params.mode, intent);
+  const cfg: ModeConfig = applyIntentPreset(params.mode, intent);
 
   const overrides = params.overrides ?? {};
   if (overrides.thinking) cfg.thinking = overrides.thinking;

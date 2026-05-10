@@ -35,12 +35,13 @@ export function CfSelectWithHints({
   hintIconAriaBase,
 }: CfSelectWithHintsProps) {
   const value = valueProp ?? '';
-  const onChange = onChangeProp ?? (() => {});
+  const onChange = onChangeProp ?? (() => undefined);
+  const dropdownRootClass = `cf-selectHintDropdown ${popupClassName}`.trim();
   return (
     <Select<string>
       id={id}
       className={`cf-selectHint ${className}`.trim()}
-      popupClassName={`cf-selectHintDropdown ${popupClassName}`.trim()}
+      classNames={{ popup: { root: dropdownRootClass } }}
       disabled={disabled}
       value={value}
       onChange={(v) => onChange(String(v))}

@@ -8,6 +8,7 @@ import MessageList from '../../components/chat/MessageList';
 import ChatInput from '../../components/chat/ChatInput';
 import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
+import ToolApprovalBar from '../../components/chat/ToolApprovalBar';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import './styles.css';
 
@@ -37,7 +38,16 @@ const ChatPage: FC = () => {
     setError,
     interactionMode,
     setInteractionMode,
+    toolApprovalPending,
+    respondToolApproval,
   } = useChatStore();
+
+  const toolApprovalForActive =
+    toolApprovalPending &&
+    activeConversationId &&
+    toolApprovalPending.conversationId === activeConversationId
+      ? toolApprovalPending
+      : null;
 
   const [modelRows, setModelRows] = useState<Array<{ id: string; label: string; available: boolean }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
@@ -265,7 +275,7 @@ const ChatPage: FC = () => {
       )}
 
       <div ref={scrollRef} className="cf-chatCenter__messages">
-        {messages.length === 0 && streamingActivity === null ? (
+        {messages.length === 0 && streamingActivity === null && !toolApprovalForActive ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>
               <h3 style={{ marginBottom: 6 }}>{t('chat.emptyMainTitle')}</h3>
@@ -276,6 +286,9 @@ const ChatPage: FC = () => {
           <>
             <MessageList messages={messages} />
             <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
+            {toolApprovalForActive ? (
+              <ToolApprovalBar pending={toolApprovalForActive} onRespond={respondToolApproval} />
+            ) : null}
             <div ref={bottomRef} />
           </>
         )}
@@ -318,7 +331,9 @@ const ChatPage: FC = () => {
             onInteractionModeChange={setInteractionMode}
             intent={chatIntent}
             onIntentChange={(v) => updateSettings({ chatIntent: v })}
-            showStarterPrompts={messages.length === 0 && streamingActivity === null && !isLoading}
+            showStarterPrompts={
+              messages.length === 0 && streamingActivity === null && !isLoading && !toolApprovalForActive
+            }
           />
         </div>
       </footer>

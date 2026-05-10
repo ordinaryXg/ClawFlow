@@ -323,6 +323,13 @@
     "createdTitle": "已新建对话",
     "createdBody": "你可以立即开始输入。",
     "msgCount": "{{count}} 条消息",
+    "toolApproval": {
+      "aria": "工具调用确认",
+      "title": "即将执行工具",
+      "hint": "模型请求运行下列工具。请选择「继续」以执行，或「取消」以跳过（助手将收到未执行说明并继续对话）。",
+      "continue": "继续",
+      "cancel": "取消"
+    },
     "resizeInputHeight": "调整对话输入区高度",
     "resizeInputHeightHint": "向上拖放大输入区，向下拖缩小；双击恢复默认高度。"
   },

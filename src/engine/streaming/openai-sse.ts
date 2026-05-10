@@ -28,7 +28,7 @@ export async function readOpenAiSseContentStream(
     }
   };
 
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     lineBuffer += decoder.decode(value, { stream: true });

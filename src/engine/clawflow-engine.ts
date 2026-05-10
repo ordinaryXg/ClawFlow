@@ -13,7 +13,13 @@ import { DeepSeekProvider } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import type { ModelProvider } from './providers/provider';
-import type { ChatCompletionRequest, ChatCompletionResult, ChatMessage, ModeConfig } from './providers/types';
+import type {
+  ChatCompletionRequest,
+  ChatCompletionResult,
+  ChatMessage,
+  ModeConfig,
+  ToolCall,
+} from './providers/types';
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
@@ -56,6 +62,15 @@ export type ClawFlowEnginePublicConfig = {
   webSearch: PublicWebSearchConfig;
 };
 
+export type ToolApprovalToolSummary = { name: string; argumentsPreview: string };
+
+export type ToolApprovalNeededPayload = {
+  approvalId: string;
+  requestId?: string;
+  conversationId: string;
+  tools: ToolApprovalToolSummary[];
+};
+
 export interface ClawFlowEngine {
   getConfig(): Readonly<ClawFlowEnginePublicConfig>;
   setWorkspaceRoot(workspaceRoot: string): void;
@@ -70,7 +85,17 @@ export interface ClawFlowEngine {
     mode?: InteractionMode;
     modelId?: string;
     onDelta?: (delta: string) => void;
+    abortSignal?: AbortSignal;
+    intent?: ChatIntent;
+    policyOverrides?: unknown;
+    requestId?: string;
+    /** 若提供：在每次执行工具前暂停并回调；未提供则视为自动同意（如 IPC 无 UI 场景） */
+    onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
+    openEmbeddedBrowser?: (url: string) => void;
   }): Promise<{ message: string }>;
+
+  /** Gateway / 主进程在用户确认或拒绝后调用，解除 sendMessage 内工具前等待 */
+  resolveToolApproval(approvalId: string, approved: boolean): void;
 
   /**
    * Ask 单轮流式（SSE → onDelta）。Plan / Multitask 若需工具循环请用 sendMessage。
@@ -98,6 +123,20 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   private store: SessionStore;
   private router: ProviderRouter;
   private tools = createDefaultToolRuntime();
+  private toolApprovalResolvers = new Map<string, (approved: boolean) => void>();
+
+  resolveToolApproval(approvalId: string, approved: boolean): void {
+    const fn = this.toolApprovalResolvers.get(approvalId);
+    if (fn) fn(approved);
+  }
+
+  private toolArgumentsPreview(raw: string, max = 220): string {
+    const s = String(raw ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (s.length <= max) return s;
+    return `${s.slice(0, max)}…`;
+  }
 
   constructor(cfg: ClawFlowEngineConfig = {}) {
     super();
@@ -354,6 +393,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     policyOverrides?: unknown;
     /** 工具 open_embedded_browser：在主进程通过 IPC 通知渲染进程打开右侧内嵌浏览器 */
     openEmbeddedBrowser?: (url: string) => void;
+    requestId?: string;
+    onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
@@ -449,14 +490,68 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           console.warn('[ClawFlowEngine] persist assistant(tool_calls) failed:', e?.message ?? e);
         }
 
-        const toolResults = await this.tools.executeToolCalls(toolCalls as any, {
-          workspaceRoot: this.config.workspaceRoot,
-          config: this.config,
-          onDelta: params.onDelta,
-          abortSignal: params.abortSignal,
-          openEmbeddedBrowser: params.openEmbeddedBrowser,
-          workspaceToolSelection,
-        });
+        let toolResults: Array<{ tool_call_id: string; content: string }>;
+
+        if (params.onToolApprovalNeeded && toolCalls.length > 0) {
+          const approvalId = randomUUID();
+          let settled = false;
+          let resolveApproval!: (v: boolean) => void;
+          const waitApproval = new Promise<boolean>((resolve) => {
+            resolveApproval = resolve;
+          });
+          const settleApproval = (v: boolean) => {
+            if (settled) return;
+            settled = true;
+            this.toolApprovalResolvers.delete(approvalId);
+            params.abortSignal?.removeEventListener('abort', onApprovalAbort);
+            resolveApproval(v);
+          };
+          const onApprovalAbort = () => settleApproval(false);
+          this.toolApprovalResolvers.set(approvalId, (v) => settleApproval(v));
+
+          if (params.abortSignal?.aborted) {
+            settleApproval(false);
+          } else {
+            params.abortSignal?.addEventListener('abort', onApprovalAbort, { once: true });
+            void Promise.resolve(
+              params.onToolApprovalNeeded({
+                approvalId,
+                requestId: params.requestId,
+                conversationId: params.conversationId,
+                tools: (toolCalls as ToolCall[]).map((tc) => ({
+                  name: tc.function?.name ?? 'unknown',
+                  argumentsPreview: this.toolArgumentsPreview(tc.function?.arguments ?? ''),
+                })),
+              })
+            ).catch(() => undefined);
+          }
+
+          const approved = await waitApproval;
+          if (!approved) {
+            toolResults = (toolCalls as ToolCall[]).map((tc) => ({
+              tool_call_id: tc.id,
+              content: 'User declined tool execution; tools were not run.',
+            }));
+          } else {
+            toolResults = await this.tools.executeToolCalls(toolCalls as any, {
+              workspaceRoot: this.config.workspaceRoot,
+              config: this.config,
+              onDelta: params.onDelta,
+              abortSignal: params.abortSignal,
+              openEmbeddedBrowser: params.openEmbeddedBrowser,
+              workspaceToolSelection,
+            });
+          }
+        } else {
+          toolResults = await this.tools.executeToolCalls(toolCalls as any, {
+            workspaceRoot: this.config.workspaceRoot,
+            config: this.config,
+            onDelta: params.onDelta,
+            abortSignal: params.abortSignal,
+            openEmbeddedBrowser: params.openEmbeddedBrowser,
+            workspaceToolSelection,
+          });
+        }
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];
         for (const tr of toolResults) {

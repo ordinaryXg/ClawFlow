@@ -14,6 +14,13 @@ type GatewayWsEvent =
   | { type: 'chat:ack'; requestId: string; conversationId: string }
   | { type: 'chat:delta'; requestId: string; conversationId: string; text: string }
   | { type: 'chat:final'; requestId: string; conversationId: string; message: string }
+  | {
+      type: 'chat:toolApproval';
+      requestId: string;
+      conversationId: string;
+      approvalId: string;
+      tools: Array<{ name: string; argumentsPreview: string }>;
+    }
   | { type: 'gateway:log'; entry: { ts: number; level: string; msg: string } }
   | { type: 'gateway:status'; status: string; port: number; uptimeMs: number };
 
@@ -29,7 +36,15 @@ type GatewayWsSend =
       policyOverrides?: unknown;
       modelId?: string;
     }
-  | { type: 'gateway:ping' };
+  | { type: 'gateway:ping' }
+  | { type: 'chat:toolApprovalResponse'; requestId: string; approvalId: string; approved: boolean };
+
+export type ToolApprovalPendingState = {
+  requestId: string;
+  conversationId: string;
+  approvalId: string;
+  tools: Array<{ name: string; argumentsPreview: string }>;
+};
 
 export interface Message {
   id: string;
@@ -100,6 +115,8 @@ export interface ChatState {
   streamingThinking: string | null;
   error: string | null;
   interactionMode: ChatInteractionMode;
+  /** Gateway 工具执行前待用户确认（仅当前连接会话） */
+  toolApprovalPending: ToolApprovalPendingState | null;
 
   // Actions
   fetchConversations: () => Promise<void>;
@@ -110,6 +127,7 @@ export interface ChatState {
   clearMessages: () => void;
   setError: (error: string | null) => void;
   setInteractionMode: (mode: ChatInteractionMode) => void;
+  respondToolApproval: (approved: boolean) => void;
 }
 
 let revealCleanup: (() => void) | null = null;
@@ -174,6 +192,10 @@ let wsClient: WebSocket | null = null;
 let wsConnecting: Promise<WebSocket> | null = null;
 const pendingById = new Map<string, Pending>();
 const activeRequestByConversation = new Map<string, string>();
+
+let applyGatewayToolApproval: (payload: Extract<GatewayWsEvent, { type: 'chat:toolApproval' }>) => void =
+  () => undefined;
+let clearToolApprovalForRequest: (requestId: string) => void = () => undefined;
 
 async function ensureGatewayWs(): Promise<WebSocket> {
   if (wsClient && wsClient.readyState === WebSocket.OPEN) return wsClient;
@@ -245,6 +267,11 @@ async function ensureGatewayWs(): Promise<WebSocket> {
         return;
       }
 
+      if (payload.type === 'chat:toolApproval') {
+        applyGatewayToolApproval(payload);
+        return;
+      }
+
       if (payload.type === 'chat:delta') {
         const p = pendingById.get(payload.requestId);
         if (!p || p.conversationId !== payload.conversationId) return;
@@ -253,6 +280,7 @@ async function ensureGatewayWs(): Promise<WebSocket> {
       }
 
       if (payload.type === 'chat:final') {
+        clearToolApprovalForRequest(payload.requestId);
         const p = pendingById.get(payload.requestId);
         if (!p || p.conversationId !== payload.conversationId) return;
         pendingById.delete(payload.requestId);
@@ -281,7 +309,31 @@ async function ensureGatewayWs(): Promise<WebSocket> {
   }
 }
 
-export const useChatStore = create<ChatState>()((set, get) => ({
+export const useChatStore = create<ChatState>()((set, get) => {
+  applyGatewayToolApproval = (payload) => {
+    const tools = Array.isArray(payload.tools)
+      ? payload.tools
+          .filter((t) => t && typeof t === 'object')
+          .map((t) => ({
+            name: String((t as { name?: string }).name ?? 'unknown'),
+            argumentsPreview: String((t as { argumentsPreview?: string }).argumentsPreview ?? ''),
+          }))
+      : [];
+    const approvalId = String(payload.approvalId ?? '').trim();
+    if (!approvalId) return;
+    set({
+      toolApprovalPending: {
+        requestId: String(payload.requestId ?? ''),
+        conversationId: String(payload.conversationId ?? ''),
+        approvalId,
+        tools,
+      },
+    });
+  };
+  clearToolApprovalForRequest = (requestId) =>
+    set((s) => (s.toolApprovalPending?.requestId === requestId ? { toolApprovalPending: null } : {}));
+
+  return {
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -290,8 +342,29 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   streamingThinking: null,
   error: null,
   interactionMode: 'plan',
+  toolApprovalPending: null,
 
   setInteractionMode: (mode) => set({ interactionMode: mode }),
+
+  respondToolApproval: (approved: boolean) => {
+    const pending = get().toolApprovalPending;
+    if (!pending) return;
+    set({ toolApprovalPending: null });
+    void (async () => {
+      try {
+        const ws = await ensureGatewayWs();
+        const msg: GatewayWsSend = {
+          type: 'chat:toolApprovalResponse',
+          requestId: pending.requestId,
+          approvalId: pending.approvalId,
+          approved,
+        };
+        ws.send(JSON.stringify(msg));
+      } catch {
+        /* ignore */
+      }
+    })();
+  },
 
   fetchConversations: async () => {
     cancelAssistantReveal();
@@ -498,6 +571,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             // ignore
           }
           pendingById.delete(prevId);
+          clearToolApprovalForRequest(prevId);
         }
         activeRequestByConversation.set(sessionId, requestId);
 
@@ -541,6 +615,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             if (activeRequestByConversation.get(sessionId) === requestId) {
               activeRequestByConversation.delete(sessionId);
             }
+            clearToolApprovalForRequest(requestId);
             const t1 = performance.now();
             const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
             finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' }, reasoningPersist);
@@ -696,6 +771,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   setError: (error: string | null) => {
     set({ error });
   },
-}));
+};
+});
 
 export default useChatStore;

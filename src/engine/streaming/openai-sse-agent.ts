@@ -99,7 +99,7 @@ export async function readOpenAiSseAgentStream(
     }
   };
 
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     lineBuffer += decoder.decode(value, { stream: true });

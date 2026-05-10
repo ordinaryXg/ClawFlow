@@ -188,9 +188,9 @@ function sha256(text: string): string {
 
 function sanitizeRelForOp(rel: string): string {
   return String(rel ?? '')
-    .replace(/^[.\/\\]+/g, '')
+    .replace(/^[./\\]+/g, '')
     .replace(/[:*?"<>|]/g, '_')
-    .replace(/[\\\/]+/g, '/')
+    .replace(/[/\\]+/g, '/')
     .replace(/\.\.(\/|\\)/g, '__/');
 }
 

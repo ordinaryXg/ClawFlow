@@ -323,6 +323,13 @@
     "createdTitle": "New conversation",
     "createdBody": "You can start typing.",
     "msgCount": "{{count}} messages",
+    "toolApproval": {
+      "aria": "Tool call confirmation",
+      "title": "Tool execution pending",
+      "hint": "The model wants to run the tools below. Choose Continue to run them, or Cancel to skip (the assistant will see a “not run” result and continue).",
+      "continue": "Continue",
+      "cancel": "Cancel"
+    },
     "resizeInputHeight": "Resize chat input area",
     "resizeInputHeightHint": "Drag up to enlarge the input area, down to shrink. Double-click to reset."
   },

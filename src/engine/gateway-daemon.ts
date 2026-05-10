@@ -37,12 +37,20 @@ type WsClientMessage =
       modelId?: string;
     }
   | { type: 'gateway:ping' }
-  | { type: 'chat:cancel'; requestId: string };
+  | { type: 'chat:cancel'; requestId: string }
+  | { type: 'chat:toolApprovalResponse'; requestId: string; approvalId: string; approved: boolean };
 
 type WsServerEvent =
   | { type: 'chat:ack'; requestId: string; conversationId: string }
   | { type: 'chat:delta'; requestId: string; conversationId: string; text: string }
   | { type: 'chat:final'; requestId: string; conversationId: string; message: string }
+  | {
+      type: 'chat:toolApproval';
+      requestId: string;
+      conversationId: string;
+      approvalId: string;
+      tools: Array<{ name: string; argumentsPreview: string }>;
+    }
   | { type: 'gateway:log'; entry: GatewayLogEntry }
   | { type: 'gateway:status'; status: GatewayStatus; port: number; uptimeMs: number };
 
@@ -278,12 +286,12 @@ class GatewayDaemon extends EventEmitter {
         lastErr = e;
         const code = String(e?.code ?? '');
         if (code === 'EADDRINUSE') continue;
-        await this.stop().catch(() => {});
+        await this.stop().catch(() => undefined);
         throw e;
       }
     }
     if (lastErr) {
-      await this.stop().catch(() => {});
+      await this.stop().catch(() => undefined);
       throw lastErr;
     }
     this.pushLog('info', `GatewayDaemon started on 127.0.0.1:${this.port}`);
@@ -321,6 +329,15 @@ class GatewayDaemon extends EventEmitter {
         this.pushLog('info', `[ws] chat:cancel id=${id}`);
       } else {
         this.pushLog('warn', `[ws] chat:cancel unknown id=${id}`);
+      }
+      return;
+    }
+    if (msg.type === 'chat:toolApprovalResponse') {
+      const approvalId = String(msg.approvalId ?? '').trim();
+      const approved = Boolean(msg.approved);
+      if (approvalId) {
+        getGlobalClawFlowEngine().resolveToolApproval(approvalId, approved);
+        this.pushLog('debug', `[ws] chat:toolApprovalResponse id=${approvalId} approved=${approved}`);
       }
       return;
     }
@@ -372,6 +389,17 @@ class GatewayDaemon extends EventEmitter {
         abortSignal: abort.signal,
         intent,
         ...(policyOverrides ? { policyOverrides } : {}),
+        requestId,
+        onToolApprovalNeeded: (p) => {
+          if (abort.signal.aborted) return;
+          this.send(ws, {
+            type: 'chat:toolApproval',
+            requestId,
+            conversationId,
+            approvalId: p.approvalId,
+            tools: p.tools,
+          });
+        },
       });
       this.abortByRequestId.delete(requestId);
       this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
