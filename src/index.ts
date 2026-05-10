@@ -84,6 +84,36 @@ function registerShellViewWindowIPC(): void {
 /** 主进程一加载即注册，避免 whenReady 内前置 await 未完成时渲染进程已发起 invoke */
 registerShellViewWindowIPC();
 
+/** 外部拖入文件：须与 preload 同步，在模块加载时注册，避免 invoke 早于 registerWorkspaceIPC */
+function registerWorkspaceImportExternalPathsIPC(): void {
+  try {
+    ipcMain.removeHandler('workspace:importExternalPaths');
+  } catch {
+    /* first load */
+  }
+  ipcMain.handle(
+    'workspace:importExternalPaths',
+    async (
+      _e,
+      params: { targetRelativeDir: string; sourceAbsolutePaths: string[]; overwrite?: boolean }
+    ) => {
+      const root = getActiveWorkspaceRoot();
+      try {
+        return await workspaceExplorer.importExternalPathsIntoWorkspace(
+          root,
+          String(params?.targetRelativeDir ?? ''),
+          Array.isArray(params?.sourceAbsolutePaths) ? params.sourceAbsolutePaths : [],
+          { overwrite: params?.overwrite !== false }
+        );
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false as const, error: msg };
+      }
+    }
+  );
+}
+registerWorkspaceImportExternalPathsIPC();
+
 const I18N: Record<AppLang, Record<string, string>> = {
   zh: {
     file: '文件',

@@ -127,6 +127,12 @@ export interface IElectronAPI {
     absolutePath: string;
   }>;
   workspaceRevealInExplorer: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  getPathForFile: (file: File) => string;
+  workspaceImportExternalPaths: (params: {
+    targetRelativeDir: string;
+    sourceAbsolutePaths: string[];
+    overwrite?: boolean;
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;

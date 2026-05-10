@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { SkillMarketFetchResult } from './skill-market-shared';
 
 // 暴露给渲染进程的 API 类型声明
@@ -119,6 +119,13 @@ export interface IElectronAPI {
     absolutePath: string;
   }>;
   workspaceRevealInExplorer: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
+  /** 从渲染进程 File（拖放）取绝对路径，需 Electron webUtils */
+  getPathForFile: (file: File) => string;
+  workspaceImportExternalPaths: (params: {
+    targetRelativeDir: string;
+    sourceAbsolutePaths: string[];
+    overwrite?: boolean;
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -258,6 +265,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceReadFilePreview: (relativePath: string) => ipcRenderer.invoke('workspace:readFilePreview', relativePath),
   workspaceResolveAbsolutePath: (relativePath: string) => ipcRenderer.invoke('workspace:resolveAbsolutePath', relativePath),
   workspaceRevealInExplorer: (relativePath: string) => ipcRenderer.invoke('workspace:revealInExplorer', relativePath),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file as never),
+  workspaceImportExternalPaths: (params: {
+    targetRelativeDir: string;
+    sourceAbsolutePaths: string[];
+    overwrite?: boolean;
+  }) => ipcRenderer.invoke('workspace:importExternalPaths', params),
   workspaceMkdir: (relativePath: string) => ipcRenderer.invoke('workspace:mkdir', { relativePath }),
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) =>
     ipcRenderer.invoke('workspace:writeTextFile', params),

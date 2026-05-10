@@ -31,7 +31,10 @@
     "fileLayoutGrid": "3×3 grid",
     "fileLayoutGroupAria": "File list layout",
     "fileTreeToggleDir": "Expand or collapse folder “{{name}}”",
-    "fileTreeEmptyDir": "(empty folder)"
+    "fileTreeEmptyDir": "(empty folder)",
+    "importNoPaths": "Could not resolve dropped paths (drag from File Explorer)",
+    "importFailed": "Import failed",
+    "importSuccess": "Moved {{count}} item(s) into the workspace"
   },
   "workspace": {
     "title": "Workspace",

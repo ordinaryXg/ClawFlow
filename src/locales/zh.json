@@ -31,7 +31,10 @@
     "fileLayoutGrid": "九宫格",
     "fileLayoutGroupAria": "文件列表排版",
     "fileTreeToggleDir": "展开或折叠文件夹「{{name}}」",
-    "fileTreeEmptyDir": "（空文件夹）"
+    "fileTreeEmptyDir": "（空文件夹）",
+    "importNoPaths": "未能解析拖入的文件路径（请从资源管理器拖入）",
+    "importFailed": "导入失败",
+    "importSuccess": "已将 {{count}} 项移入工作区"
   },
   "workspace": {
     "title": "工作空间",

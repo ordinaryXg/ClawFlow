@@ -148,6 +148,92 @@ export async function listWorkspaceDirectory(
   return rows;
 }
 
+/** 源路径是否落在工作区根之下（含根自身），用于禁止「工作区内再拖进工作区」的歧义导入 */
+function isPathInsideWorkspaceRoot(workspaceRoot: string, absoluteSource: string): boolean {
+  const root = path.resolve(workspaceRoot);
+  const src = path.resolve(absoluteSource);
+  if (src === root) return true;
+  const rel = path.relative(root, src);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function isCrossDeviceRenameError(e: unknown): boolean {
+  const err = e as NodeJS.ErrnoException & { syscall?: string };
+  if (err?.code === 'EXDEV') return true;
+  const msg = err instanceof Error ? err.message : String(e);
+  return /cross-device|not the same device|不同的设备|无法将文件移到不同的磁盘/i.test(msg);
+}
+
+/**
+ * 将操作系统路径下的文件/文件夹移动到工作区相对目录下（外部拖入）。
+ * 同卷优先 `rename`（原子移动）；跨卷则复制到工作区后删除源路径。
+ * 若目标已存在且 overwrite 为 true 则先删除再移动。
+ */
+async function moveOntoWorkspaceDest(src: string, dest: string, isDir: boolean): Promise<void> {
+  try {
+    await fs.promises.rename(src, dest);
+    return;
+  } catch (e: unknown) {
+    if (!isCrossDeviceRenameError(e)) throw e;
+    if (isDir) {
+      await fs.promises.cp(src, dest, { recursive: true });
+      await fs.promises.rm(src, { recursive: true, force: true });
+    } else {
+      await fs.promises.copyFile(src, dest);
+      await fs.promises.unlink(src);
+    }
+  }
+}
+
+export async function importExternalPathsIntoWorkspace(
+  workspaceRoot: string,
+  targetRelativeDir: string,
+  sourceAbsolutePaths: string[],
+  options?: { overwrite?: boolean }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const overwrite = options?.overwrite !== false;
+  const rootResolved = path.resolve(workspaceRoot);
+  let destDir: string;
+  try {
+    destDir = resolvePathInsideWorkspace(workspaceRoot, targetRelativeDir);
+  } catch {
+    return { ok: false, error: 'Invalid target folder' };
+  }
+  await fs.promises.mkdir(destDir, { recursive: true });
+
+  const paths = sourceAbsolutePaths.map((p) => path.resolve(String(p || ''))).filter(Boolean);
+  if (paths.length === 0) return { ok: false, error: 'No files to import' };
+
+  for (const src of paths) {
+    if (isPathInsideWorkspaceRoot(rootResolved, src)) {
+      return { ok: false, error: 'Cannot import paths that already lie inside the workspace' };
+    }
+
+    const st = await fs.promises.stat(src).catch(() => null);
+    if (!st) return { ok: false, error: `Source not found: ${src}` };
+
+    const base = path.basename(src);
+    if (!base || base === '.' || base === '..') return { ok: false, error: 'Invalid file name' };
+
+    const dest = path.join(destDir, base);
+    const destResolved = path.resolve(dest);
+    const dirResolved = path.resolve(destDir);
+    if (!destResolved.startsWith(dirResolved + path.sep) && destResolved !== dirResolved) {
+      return { ok: false, error: 'Invalid destination' };
+    }
+
+    const exists = await fs.promises.stat(dest).catch(() => null);
+    if (exists) {
+      if (!overwrite) return { ok: false, error: `${base} already exists` };
+      await fs.promises.rm(dest, { recursive: true, force: true });
+    }
+
+    await moveOntoWorkspaceDest(src, dest, st.isDirectory());
+  }
+
+  return { ok: true };
+}
+
 export type FilePreviewResult =
   | {
       ok: true;
