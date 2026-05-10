@@ -1,5 +1,4 @@
-import { FC, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { FC } from 'react';
 import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
@@ -21,26 +20,11 @@ function safeTextToHtml(text: string): string {
 }
 
 const MessageItem: FC<Props> = ({ message }) => {
-  const { t } = useTranslation();
   const isUser = message.role === 'user';
-
-  const time = useMemo(() => {
-    try {
-      return new Date(message.timestamp).toLocaleTimeString();
-    } catch {
-      return '';
-    }
-  }, [message.timestamp]);
 
   return (
     <div className={isUser ? 'cf-msgItem cf-msgItem--user' : 'cf-msgItem cf-msgItem--assistant'}>
       <div className="cf-msgItem__bubble">
-        <div className="cf-msgItem__meta">
-          <span className="cf-sub">{isUser ? t('chat.roleYou') : t('chat.roleAssistant')}</span>
-          <span className="cf-sub">·</span>
-          <span className="cf-sub">{time}</span>
-        </div>
-
         {!isUser && message.reasoningContent?.trim() ? (
           <ThinkingBlock text={message.reasoningContent.trim()} streaming={false} />
         ) : null}

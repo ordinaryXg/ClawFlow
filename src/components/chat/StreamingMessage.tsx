@@ -20,27 +20,21 @@ const StreamingMessage: FC<Props> = ({ activity, thinking }) => {
 
   if (!hasThinking && !hasActivity) {
     return (
-      <div className="cf-stream">
+      <div className="cf-stream" aria-busy="true" aria-label={t('chat.streamGenerating')}>
         <div className="cf-stream__bubble">
-          <div className="cf-stream__meta">
-            <span className="cf-sub">
-              {t('chat.streamLabel')} · {t('chat.streamGenerating')}
-            </span>
+          <div className="cf-stream__typingDots" aria-hidden>
+            <span />
+            <span />
+            <span />
           </div>
-          <div className="cf-stream__content cf-stream__content--muted">{'\u00a0'}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="cf-stream">
+    <div className="cf-stream" aria-busy="true" aria-label={t('chat.streamGenerating')}>
       <div className="cf-stream__bubble">
-        <div className="cf-stream__meta">
-          <span className="cf-sub">
-            {t('chat.streamLabel')} · {t('chat.streamGenerating')}
-          </span>
-        </div>
         {hasThinking && thinking ? (
           <div className="cf-stream__thinking">
             <ThinkingBlock
