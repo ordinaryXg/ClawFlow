@@ -48,7 +48,8 @@
     "workspaceDropAddNoPath": "未能解析拖入路径（请从资源管理器拖入文件夹）",
     "workspaceToolsNeedWs": "请先选择或添加工作区",
     "tearOffHint": "拖出窗口：将标签拖出本窗口外可打开独立便签（默认工作区不可拖出）",
-    "mergeBackHint": "拖回主便签：将标签拖到主窗口左侧标签栏可合并",
+    "mergeBackHint": "拖回主便签：按住左侧拖动手柄，拖到主窗口左侧标签栏上松开即可合并",
+    "mergeBackDragHandle": "拖回主窗口合并",
     "detachDefaultForbidden": "默认工作区不能拖出为独立便签"
   },
   "workspace": {

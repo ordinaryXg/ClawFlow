@@ -1,5 +1,5 @@
 import { FC, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PlusOutlined, SettingOutlined } from '@ant-design/icons';
+import { DragOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
@@ -361,42 +361,40 @@ const StickyNoteShell: FC = () => {
     navigate('/chat');
   };
 
+  const satelliteMergePath = isSatellite ? stickyBootstrap?.satelliteWorkspace?.trim() ?? '' : '';
+
   return (
-    <div className="cf-stickyShell">
-      <nav
-        className={['cf-stickyRail', railMergeOver ? 'cf-stickyRail--mergeOver' : ''].filter(Boolean).join(' ')}
-        aria-label={t('sticky.workspaceRailAria')}
-        onDragOver={(ev) => onRailDragOver(ev)}
-        onDragLeave={onRailDragLeave}
-        onDrop={(ev) => void onRailDrop(ev)}
-      >
-        {workspaceRows.map((path) => {
-          const active = activeWorkspacePath && workspacePathsLikelyEqual(path, activeWorkspacePath);
-          const tearable = canTearOffTab(path);
-          const draggable = isSatellite || tearable;
-          const titleExtra = isSatellite
-            ? t('sticky.mergeBackHint')
-            : tearable
-              ? t('sticky.tearOffHint')
-              : path;
-          return (
-            <button
-              key={path}
-              type="button"
-              draggable={draggable}
-              onDragStart={draggable ? onWorkspaceTabDragStart(path, isSatellite ? 'merge' : 'tear') : undefined}
-              onDragEnd={tearable ? onWorkspaceTabDragEnd(path) : undefined}
-              className={`cf-stickyRail__tab${active ? ' cf-stickyRail__tab--active' : ''}${
-                draggable ? ' cf-stickyRail__tab--draggable' : ''
-              }`}
-              onClick={() => void onPickWorkspace(path)}
-              title={titleExtra}
-            >
-              <span className="cf-stickyRail__tabText">{workspaceFolderLabel(path)}</span>
-            </button>
-          );
-        })}
-        {!isSatellite ? (
+    <div className={['cf-stickyShell', isSatellite ? 'cf-stickyShell--satellite' : ''].filter(Boolean).join(' ')}>
+      {!isSatellite ? (
+        <nav
+          className={['cf-stickyRail', railMergeOver ? 'cf-stickyRail--mergeOver' : ''].filter(Boolean).join(' ')}
+          aria-label={t('sticky.workspaceRailAria')}
+          onDragOver={(ev) => onRailDragOver(ev)}
+          onDragLeave={onRailDragLeave}
+          onDrop={(ev) => void onRailDrop(ev)}
+        >
+          {workspaceRows.map((path) => {
+            const active = activeWorkspacePath && workspacePathsLikelyEqual(path, activeWorkspacePath);
+            const tearable = canTearOffTab(path);
+            const draggable = tearable;
+            const titleExtra = tearable ? t('sticky.tearOffHint') : path;
+            return (
+              <button
+                key={path}
+                type="button"
+                draggable={draggable}
+                onDragStart={draggable ? onWorkspaceTabDragStart(path, 'tear') : undefined}
+                onDragEnd={tearable ? onWorkspaceTabDragEnd(path) : undefined}
+                className={`cf-stickyRail__tab${active ? ' cf-stickyRail__tab--active' : ''}${
+                  draggable ? ' cf-stickyRail__tab--draggable' : ''
+                }`}
+                onClick={() => void onPickWorkspace(path)}
+                title={titleExtra}
+              >
+                <span className="cf-stickyRail__tabText">{workspaceFolderLabel(path)}</span>
+              </button>
+            );
+          })}
           <button
             type="button"
             className={`cf-stickyRail__add${addDropOver ? ' cf-stickyRail__add--dropOver' : ''}`}
@@ -409,12 +407,24 @@ const StickyNoteShell: FC = () => {
           >
             <PlusOutlined />
           </button>
-        ) : null}
-      </nav>
+        </nav>
+      ) : null}
 
       <div className="cf-stickyMain">
         <header className="cf-stickyMain__bar">
           <div className="cf-stickyMain__titleWrap">
+            {satelliteMergePath ? (
+              <button
+                type="button"
+                className="cf-stickyMain__mergeDrag"
+                draggable
+                onDragStart={onWorkspaceTabDragStart(satelliteMergePath, 'merge')}
+                title={t('sticky.mergeBackHint')}
+                aria-label={t('sticky.mergeBackDragHandle')}
+              >
+                <DragOutlined aria-hidden />
+              </button>
+            ) : null}
             <span className="cf-stickyMain__statusDot" aria-hidden />
             <span className="cf-stickyMain__title">{workspaceLabel}</span>
           </div>

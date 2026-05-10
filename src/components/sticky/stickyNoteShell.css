@@ -37,6 +37,12 @@
   color: var(--sticky-text);
 }
 
+/* 卫星便签：无左侧标签栏，主列四角圆角 */
+.cf-stickyShell--satellite .cf-stickyMain {
+  margin-left: 8px;
+  border-radius: var(--sticky-radius);
+}
+
 .cf-stickyRail {
   width: 72px;
   flex-shrink: 0;
@@ -172,6 +178,36 @@
   flex: 1;
   -webkit-app-region: drag;
   cursor: default;
+}
+
+.cf-stickyMain__mergeDrag {
+  flex-shrink: 0;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sticky-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--sticky-muted);
+  cursor: grab;
+  font-size: 15px;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.cf-stickyMain__mergeDrag:hover {
+  color: var(--sticky-text);
+  border-color: rgba(45, 179, 160, 0.45);
+}
+
+.cf-stickyMain__mergeDrag:active {
+  cursor: grabbing;
 }
 
 .cf-stickyMain__statusDot {

@@ -48,7 +48,8 @@
     "workspaceDropAddNoPath": "Could not resolve the drop (drag a folder from File Explorer)",
     "workspaceToolsNeedWs": "Select or add a workspace first",
     "tearOffHint": "Tear off: drag this tab outside the window to open a separate sticky (the default workspace cannot be torn off)",
-    "mergeBackHint": "Merge back: drag this tab onto the main window’s left rail",
+    "mergeBackHint": "Merge back: drag the handle on the left of the title onto the main window’s left rail",
+    "mergeBackDragHandle": "Drag to merge back",
     "detachDefaultForbidden": "The default workspace cannot be torn off into a separate sticky"
   },
   "workspace": {
