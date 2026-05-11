@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { randomUUID } from 'crypto';
+import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 import * as path from 'path';
 import EventEmitter from 'events';
 import { getDefaultWorkspacePath, readWorkspaceToolManifest } from '../workspace-service';
@@ -245,15 +246,15 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         if (m.role === 'user' || m.role === 'assistant') return true;
         if (m.role !== 'tool') return false;
         // DeepSeek 对 messages schema 较严格：tool_call_id 仅允许出现在 role="tool"。
-        // 同时我们会把工具生命周期（start/done/fail）落盘用于 UI 展示，但不应回灌给模型上下文，
-        // 否则会污染上下文并可能触发 provider 的严格校验。
+        // 工具 UI 生命周期不再重复落盘多段；仅保留 status=result（及无 status）的 tool 回灌模型，
+        // 避免污染上下文并可能触发 provider 的严格校验。
         // DeepSeek 要求 role="tool" 必须带 tool_call_id；否则会 400 missing field tool_call_id
         const toolCallId = typeof (m as any)?.tool_call_id === 'string' ? String((m as any).tool_call_id).trim() : '';
         if (!toolCallId) return false;
 
         const meta = (m as any)?.meta;
         const status = typeof meta?.status === 'string' ? meta.status : '';
-        return status === 'result' || !status;
+        return status === 'result' || status === 'error' || !status;
       })
       .map((m) => ({
         role: m.role as ChatMessage['role'],
@@ -331,6 +332,42 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       convs[idx] = next;
       await store.writeAll(convs);
     }
+    for (const m of msgs) {
+      this.emit('engine:message', conversationId, m);
+    }
+  }
+
+  /** 同一 tool_call_id 只保留一条 tool 消息，避免 running/success/result 多条并列 */
+  private async appendToolMessagesUpsert(
+    conversationId: string,
+    msgs: StoredMessage[],
+    store: SessionStore
+  ): Promise<void> {
+    if (!msgs.length) return;
+    const convs = await store.readAll();
+    const idx = convs.findIndex((c) => c.id === conversationId);
+    const now = Date.now();
+    if (idx < 0) return;
+    const c = convs[idx];
+    const replaceIds = new Set(
+      msgs
+        .filter((m) => m.role === 'tool')
+        .map((m) => String((m as { tool_call_id?: string }).tool_call_id ?? '').trim())
+        .filter(Boolean)
+    );
+    const base = (c.messages ?? []).filter((m) => {
+      if (m.role !== 'tool' || replaceIds.size === 0) return true;
+      const tid = String((m as { tool_call_id?: string }).tool_call_id ?? '').trim();
+      if (!tid || !replaceIds.has(tid)) return true;
+      return false;
+    });
+    const next: StoredConversation = {
+      ...c,
+      messages: dedupeStoredToolMessages([...base, ...msgs]),
+      updatedAt: now,
+    };
+    convs[idx] = next;
+    await store.writeAll(convs);
     for (const m of msgs) {
       this.emit('engine:message', conversationId, m);
     }
@@ -583,19 +620,24 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           ts: number;
           statusOverride?: 'running' | 'success' | 'error' | 'result';
         }) => {
+          // 普通工具：仅依赖本回合末尾的 tool result 落盘（appendToolMessagesUpsert），此处不写多条 running/success。
+          // 子 Agent：异步完成后需单独 upsert 同 tool_call_id，否则会话里永远停在 running 回执。
+          if (ev.toolName !== 'delegate_to_subagent') return;
+          if (ev.phase === 'start') return;
+          const out = String(ev.outputText ?? '');
+          if (ev.phase === 'done' && /"state"\s*:\s*"running"/.test(out)) return;
           const card = toolCardForName(ev.toolName);
           const riskLevel = toolRiskForName(ev.toolName);
-          const status =
-            ev.statusOverride ??
-            (ev.phase === 'start' ? 'running' : ev.phase === 'done' ? 'success' : 'error');
+          const uiStatus = ev.statusOverride ?? (ev.phase === 'fail' ? 'error' : 'success');
           const msg: StoredMessage = this.toStoredToolMessage({
             tool_call_id: ev.tool_call_id,
-            content: ev.phase === 'start' ? `[start] ${ev.toolName}` : String(ev.outputText ?? ''),
+            content: out,
             meta: {
               kind: card.kind,
               title: card.title,
               riskLevel,
-              status,
+              status: ev.phase === 'fail' ? 'error' : 'result',
+              uiStatus,
               toolName: ev.toolName,
               argumentsPreview: this.toolArgumentsPreview(ev.argumentsText ?? ''),
               phase: ev.phase,
@@ -603,9 +645,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
             },
           });
           try {
-            await this.appendMessages(params.conversationId, [msg], store);
+            await this.appendToolMessagesUpsert(params.conversationId, [msg], store);
           } catch (e: any) {
-            console.warn('[ClawFlowEngine] persist tool event failed:', e?.message ?? e);
+            console.warn('[ClawFlowEngine] persist subagent tool event failed:', e?.message ?? e);
           }
         };
 
@@ -738,9 +780,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         }
         for (const tm of toolMsgs) loopMessages.push(tm);
 
-        // Persist tool results as discrete messages.
+        // Persist tool results（按 tool_call_id 合并为单条，避免与生命周期事件重复）
         try {
-          await this.appendMessages(params.conversationId, storedTools, store);
+          await this.appendToolMessagesUpsert(params.conversationId, storedTools, store);
         } catch (e: any) {
           console.warn('[ClawFlowEngine] persist tool results failed:', e?.message ?? e);
         }

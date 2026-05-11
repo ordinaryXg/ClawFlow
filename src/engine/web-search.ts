@@ -439,6 +439,8 @@ export async function runClawFlowWebSearch(
       hint: nf.hint,
       details: nf.details ?? null,
       note: '如在公司/校园网，请优先设置 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量；ClawFlow 已支持代理与轻量重试。',
+      clawflow_search_readme_zh:
+        '本应用 web_search：优先使用 Brave Search API（需环境变量 BRAVE_API_KEY 或引擎配置）；未配置时回退到 DuckDuckGo 的 HTML 聚合接口（无密钥，可能被限流或超时）。与「百度搜索首页」无关；抓取百度 SPA 页面请用内嵌浏览器或 web_scrape 对具体文章 URL，而非依赖本工具解析百度首页。',
     } as Record<string, unknown>;
   };
 

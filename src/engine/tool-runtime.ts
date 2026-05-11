@@ -16,6 +16,13 @@ import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../
 import { rescheduleTodoTriggersForWorkspace } from '../todo-triggers-scheduler';
 import { broadcastTodoTriggersUpdated } from '../todo-triggers-broadcast';
 import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-triggers';
+import {
+  EXCEL_PREVIEW_EXTENSIONS,
+  PDF_PREVIEW_EXTENSIONS,
+  previewExcelBuffer,
+  previewPdfBuffer,
+  WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
+} from '../workspace-office-preview';
 import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
 import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
 import { getGlobalOpenClawCliEngine } from './openclaw-engine';
@@ -632,7 +639,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_read_file_preview',
-        description: 'Read a file preview under workspace relative path',
+        description:
+          'Read a file preview under workspace relative path. Images return a short marker; PDF returns JSON with text_extract; Excel returns tabular text like the UI preview.',
         strict: true,
         parameters: {
           type: 'object',
@@ -649,6 +657,23 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = await workspaceExplorer.readWorkspaceFilePreview(ctx.workspaceRoot, rel);
       if (!res.ok) return `ERROR: ${res.error ?? 'read failed'}`;
       if (res.isImage) return `IMAGE:${res.mimeType ?? 'image'}:${res.content.slice(0, 120)}`;
+      if (res.isPdf) {
+        return JSON.stringify(
+          {
+            ok: true,
+            kind: 'pdf',
+            pages_reported: res.numpages ?? 0,
+            text_extract: res.textExtract ?? '',
+            truncated: res.truncated,
+            hint:
+              (res.textExtract ?? '').trim().length === 0
+                ? 'No text layer (may be scanned); use embedded preview or external OCR if needed.'
+                : undefined,
+          },
+          null,
+          2
+        );
+      }
       if (res.isBinary) return 'BINARY_FILE';
       return res.content;
     }
@@ -659,7 +684,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_read_file',
-        description: 'Read a text file under workspace with optional line range',
+        description:
+          'Read a text file under workspace with optional line range. For .pdf / Excel (.xlsx, .xls, .xlsm, .ods), extracts plain text (PDF: first pages, text layer only) then applies the line range.',
         strict: true,
         parameters: {
           type: 'object',
@@ -686,6 +712,28 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, rel);
       const st = await fs.promises.stat(full);
       if (!st.isFile()) return 'ERROR: Not a file';
+      const ext = path.extname(full).toLowerCase();
+
+      if (EXCEL_PREVIEW_EXTENSIONS.has(ext) || PDF_PREVIEW_EXTENSIONS.has(ext)) {
+        if (st.size > WORKSPACE_OFFICE_PREVIEW_MAX_BYTES) {
+          return `ERROR: File too large for Excel/PDF text extraction (max ${WORKSPACE_OFFICE_PREVIEW_MAX_BYTES} bytes)`;
+        }
+        const buf = await fs.promises.readFile(full);
+        let textBody: string;
+        if (EXCEL_PREVIEW_EXTENSIONS.has(ext)) {
+          textBody = previewExcelBuffer(buf).text;
+        } else {
+          const p = await previewPdfBuffer(buf);
+          textBody = p.textExtract;
+        }
+        const lines = textBody.split(/\r?\n/);
+        const sIdx = startLine > 0 ? Math.max(0, startLine - 1) : 0;
+        const eIdx = endLine > 0 ? Math.min(lines.length, endLine) : lines.length;
+        const picked = lines.slice(sIdx, eIdx);
+        const header = `FILE:${rel}\nKIND:${EXCEL_PREVIEW_EXTENSIONS.has(ext) ? 'excel_text' : 'pdf_text'}\nLINES:${sIdx + 1}-${eIdx}\n`;
+        return `${header}\n${picked.join('\n')}`;
+      }
+
       const buf = await fs.promises.readFile(full);
       const slice = buf.length > maxBytes ? buf.subarray(0, maxBytes) : buf;
       const text = slice.toString('utf8');

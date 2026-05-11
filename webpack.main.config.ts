@@ -1,7 +1,9 @@
+import path from 'path';
 import type { Configuration } from 'webpack';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 import { rules } from './webpack.rules';
-import { plugins } from './webpack.plugins';
+import { plugins as basePlugins } from './webpack.plugins';
 
 export const mainConfig: Configuration = {
   /**
@@ -13,7 +15,28 @@ export const mainConfig: Configuration = {
   module: {
     rules,
   },
-  plugins,
+  plugins: [
+    ...basePlugins,
+    // pdf-parse（主进程）依赖 pdfjs-dist/legacy，打包后在 .webpack/main 下解析 pdf.worker.mjs
+    new CopyWebpackPlugin({
+      patterns: [
+        // 须与 pdf-parse 自带的 pdfjs-dist 版本一致（见 package-lock 中 pdf-parse/node_modules/pdfjs-dist）
+        {
+          from: path.join(
+            __dirname,
+            'node_modules',
+            'pdf-parse',
+            'node_modules',
+            'pdfjs-dist',
+            'legacy',
+            'build',
+            'pdf.worker.mjs'
+          ),
+          to: 'pdf.worker.mjs',
+        },
+      ],
+    }),
+  ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },

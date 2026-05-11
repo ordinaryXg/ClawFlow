@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { conversationsStorePath } from '../workspace-service';
+import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 
 export type StoredMessageRole = 'user' | 'assistant' | 'tool';
 
@@ -45,14 +46,30 @@ export class SessionStore {
   }
 
   async readAll(): Promise<StoredConversation[]> {
+    let buf: string;
     try {
-      const buf = await fs.promises.readFile(this.storePath, 'utf-8');
-      const raw = JSON.parse(buf);
-      const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.conversations) ? raw.conversations : [];
-      return (arr as StoredConversation[]).filter((c) => c && typeof c.id === 'string');
-    } catch {
-      return [];
+      buf = await fs.promises.readFile(this.storePath, 'utf-8');
+    } catch (e: any) {
+      // 仅「文件尚不存在」视为空列表；其它 IO 错误若当成 []，会在 normalize / upsert 时覆盖写盘，造成历史被清空。
+      if (e && (e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
     }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(buf);
+    } catch (e: any) {
+      throw new Error(
+        `[SessionStore] conversations JSON 损坏，已中止读写以免覆盖数据: ${this.storePath} (${e?.message ?? e})`
+      );
+    }
+    const arr: unknown =
+      Array.isArray(raw) ? raw : raw && typeof raw === 'object' && Array.isArray((raw as StorePayload).conversations)
+        ? (raw as StorePayload).conversations
+        : undefined;
+    if (!Array.isArray(arr)) {
+      throw new Error(`[SessionStore] conversations 文件结构无效（应为数组或 { conversations: [] }）: ${this.storePath}`);
+    }
+    return (arr as StoredConversation[]).filter((c) => c && typeof c.id === 'string');
   }
 
   /**
@@ -82,7 +99,9 @@ export class SessionStore {
         if (m && typeof m.id === 'string' && !msgMap.has(m.id)) msgMap.set(m.id, m);
       }
     }
-    const mergedMessages = Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    const mergedMessages = dedupeStoredToolMessages(
+      Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp)
+    );
     const next: StoredConversation = {
       ...keeper,
       messages: mergedMessages,
@@ -96,7 +115,10 @@ export class SessionStore {
   async writeAll(conversations: StoredConversation[]): Promise<void> {
     await fs.promises.mkdir(path.dirname(this.storePath), { recursive: true });
     const payload: StorePayload = { conversations };
-    await fs.promises.writeFile(this.storePath, JSON.stringify(payload, null, 2), 'utf-8');
+    const data = JSON.stringify(payload, null, 2);
+    const tmp = `${this.storePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+    await fs.promises.writeFile(tmp, data, 'utf-8');
+    await fs.promises.rename(tmp, this.storePath);
   }
 
   async upsertConversation(conversation: StoredConversation): Promise<void> {

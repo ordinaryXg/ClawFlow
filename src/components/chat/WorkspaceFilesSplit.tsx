@@ -15,6 +15,9 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import { clampWidth, startShellColumnDrag } from '../../hooks/usePersistedShellWidth';
 import { WORKSPACE_IMAGE_PREVIEW_MAX_MB } from '../../workspace-preview-limits';
+import { FilePreviewPdfCanvas } from './FilePreviewPdfCanvas';
+import { CsvPreviewTable } from './CsvPreviewTable';
+import { parseCsvForPreview } from './csvPreviewParse';
 import './chat.css';
 
 type Entry = { name: string; kind: 'file' | 'dir' };
@@ -52,6 +55,11 @@ function isMarkdownFilename(rel: string): boolean {
   return base.endsWith('.md') || base.endsWith('.markdown');
 }
 
+function isCsvFilename(rel: string): boolean {
+  const base = rel.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? '';
+  return base.endsWith('.csv');
+}
+
 function safeTextToHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -77,6 +85,13 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     | { state: 'loading' }
     | { state: 'text'; content: string; truncated: boolean }
     | { state: 'image'; dataUrl: string }
+    | {
+        state: 'pdf';
+        pdfBase64: string;
+        textExtract: string;
+        truncated: boolean;
+        numpages?: number;
+      }
     | { state: 'binary' }
     | { state: 'error'; message: string }
   >({ state: 'idle' });
@@ -374,6 +389,16 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           });
           return;
         }
+        if (res.isPdf && res.mimeType) {
+          setPreview({
+            state: 'pdf',
+            pdfBase64: res.content,
+            textExtract: res.textExtract ?? '',
+            truncated: res.truncated,
+            numpages: res.numpages,
+          });
+          return;
+        }
         if (res.isBinary) {
           setPreview({ state: 'binary' });
           return;
@@ -389,6 +414,12 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
       cancelled = true;
     };
   }, [selectedFile, workspacePath, t]);
+
+  const csvPreviewModel = useMemo(() => {
+    if (preview.state !== 'text') return null;
+    if (!selectedFile || !isCsvFilename(selectedFile)) return null;
+    return parseCsvForPreview(preview.content);
+  }, [preview, selectedFile]);
 
   const treeNodes = useMemo(() => {
     if (!workspacePath) return null;
@@ -588,17 +619,45 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
                     <img className="cf-filePreview__img" src={preview.dataUrl} alt="" decoding="async" />
                   </div>
                 </>
-              ) : preview.state === 'text' ? (
+              ) : preview.state === 'pdf' ? (
                 <>
                   {preview.truncated ? (
                     <div className="cf-filePreview__warn cf-sub">{t('chat.rightTabs.previewTruncated')}</div>
                   ) : null}
-                  {selectedFile && isMarkdownFilename(selectedFile) && mdViewMode === 'preview' ? (
-                    <div className="cf-filePreview__mdBody cf-msgItem__content">
-                      <Markdown options={markdownOptions}>{preview.content}</Markdown>
+                  {typeof preview.numpages === 'number' && preview.numpages > 0 ? (
+                    <div className="cf-sub cf-filePreview__pdfMeta">
+                      {t('chat.rightTabs.previewPdfPages', { n: preview.numpages })}
                     </div>
+                  ) : null}
+                  <div className="cf-filePreview__pdfWrap cf-filePreview__pdfWrap--canvas">
+                    <FilePreviewPdfCanvas pdfBase64={preview.pdfBase64} />
+                  </div>
+                  {preview.textExtract.trim().length > 0 ? (
+                    <details className="cf-filePreview__pdfDetails">
+                      <summary>{t('chat.rightTabs.previewPdfExtractedText')}</summary>
+                      <pre className="cf-filePreview__pre cf-filePreview__pre--pdfText">{preview.textExtract}</pre>
+                    </details>
                   ) : (
-                    <pre className="cf-filePreview__pre">{preview.content}</pre>
+                    <div className="cf-sub cf-filePreview__pdfNoText">{t('chat.rightTabs.previewPdfNoTextLayer')}</div>
+                  )}
+                </>
+              ) : preview.state === 'text' ? (
+                <>
+                  {csvPreviewModel?.ok ? (
+                    <CsvPreviewTable model={csvPreviewModel} fileTruncated={preview.truncated} t={t} />
+                  ) : (
+                    <>
+                      {preview.truncated ? (
+                        <div className="cf-filePreview__warn cf-sub">{t('chat.rightTabs.previewTruncated')}</div>
+                      ) : null}
+                      {selectedFile && isMarkdownFilename(selectedFile) && mdViewMode === 'preview' ? (
+                        <div className="cf-filePreview__mdBody cf-msgItem__content">
+                          <Markdown options={markdownOptions}>{preview.content}</Markdown>
+                        </div>
+                      ) : (
+                        <pre className="cf-filePreview__pre">{preview.content}</pre>
+                      )}
+                    </>
                   )}
                 </>
               ) : (

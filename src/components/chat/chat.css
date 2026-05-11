@@ -244,6 +244,48 @@
   max-width: 220px;
 }
 
+.cf-toolMsg__badge{
+  flex:0 0 auto;
+  font-size:11px;
+  font-weight:600;
+  line-height:1.2;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  color:var(--muted);
+  background:rgba(255,255,255,.06);
+}
+.cf-toolMsg__badge--running{
+  color:rgba(120,200,255,.95);
+  border-color:rgba(120,200,255,.35);
+}
+.cf-toolMsg__badge--result{
+  color:rgba(120,230,180,.95);
+  border-color:rgba(120,230,180,.3);
+}
+.cf-toolMsg__badge--error{
+  color:rgba(255,140,140,.95);
+  border-color:rgba(255,140,140,.35);
+}
+.cf-toolMsg__metaFold{
+  margin-top:8px;
+  font-size:11px;
+  color:var(--muted);
+}
+.cf-toolMsg__metaFold summary{
+  cursor:pointer;
+  user-select:none;
+  color:var(--text);
+}
+.cf-toolMsg__pre--compact{
+  max-height:120px;
+  overflow:auto;
+}
+.cf-toolMsg__pre--meta{
+  max-height:200px;
+  overflow:auto;
+  opacity:.85;
+}
 .cf-toolMsg__status {
   font-size: 10px;
   font-weight: 700;

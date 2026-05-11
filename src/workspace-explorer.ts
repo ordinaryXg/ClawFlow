@@ -5,6 +5,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { WORKSPACE_IMAGE_PREVIEW_MAX_BYTES } from './workspace-preview-limits';
+import {
+  EXCEL_PREVIEW_EXTENSIONS,
+  PDF_PREVIEW_EXTENSIONS,
+  previewExcelBuffer,
+  previewPdfBuffer,
+  WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
+} from './workspace-office-preview';
 
 const TEXT_PREVIEW_MAX = 256 * 1024;
 const FILE_HARD_MAX = 1024 * 1024;
@@ -242,7 +249,11 @@ export type FilePreviewResult =
       isBinary: boolean;
       /** 为 true 时 `content` 为原始 Base64（无 data: 前缀），与 `mimeType` 拼 data URL */
       isImage?: boolean;
+      /** PDF：content 为 Base64，内嵌预览；textExtract 供模型/工具读取文字层 */
+      isPdf?: boolean;
       mimeType?: string;
+      textExtract?: string;
+      numpages?: number;
     }
   | { ok: false; error: string };
 
@@ -272,6 +283,43 @@ export async function readWorkspaceFilePreview(
         isImage: true,
         mimeType: imageMime,
       };
+    }
+
+    if (EXCEL_PREVIEW_EXTENSIONS.has(ext)) {
+      if (st.size > WORKSPACE_OFFICE_PREVIEW_MAX_BYTES) {
+        return { ok: false, error: 'File too large' };
+      }
+      try {
+        const buf = await fs.promises.readFile(full);
+        const { text, truncated } = previewExcelBuffer(buf);
+        return { ok: true, content: text, truncated, isBinary: false };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false, error: msg };
+      }
+    }
+
+    if (PDF_PREVIEW_EXTENSIONS.has(ext)) {
+      if (st.size > WORKSPACE_OFFICE_PREVIEW_MAX_BYTES) {
+        return { ok: false, error: 'File too large' };
+      }
+      try {
+        const buf = await fs.promises.readFile(full);
+        const p = await previewPdfBuffer(buf);
+        return {
+          ok: true,
+          content: p.base64,
+          truncated: p.truncated,
+          isBinary: false,
+          isPdf: true,
+          mimeType: 'application/pdf',
+          textExtract: p.textExtract,
+          numpages: p.numpages,
+        };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { ok: false, error: msg };
+      }
     }
 
     if (st.size > FILE_HARD_MAX) {

@@ -20,7 +20,6 @@ function coerceString(v: unknown): string | null {
 function pickToolKind(meta: Record<string, unknown> | undefined): string | null {
   const kind = coerceString(meta?.kind);
   if (kind) return kind;
-  // 兼容：未来可能写入 toolKind/tool_kind
   return coerceString(meta?.toolKind) ?? coerceString(meta?.tool_kind);
 }
 
@@ -44,6 +43,18 @@ function summarize(content: string, maxLen: number): string {
   return `${oneLine.slice(0, maxLen - 1)}…`;
 }
 
+function pickStatusKey(meta: Record<string, unknown> | undefined): string | null {
+  const ui = coerceString(meta?.uiStatus);
+  const st = coerceString(meta?.status);
+  const raw = ui ?? st;
+  if (!raw) return null;
+  if (raw === 'result' || raw === 'success') return 'result';
+  if (raw === 'running') return 'running';
+  if (raw === 'error') return 'error';
+  return raw;
+}
+
+
 const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
   const { t } = useTranslation();
 
@@ -55,21 +66,29 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
     if (mt) return mt;
     if (kind) return kind;
     if (message.toolCallId) return `tool_call:${message.toolCallId}`;
-    return t('chat.toolMessage.title', { defaultValue: '工具调用' });
+    return t('chat.toolMessage.title');
   }, [kind, message.toolCallId, meta, t]);
 
-  const status = useMemo(() => coerceString(meta?.status), [meta]);
-  const summary = useMemo(() => summarize(message.content, 140), [message.content]);
+  const statusKey = useMemo(() => pickStatusKey(meta), [meta]);
+  const statusLabel = useMemo(() => {
+    if (!statusKey) return null;
+    if (statusKey === 'result') return t('chat.toolMessage.status.result');
+    if (statusKey === 'running') return t('chat.toolMessage.status.running');
+    if (statusKey === 'error') return t('chat.toolMessage.status.error');
+    return statusKey;
+  }, [statusKey, t]);
+
+  const argsPreview = coerceString(meta?.argumentsPreview);
+  const summary = useMemo(() => summarize(message.content, 160), [message.content]);
 
   const loadingIcon = useMemo(() => {
-    // 仅对子 Agent 异步回执展示 loading（避免普通工具 start 阶段也出现旋转）
-    if (status !== 'running') return null;
+    if (statusKey !== 'running') return null;
     const toolName = coerceString(meta?.toolName);
     if (toolName === 'delegate_to_subagent' || isSubAgentKind(kind)) {
       return <LoadingOutlined className="cf-toolMsg__loading" spin />;
     }
     return null;
-  }, [kind, meta, status]);
+  }, [kind, meta, statusKey]);
 
   const riskIcon = useMemo(() => {
     if (riskLevel === 'high') return <ExclamationCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--high" />;
@@ -103,26 +122,39 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
           {riskIcon}
           {loadingIcon}
           <span className="cf-toolMsg__title">{title}</span>
-          {status ? <span className={`cf-toolMsg__status cf-toolMsg__status--${status}`}>{status}</span> : null}
+          {statusLabel ? (
+            <span
+              className={`cf-toolMsg__badge cf-toolMsg__badge--${statusKey ?? 'unknown'}`}
+              data-status={statusKey ?? ''}
+            >
+              {statusLabel}
+            </span>
+          ) : null}
           {summary ? <span className="cf-toolMsg__oneLine">{summary}</span> : null}
         </summary>
         <div className="cf-toolMsg__body">
           {message.toolCallId ? (
             <div className="cf-toolMsg__kv">
-              <span className="cf-toolMsg__k">tool_call_id</span>
+              <span className="cf-toolMsg__k">{t('chat.toolMessage.callId')}</span>
               <span className="cf-toolMsg__v">{message.toolCallId}</span>
             </div>
           ) : null}
-          {metaJson ? (
+          {argsPreview ? (
             <div className="cf-toolMsg__section">
-              <div className="cf-toolMsg__sectionTitle">meta</div>
-              <pre className="cf-toolMsg__pre">{metaJson}</pre>
+              <div className="cf-toolMsg__sectionTitle">{t('chat.toolMessage.argsTitle')}</div>
+              <pre className="cf-toolMsg__pre cf-toolMsg__pre--compact">{argsPreview}</pre>
             </div>
           ) : null}
           <div className="cf-toolMsg__section">
-            <div className="cf-toolMsg__sectionTitle">content</div>
+            <div className="cf-toolMsg__sectionTitle">{t('chat.toolMessage.outputTitle')}</div>
             <pre className="cf-toolMsg__pre">{String(message.content ?? '')}</pre>
           </div>
+          {metaJson ? (
+            <details className="cf-toolMsg__metaFold">
+              <summary>{t('chat.toolMessage.debugMeta')}</summary>
+              <pre className="cf-toolMsg__pre cf-toolMsg__pre--meta">{metaJson}</pre>
+            </details>
+          ) : null}
         </div>
       </details>
     </div>
@@ -130,4 +162,3 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
 };
 
 export default ToolMessageItem;
-

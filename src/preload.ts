@@ -135,7 +135,10 @@ export interface IElectronAPI {
         truncated: boolean;
         isBinary: boolean;
         isImage?: boolean;
+        isPdf?: boolean;
         mimeType?: string;
+        textExtract?: string;
+        numpages?: number;
       }
     | { ok: false; error: string }
   >;

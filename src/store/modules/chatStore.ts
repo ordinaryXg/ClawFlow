@@ -8,6 +8,7 @@ import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
 import { useTodoTriggerStore } from './todoTriggerStore';
+import { dedupeUiToolMessages } from '../../engine/dedupe-tool-messages';
 
 export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
 
@@ -168,7 +169,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
   return {
     id: c.id,
     title: typeof c.title === 'string' ? c.title : '对话',
-    messages,
+    messages: dedupeUiToolMessages(messages),
     createdAt: typeof c.createdAt === 'number' ? c.createdAt : now,
     updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : now,
   };
@@ -267,8 +268,18 @@ type Pending = {
   conversationId: string;
   demuxer: ReasoningStreamDemux;
   onDelta: (text: string) => void;
-  onFinal: (full: string) => void;
+  onFinal: (full: string) => void | Promise<void>;
 };
+
+let lastToolConvSyncTs = 0;
+const TOOL_CONV_SYNC_MIN_MS = 300;
+
+function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations: () => Promise<void> }): void {
+  const now = Date.now();
+  if (now - lastToolConvSyncTs < TOOL_CONV_SYNC_MIN_MS) return;
+  lastToolConvSyncTs = now;
+  void getState().fetchConversations().catch(() => undefined);
+}
 
 let wsClient: WebSocket | null = null;
 let wsConnecting: Promise<WebSocket> | null = null;
@@ -462,13 +473,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
     try {
       const res = await window.electronAPI?.engineGetConversations?.();
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : null;
-      if (!rawList) {
-        set({
-          conversations: [],
-          activeConversationId: null,
-          messages: [],
-          error: null,
-        });
+      // 响应异常时勿清空本地列表（否则像「历史被抹掉」）；仅明确拉取到空数组时才覆盖为空。
+      if (rawList == null) {
+        // eslint-disable-next-line no-console
+        console.warn('[chat] fetchConversations: 未收到有效 conversations 数组，保留当前界面状态', res);
+        set({ error: '对话列表响应异常，未更新界面。请重试或检查主进程日志。' });
         return;
       }
 
@@ -575,41 +584,17 @@ export const useChatStore = create<ChatState>()((set, get) => {
     try {
       const t0 = performance.now();
 
-      const finalizeReply = (
+      const finalizeReply = async (
         fullText: string,
         log?: { ipcMs: number; label: string },
         reasoningText?: string | null
       ) => {
-        const rc = typeof reasoningText === 'string' && reasoningText.trim() ? reasoningText.trim() : undefined;
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          role: 'assistant',
-          content: fullText,
-          timestamp: Date.now(),
-          channel: 'assistant_llm',
-          ...(rc ? { reasoningContent: rc } : {}),
-        };
-
-        set((state) => {
-          const updatedConversations = state.conversations.map((conv) => {
-            if (conv.id === sessionId) {
-              return {
-                ...conv,
-                messages: [...conv.messages, assistantMessage],
-                updatedAt: Date.now(),
-              };
-            }
-            return conv;
-          });
-
-          return {
-            conversations: updatedConversations,
-            messages: [...state.messages, assistantMessage],
-            isLoading: false,
-            streamingActivity: null,
-            streamingThinking: null,
-          };
+        set({
+          isLoading: false,
+          streamingActivity: null,
+          streamingThinking: null,
         });
+        await get().fetchConversations();
 
         void Promise.resolve(
           window.electronAPI?.workspaceAppendChangeLog?.({
@@ -704,8 +689,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
             streamingActivity: demuxer.getActivity(),
             streamingThinking: demuxer.getThinkingDisplay() || null,
           });
-          if (/\[tool:(done|fail)\]/.test(chunk)) {
+          if (/\[tool:(start|done|fail)\]/.test(chunk)) {
             window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+            scheduleSyncConversationsAfterTool(get);
           }
         };
         pendingById.set(requestId, {
@@ -734,8 +720,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
             clearToolApprovalForRequest(requestId);
             const t1 = performance.now();
             const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
-            finalizeReply(full || `这是对"${content}"的回复（模拟）`, { ipcMs: Math.round(t1 - t0), label: 'ws' }, reasoningPersist);
-            window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+            void finalizeReply(
+              full || `这是对"${content}"的回复（模拟）`,
+              { ipcMs: Math.round(t1 - t0), label: 'ws' },
+              reasoningPersist
+            ).then(() => {
+              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+            });
           },
         });
 
@@ -801,7 +792,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         set({ streamingActivity: replyText.slice(0, n), streamingThinking: null });
         if (u >= 1) {
           revealCleanup = null;
-          finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
+          void finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
           return;
         }
         raf = requestAnimationFrame(tick);

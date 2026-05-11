@@ -872,6 +872,117 @@
   height:auto;
   object-fit:contain;
 }
+.cf-filePreview__pdfMeta{margin-bottom:8px}
+.cf-filePreview__pdfWrap{
+  flex:0 0 auto;
+  width:100%;
+  min-height:min(72vh,640px);
+  max-height:72vh;
+  border:1px solid var(--border);
+  border-radius:6px;
+  overflow:hidden;
+  background:rgba(0,0,0,.18);
+  margin-bottom:10px;
+}
+.cf-filePreview__pdfWrap--canvas{
+  overflow-y:auto;
+  overflow-x:hidden;
+  max-height:min(72vh,720px);
+  min-height:280px;
+  padding:8px;
+  box-sizing:border-box;
+}
+.cf-filePreview__pdfCanvasHost{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-height:200px;
+}
+.cf-filePreview__pdfCanvasPages{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  align-items:center;
+}
+.cf-filePreview__pdfPage{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  max-width:100%;
+}
+.cf-filePreview__pdfPageLabel{
+  align-self:flex-start;
+}
+.cf-filePreview__pdfPageCanvas{
+  max-width:100%;
+  height:auto;
+  display:block;
+  background:#fff;
+  border-radius:4px;
+  box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+.cf-filePreview__pdfCanvasNote{margin-top:4px;text-align:center}
+.cf-filePreview__csvWrap{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-height:0;
+  max-height:100%;
+}
+.cf-filePreview__csvScroll{
+  overflow:auto;
+  max-height:min(60vh,560px);
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:rgba(0,0,0,.12);
+}
+.cf-filePreview__csvTable{
+  border-collapse:collapse;
+  font-size:11px;
+  line-height:1.35;
+  min-width:100%;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.cf-filePreview__csvTable th,
+.cf-filePreview__csvTable td{
+  border:1px solid var(--border);
+  padding:6px 8px;
+  text-align:left;
+  vertical-align:top;
+  white-space:nowrap;
+  max-width:280px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.cf-filePreview__csvTable thead th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:rgba(30,30,36,.96);
+  font-weight:600;
+  color:var(--text);
+}
+.cf-filePreview__csvTable tbody tr:nth-child(even) td{
+  background:rgba(255,255,255,.03);
+}
+.cf-filePreview__csvMeta{margin-top:4px}
+.cf-filePreview__pdfDetails{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+}
+.cf-filePreview__pdfDetails summary{
+  cursor:pointer;
+  user-select:none;
+  color:var(--text);
+}
+.cf-filePreview__pre--pdfText{
+  margin-top:8px;
+  max-height:240px;
+  overflow:auto;
+}
+.cf-filePreview__pdfNoText{margin-top:8px}
 .cf-filePreview__warn{margin-bottom:8px;color:var(--muted)}
 .cf-filePreview__pre{
   margin:0;
