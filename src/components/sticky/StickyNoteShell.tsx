@@ -86,7 +86,9 @@ const StickyNoteShell: FC = () => {
   useEffect(() => {
     const api = window.electronAPI;
     if (!api?.stickyGetBootstrap) return;
-    let unsub: (() => void) | undefined;
+    const unsub: (() => void) | undefined = api.onStickyDetachedPaths?.((p) =>
+      setDetachedPaths(Array.isArray(p.paths) ? p.paths : [])
+    );
     void (async () => {
       try {
         const [boot, detached, defPath] = await Promise.all([
@@ -101,7 +103,6 @@ const StickyNoteShell: FC = () => {
         setStickyBootstrap({ role: 'main', satelliteWorkspace: null });
       }
     })();
-    unsub = api.onStickyDetachedPaths?.((p) => setDetachedPaths(Array.isArray(p.paths) ? p.paths : []));
     return () => unsub?.();
   }, []);
 

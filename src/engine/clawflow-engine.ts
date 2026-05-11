@@ -95,6 +95,10 @@ export interface ClawFlowEngine {
     openEmbeddedBrowser?: (url: string) => void;
     /** 多窗口：会话与工具以此根目录为准；缺省用引擎当前 config */
     workspaceRoot?: string;
+    /** 可选：覆盖 assistant 消息的 channel（用于子 Agent 等产物与主对话区分） */
+    assistantMessageChannel?: StoredMessage['channel'];
+    /** 可选：合并写入 assistant 消息 meta */
+    assistantMessageMeta?: Record<string, unknown>;
   }): Promise<{ message: string }>;
 
   /** Gateway / 主进程在用户确认或拒绝后调用，解除 sendMessage 内工具前等待 */
@@ -259,6 +263,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       modelIdHint: string | null;
       engine: 'clawflow' | 'clawflow-stub';
       reasoning_content?: string;
+      channel?: StoredMessage['channel'];
+      meta?: Record<string, unknown>;
     }
   ): Promise<void> {
     const convs = await store.readAll();
@@ -273,8 +279,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       role: 'assistant',
       content: params.reply,
       timestamp: now,
+      ...(params.channel ? { channel: params.channel } : {}),
       ...(rc ? { reasoning_content: rc } : {}),
-      meta: { engine: params.engine, mode: params.mode, modelId: params.modelIdHint },
+      meta: { engine: params.engine, mode: params.mode, modelId: params.modelIdHint, ...(params.meta ?? {}) },
     };
     if (idx >= 0) {
       const c = convs[idx];
@@ -422,6 +429,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     requestId?: string;
     onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
     workspaceRoot?: string;
+    assistantMessageChannel?: StoredMessage['channel'];
+    assistantMessageMeta?: Record<string, unknown>;
   }): Promise<{ message: string }> {
     // Phase 0/1 bridge:
     // - If a model provider is available and configured, use it
@@ -614,6 +623,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       modelIdHint: modelId,
       engine: reply.startsWith('【ClawFlowEngine:stub】') ? 'clawflow-stub' : 'clawflow',
       reasoning_content: reasoningSteps.length ? reasoningSteps.join('\n\n—\n\n') : undefined,
+      channel: params.assistantMessageChannel,
+      meta: params.assistantMessageMeta,
     });
     return { message: reply };
   }
@@ -628,6 +639,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     intent?: ChatIntent;
     policyOverrides?: unknown;
     workspaceRoot?: string;
+    assistantMessageChannel?: StoredMessage['channel'];
+    assistantMessageMeta?: Record<string, unknown>;
   }): Promise<string> {
     const effRoot = path.resolve(params.workspaceRoot ?? this.config.workspaceRoot);
     const store = this.getSessionStore(effRoot);
@@ -670,6 +683,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         mode,
         modelIdHint: modelId,
         engine: 'clawflow-stub',
+        channel: params.assistantMessageChannel,
+        meta: params.assistantMessageMeta,
       });
       return reply;
     }
@@ -704,6 +719,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         mode,
         modelIdHint: modelId,
         engine: 'clawflow-stub',
+        channel: params.assistantMessageChannel,
+        meta: params.assistantMessageMeta,
       });
       return reply;
     }
@@ -717,6 +734,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       modelIdHint: modelId,
       engine: reply.startsWith('【ClawFlowEngine:stub】') ? 'clawflow-stub' : 'clawflow',
       reasoning_content: merged.reasoningCombined || undefined,
+      channel: params.assistantMessageChannel,
+      meta: params.assistantMessageMeta,
     });
     return replyPersist;
   }
@@ -762,6 +781,16 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     await getGlobalClawFlowEngine().deleteConversation(conversationId, root);
     return { success: true };
+  });
+
+  ipcMain.handle('engine:resolveToolApproval', async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return { ok: false as const };
+    const p = payload as Record<string, unknown>;
+    const approvalId = typeof p.approvalId === 'string' ? p.approvalId.trim() : '';
+    const approved = Boolean(p.approved);
+    if (!approvalId) return { ok: false as const };
+    getGlobalClawFlowEngine().resolveToolApproval(approvalId, approved);
+    return { ok: true as const };
   });
 
   // D1: provider profiles + secure token storage

@@ -19,6 +19,7 @@ import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-trigg
 import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
 import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
 import { getGlobalOpenClawCliEngine } from './openclaw-engine';
+import { runSubAgentOnce } from '../sub-agent-runner';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -326,6 +327,47 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
       return `${yyyy}-${mm}-${dd}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'delegate_to_subagent',
+        description:
+          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .tool/manifest.json.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            slotId: { type: 'string', description: 'Sub-agent slot id' },
+            taskText: { type: 'string', description: 'Task to execute' },
+            conversationId: { type: 'string', description: 'Target conversation id (current workspace singleton)' },
+            modelId: { type: 'string', description: 'Optional model id' },
+          },
+          required: ['slotId', 'taskText', 'conversationId'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const slotId = String(args?.slotId ?? '').trim();
+      const taskText = String(args?.taskText ?? '').trim();
+      const conversationId = String(args?.conversationId ?? '').trim();
+      const modelId = typeof args?.modelId === 'string' && args.modelId.trim() ? args.modelId.trim() : undefined;
+      if (!slotId || !taskText || !conversationId) return 'ERROR: missing required fields';
+
+      const res = await runSubAgentOnce({
+        workspaceRoot: ctx.workspaceRoot,
+        slotId,
+        taskText,
+        conversationId,
+        modelId,
+        // AI 调度路径：不提供 onToolApprovalNeeded => 默认自动同意（由 engine 行为决定）
+      });
+      if (!res.ok) return `ERROR: sub-agent failed: ${res.error}`;
+      return truncateForToolLog(res.message || '(empty)', 12_000);
     }
   );
 

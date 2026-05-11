@@ -204,6 +204,24 @@ export interface IElectronAPI {
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   subAgentsList: () => Promise<{ slots: unknown[] }>;
   subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  subAgentsRun: (params: { slotId: string; taskText: string; conversationId: string; modelId?: string }) => Promise<
+    | { ok: true; runId: string }
+    | { ok: false; error: string; runId?: string }
+  >;
+  onSubAgentsRunDelta: (cb: (payload: { runId: string; slotId: string; text: string }) => void) => () => void;
+  onSubAgentsRunFinal: (
+    cb: (payload: { runId: string; slotId: string; ok: boolean; message?: string; error?: string }) => void
+  ) => () => void;
+  onSubAgentsToolApprovalNeeded: (
+    cb: (payload: {
+      runId: string;
+      slotId: string;
+      approvalId: string;
+      conversationId: string;
+      tools: Array<{ name: string; argumentsPreview: string }>;
+    }) => void
+  ) => () => void;
+  engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
   onSubAgentsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
   scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;

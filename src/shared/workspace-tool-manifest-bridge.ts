@@ -27,7 +27,8 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
   embedded_browser: ['open_embedded_browser'],
   git: ['workspace_git_status', 'workspace_git_diff', 'workspace_git_log'],
   todos: ['workspace_todo_list', 'workspace_todo_create', 'workspace_todo_update', 'workspace_todo_remove'],
-  subagents: ['workspace_subagent_list', 'workspace_subagent_upsert', 'workspace_subagent_remove'],
+  // 子 Agent：元数据管理 + 委派执行
+  subagents: ['workspace_subagent_list', 'workspace_subagent_upsert', 'workspace_subagent_remove', 'delegate_to_subagent'],
   /** OpenClaw CLI `skills list` 的摘要；启用后模型可主动拉技能清单（不等同于自动把 skill 注入为 tools）。 */
   skills: ['openclaw_skills_list'],
   knowledge_base: ['workspace_knowledge_query'],

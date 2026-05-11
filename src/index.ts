@@ -21,6 +21,7 @@ import { readTodoTriggers, writeTodoTriggers } from './todo-triggers-service';
 import { broadcastTodoTriggersUpdated } from './todo-triggers-broadcast';
 import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './sub-agent-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
+import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './sub-agent-runner';
 import { readScrapeJobs } from './scrape-service';
 import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './todo-triggers-scheduler';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
@@ -251,7 +252,7 @@ function registerTodoTriggersIPC(): void {
 registerTodoTriggersIPC();
 
 function registerSubAgentsIPC(): void {
-  for (const ch of ['subAgents:list', 'subAgents:saveAll'] as const) {
+  for (const ch of ['subAgents:list', 'subAgents:saveAll', 'subAgents:run'] as const) {
     try {
       ipcMain.removeHandler(ch);
     } catch {
@@ -269,6 +270,41 @@ function registerSubAgentsIPC(): void {
     await writeSubAgentSlots(root, slots);
     broadcastSubAgentsUpdated(root);
     return { ok: true as const };
+  });
+
+  ipcMain.handle('subAgents:run', async (event, payload: unknown) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    if (!payload || typeof payload !== 'object') return { ok: false as const, error: 'invalid_payload' };
+    const p = payload as Record<string, unknown>;
+    const slotId = typeof p.slotId === 'string' ? p.slotId.trim() : '';
+    const taskText = typeof p.taskText === 'string' ? p.taskText : '';
+    const conversationId = typeof p.conversationId === 'string' ? p.conversationId.trim() : '';
+    const modelId = typeof p.modelId === 'string' && p.modelId.trim() ? p.modelId.trim() : undefined;
+    if (!slotId || !taskText || !conversationId) return { ok: false as const, error: 'missing_fields' };
+
+    const sender = event.sender;
+    const res = await runSubAgentOnce({
+      workspaceRoot: root,
+      slotId,
+      taskText,
+      conversationId,
+      modelId,
+      onDelta: (d) => sendSubAgentRunDelta(sender, d),
+      onToolApprovalNeeded: (ap) => {
+        try {
+          sender.send('subAgents:toolApprovalNeeded', ap);
+        } catch {
+          /* ignore */
+        }
+      },
+    });
+
+    if (res.ok) {
+      sendSubAgentRunFinal(sender, { runId: res.runId, slotId, ok: true, message: res.message });
+      return { ok: true as const, runId: res.runId };
+    }
+    sendSubAgentRunFinal(sender, { runId: res.runId, slotId, ok: false, error: res.error });
+    return { ok: false as const, error: res.error, runId: res.runId };
   });
 }
 registerSubAgentsIPC();

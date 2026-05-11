@@ -1,0 +1,145 @@
+import { randomUUID } from 'crypto';
+import type { WebContents } from 'electron';
+import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from './engine/clawflow-engine';
+import { buildRoleAgentSystemContent } from './engine/role-agent-context';
+import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
+import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
+
+export type SubAgentRunRequest = {
+  workspaceRoot: string;
+  slotId: string;
+  taskText: string;
+  /** 追加到这个会话中（当前架构为每个 workspace 单会话；仍保留该字段以便未来拆分） */
+  conversationId: string;
+  modelId?: string;
+  /** 可选：在 UI 路径下用于工具审批弹窗 */
+  onToolApprovalNeeded?: (p: ToolApprovalNeededPayload & { runId: string; slotId: string }) => void | Promise<void>;
+  /** 可选：流式 delta */
+  onDelta?: (p: { runId: string; slotId: string; text: string }) => void;
+};
+
+export type SubAgentRunResult =
+  | { ok: true; runId: string; message: string }
+  | { ok: false; runId: string; error: string };
+
+const runningBySlot = new Map<string, string>();
+
+function slotKey(workspaceRoot: string, slotId: string): string {
+  return `${String(workspaceRoot).replace(/\\/g, '/').toLowerCase()}::${slotId}`;
+}
+
+export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgentRunResult> {
+  const runId = randomUUID();
+  const ws = String(req.workspaceRoot || '').trim();
+  const slotId = String(req.slotId || '').trim();
+  const conversationId = String(req.conversationId || '').trim();
+  const taskText = String(req.taskText || '').trim();
+  if (!ws) return { ok: false, runId, error: 'missing_workspaceRoot' };
+  if (!slotId) return { ok: false, runId, error: 'missing_slotId' };
+  if (!conversationId) return { ok: false, runId, error: 'missing_conversationId' };
+  if (!taskText) return { ok: false, runId, error: 'missing_taskText' };
+
+  const key = slotKey(ws, slotId);
+  if (runningBySlot.has(key)) {
+    return { ok: false, runId, error: 'slot_already_running' };
+  }
+  runningBySlot.set(key, runId);
+
+  const setStatus = async (status: 'starting' | 'running' | 'stopped' | 'error') => {
+    try {
+      const slots = await readSubAgentSlots(ws);
+      const idx = slots.findIndex((s) => s.id === slotId);
+      if (idx >= 0) {
+        slots[idx] = { ...slots[idx], status };
+        await writeSubAgentSlots(ws, slots);
+        broadcastSubAgentsUpdated(ws);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  try {
+    await setStatus('starting');
+    const slots = await readSubAgentSlots(ws);
+    const slot = slots.find((s) => s.id === slotId);
+    const label = slot?.label?.trim() || slotId;
+    const behavior = slot?.behavior?.trim() || '';
+
+    await setStatus('running');
+
+    const roleAgent = await buildRoleAgentSystemContent(ws);
+    const systemPrefix = [
+      roleAgent,
+      '',
+      '---',
+      '[ClawFlow] 你是一个子 Agent（sub-agent）。请严格遵守工作区规则与工具边界。',
+      `子 Agent ID：${slotId}`,
+      `子 Agent 名称：${label}`,
+      behavior ? `子 Agent 行为摘要：\n${behavior}` : '子 Agent 行为摘要：（空）',
+      '---',
+      '',
+    ].join('\n');
+
+    const userText = [
+      systemPrefix,
+      '任务：',
+      taskText,
+      '',
+      '要求：',
+      '- 输出需要可执行/可验证（如有）。',
+      '- 如果需要调用工具（读写文件/Git/搜索/爬取等），请在调用前确认必要性并尽量最小化副作用。',
+    ].join('\n');
+
+    const out = await getGlobalClawFlowEngine().sendMessage({
+      conversationId,
+      userText,
+      mode: 'multitask',
+      ...(req.modelId ? { modelId: req.modelId } : {}),
+      workspaceRoot: ws,
+      onDelta: req.onDelta ? (text) => req.onDelta?.({ runId, slotId, text }) : undefined,
+      assistantMessageChannel: 'assistant_tool_summary',
+      assistantMessageMeta: {
+        subAgent: {
+          runId,
+          slotId,
+          label,
+        },
+      },
+      ...(req.onToolApprovalNeeded
+        ? {
+            onToolApprovalNeeded: (p) => req.onToolApprovalNeeded?.({ ...p, runId, slotId }),
+          }
+        : {}),
+    });
+
+    await setStatus('stopped');
+    return { ok: true, runId, message: out.message ?? '' };
+  } catch (e: unknown) {
+    await setStatus('error');
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, runId, error: msg };
+  } finally {
+    runningBySlot.delete(key);
+  }
+}
+
+export function sendSubAgentRunDelta(sender: WebContents, payload: { runId: string; slotId: string; text: string }): void {
+  try {
+    sender.send('subAgents:runDelta', payload);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function sendSubAgentRunFinal(
+  sender: WebContents,
+  payload: { runId: string; slotId: string; ok: boolean; message?: string; error?: string }
+): void {
+  try {
+    sender.send('subAgents:runFinal', payload);
+  } catch {
+    /* ignore */
+  }
+}
+
