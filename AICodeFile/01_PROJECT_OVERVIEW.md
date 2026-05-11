@@ -1,44 +1,45 @@
-# ClawFlow 项目总览（AI 快速接入）
+# ClawFlow 项目总览（以当前代码反推）
 
 ## 基本信息
 
 - **仓库根目录**：`${REPO_ROOT}`
 - **应用形态**：Electron 桌面应用（Main + Preload + React Renderer）
-- **核心依赖**：主进程内置 **ClawFlowEngine**、**GatewayDaemon** 与相关 IPC；**不要求、不依赖** OpenClaw CLI（无外置 `openclaw` 可执行文件）
-- **目标参考**：类似腾讯 WorkBuddy 的桌面协作/对话类应用（**不要求 UI 复刻**）
+- **核心分层**：Main 负责“引擎/调度/文件系统/IPC”；Renderer 负责“UI/交互”；Preload 负责“安全桥”
+- **目标参考**：类似 WorkBuddy 的桌面协作/对话类应用（不要求 UI 复刻）
+
+## 当前产品主线（What / Why）
+
+ClawFlow 的核心主线是 **“以工作区（Workspace）为单位，把模型工具（tools）能力开关、文件/会话/调度数据持久化，并在 UI 中形成可操作闭环”**。
 
 ## 目标（Goals）
 
-- **P0**：对话能力可用（含流式响应呈现）、基础技能管理、连接器管理、Gateway 启停与状态展示
-- **P1**：设置页（主题/语言/行为配置）、稳定性与错误处理、基本测试与构建可用性
-- **P2+**：CI、发布、签名更新、更完整的用户/开发文档
+- **P0（已在做）**：对话闭环 + 工作区能力治理（`.tool/manifest.json` 过滤可用工具）
+- **P1（阶段 3 起）**：模型可调度的待办（IPC + 持久化 + 调度 + UI 刷新）、子 Agent 槽位最小状态
+- **P2**：技能加载路径与“动态 tools 注入 vs 上下文注入”策略落地；知识库（向量/路径）与检索工具（RAG）
 
 ## 非目标（Non-goals）
 
-- **不追求**：完全复刻 WorkBuddy 的 UI/信息架构
-- **不默认**：把所有 OpenClaw 细节都暴露给 Renderer（优先保证安全边界与最小 API）
+- 不追求复刻任何第三方 UI
+- 不在 Renderer 直接开放 Node / FS 权限（保持 `contextIsolation` 与 IPC 边界）
+- 子 Agent 暂不实现真实“委派执行/并行调度”，本阶段只做 **slots 元数据 + IPC 同步**
 
 ## 关键约束（Constraints）
 
-- **安全边界**：`contextIsolation: true`，Renderer 不直接拥有 Node 权限，统一走 `preload` 暴露的受控 API
-- **环境依赖**：各模型 Provider 的可用凭证（应用内配置或环境变量）；**不要求**安装 OpenClaw CLI
-- **跨平台**：文档与脚本避免硬编码盘符路径；文档统一用 `${REPO_ROOT}`
+- **安全边界**：Renderer 只能通过 `window.electronAPI` 调用主进程；敏感操作集中在 Main
+- **工作区隔离**：工作区相关数据写入 `${WORKSPACE_ROOT}/.clawflow/` 与 `${WORKSPACE_ROOT}/.tool/`
+- **工具治理**：模式（Plan/Multitask 等）下，工具 schema 在发送模型前会按 `.tool/manifest.json` 过滤；执行阶段再次校验防止历史轮次误调用
 
 ## 术语表（Glossary）
 
-- **ClawFlowEngine**：内置对话与工具运行时，经 IPC 暴露给渲染进程
-- **GatewayDaemon**：应用内置本地 HTTP/WebSocket 网关（启停与状态经 IPC）
-- **IPC**：Electron 进程间通信（Renderer ↔ Preload ↔ Main）
-- **Renderer**：React UI 运行的渲染进程
+- **Workspace**：用户选定的工作区根目录
+- **Tool Runtime**：主进程注册的“模型工具”集合（见 `src/engine/tool-runtime.ts`）
+- **Workspace Manifest**：`${WORKSPACE_ROOT}/.tool/manifest.json`（工具能力开关）
+- **Todo Triggers**：`${WORKSPACE_ROOT}/.clawflow/todo-triggers.v1.json`（待办调度数据）
+- **Sub-agent slots**：`${WORKSPACE_ROOT}/.clawflow/sub-agents.v1.json`（子 Agent 槽位数据）
 
-## 当前“单一事实来源”（Source of Truth）
+## 单一事实来源（Source of Truth）
 
-- **架构**：`02_ARCHITECTURE.md`
-- **任务清单**：`06_TASKS.md`
-- **工作流程**：`05_DEV_PROCESS.md`
-- **索引入口**：`00_INDEX.md`
-
-## 近期优先工作（给 AI/人类的执行入口）
-
-> 以 `06_TASKS.md` 的 P0/P1 优先级为准；若二者冲突，以“更接近可交付产品”的路径为准（对话 → 技能/连接器 → 设置 → 稳定性/测试 → 发布）。
+- `03_PRD.md`：本轮重整理的 PRD（含“证据”）
+- `02_ARCHITECTURE.md`：架构与关键调用链
+- `06_TASKS.md`：按模块拆分的待办与验收
 
