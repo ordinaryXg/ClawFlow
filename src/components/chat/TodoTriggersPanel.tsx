@@ -1,6 +1,6 @@
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PlusOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   defaultTodoTrigger,
   type TodoTriggerRecord,
@@ -22,109 +22,219 @@ function fromLocalDatetimeValue(s: string): number {
   return Number.isFinite(t) ? t : Date.now();
 }
 
+function validateTriggersForSave(list: TodoTriggerRecord[], tErr: (k: string) => string): string | null {
+  for (const tr of list) {
+    if (tr.trigger.kind === 'schedule' && tr.trigger.repeat === 'interval') {
+      const m = tr.trigger.intervalMinutes ?? 0;
+      if (m < 1) return tErr('todoTriggers.intervalInvalid');
+    }
+  }
+  return null;
+}
+
 const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   const { t } = useTranslation();
   const storeTriggers = useTodoTriggerStore((s) => s.triggers);
-  const setStoreTriggers = useTodoTriggerStore((s) => s.setTriggers);
   const load = useTodoTriggerStore((s) => s.load);
 
   const [triggers, setTriggers] = useState<TodoTriggerRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [creatingId, setCreatingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const creatingIdRef = useRef<string | null>(null);
+  const persistTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    creatingIdRef.current = creatingId;
+  }, [creatingId]);
+
+  const prevWorkspacePathRef = useRef(workspacePath);
+  /** 切换工作区时清空未保存草稿，避免把上一工作区的条目 merge 进来 */
+  useEffect(() => {
+    if (prevWorkspacePathRef.current === workspacePath) return;
+    prevWorkspacePathRef.current = workspacePath;
+    creatingIdRef.current = null;
+    setCreatingId(null);
+  }, [workspacePath]);
 
   useEffect(() => {
     void load();
   }, [load, workspacePath]);
 
+  /** 远端列表刷新时不要覆盖内存里「尚未保存的新建」行及其编辑内容 */
   useEffect(() => {
-    setTriggers(storeTriggers);
+    setTriggers((prev) => {
+      const cid = creatingIdRef.current;
+      const localDraft = cid ? prev.find((x) => x.id === cid) : undefined;
+      const keepDraft = Boolean(cid && localDraft && !storeTriggers.some((x) => x.id === cid));
+      if (keepDraft && localDraft) {
+        return [localDraft, ...storeTriggers.filter((x) => x.id !== localDraft.id)];
+      }
+      return [...storeTriggers];
+    });
     setSelectedId((prev) => {
       if (prev && storeTriggers.some((x) => x.id === prev)) return prev;
+      const cid = creatingIdRef.current;
+      if (prev && cid && prev === cid) return prev;
       const pend = storeTriggers.find((x) => x.status === 'pending');
       return pend?.id ?? storeTriggers[0]?.id ?? null;
     });
   }, [storeTriggers]);
 
-  const pending = useMemo(
-    () => triggers.filter((x) => x.status === 'pending').sort((a, b) => b.updatedAt - a.updatedAt),
-    [triggers]
-  );
-  const done = useMemo(
-    () => triggers.filter((x) => x.status === 'done').sort((a, b) => b.updatedAt - a.updatedAt),
-    [triggers]
-  );
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    };
+  }, []);
+
+  const sortedRows = useMemo(() => {
+    const pending = triggers.filter((x) => x.status === 'pending').sort((a, b) => b.updatedAt - a.updatedAt);
+    const done = triggers.filter((x) => x.status === 'done').sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...pending, ...done];
+  }, [triggers]);
 
   const selected = selectedId ? triggers.find((x) => x.id === selectedId) ?? null : null;
   const readOnly = selected?.status === 'done';
+  const isDraft = Boolean(creatingId && selectedId === creatingId);
+  /** 旧版竞态可能未写入 lastFireSubmitToModel；归档后 action 仍保留触发时的勾选 */
+  const showArchivedAiReceipt = Boolean(
+    selected && (selected.lastFireSubmitToModel ?? selected.action.submitToModel)
+  );
 
-  const patchSelected = useCallback((patch: Partial<TodoTriggerRecord>) => {
-    if (!selectedId) return;
-    setTriggers((prev) =>
-      prev.map((x) => (x.id === selectedId ? { ...x, ...patch, updatedAt: Date.now() } : x))
-    );
-  }, [selectedId]);
-
-  const patchTrigger = useCallback((partial: Partial<TodoTriggerRecord['trigger']>) => {
-    if (!selectedId) return;
-    setTriggers((prev) =>
-      prev.map((x) =>
-        x.id === selectedId
-          ? { ...x, trigger: { ...x.trigger, ...partial } as TodoTriggerRecord['trigger'], updatedAt: Date.now() }
-          : x
-      )
-    );
-  }, [selectedId]);
-
-  const patchAction = useCallback((partial: Partial<TodoTriggerRecord['action']>) => {
-    if (!selectedId) return;
-    setTriggers((prev) =>
-      prev.map((x) =>
-        x.id === selectedId ? { ...x, action: { ...x.action, ...partial }, updatedAt: Date.now() } : x
-      )
-    );
-  }, [selectedId]);
-
-  const onSave = async () => {
-    if (!workspacePath?.trim()) return;
-    for (const tr of triggers) {
-      if (tr.trigger.kind === 'schedule' && tr.trigger.repeat === 'interval') {
-        const m = tr.trigger.intervalMinutes ?? 0;
-        if (m < 1) {
-          (window as unknown as { __cf_toast?: { error: (a: string) => void } }).__cf_toast?.error(
-            t('todoTriggers.intervalInvalid')
-          );
-          return;
-        }
-      }
+  const clearPersistTimer = () => {
+    if (persistTimerRef.current != null) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
     }
-    setSaving(true);
-    try {
-      const res = await window.electronAPI?.todoTriggersSaveAll?.(triggers);
-      if (res && 'ok' in res && res.ok) {
-        setStoreTriggers(triggers);
-        (window as unknown as { __cf_toast?: { success: (a: string) => void } }).__cf_toast?.success(
-          t('todoTriggers.saved')
-        );
-      } else {
+  };
+
+  const persistTriggers = useCallback(
+    async (next: TodoTriggerRecord[], opts?: { toastSuccess?: boolean }): Promise<boolean> => {
+      if (!workspacePath?.trim()) return false;
+      const errMsg = validateTriggersForSave(next, t);
+      if (errMsg) {
+        (window as unknown as { __cf_toast?: { error: (a: string) => void } }).__cf_toast?.error(errMsg);
+        return false;
+      }
+      setSaving(true);
+      try {
+        const res = await window.electronAPI?.todoTriggersSaveAll?.(next);
+        if (res && 'ok' in res && res.ok) {
+          await load();
+          if (opts?.toastSuccess) {
+            (window as unknown as { __cf_toast?: { success: (a: string) => void } }).__cf_toast?.success(
+              t('todoTriggers.saved')
+            );
+          }
+          return true;
+        }
         (window as unknown as { __cf_toast?: { error: (a: string) => void } }).__cf_toast?.error(
           t('todoTriggers.saveFailed')
         );
+        return false;
+      } finally {
+        setSaving(false);
       }
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    [load, t, workspacePath]
+  );
+
+  const scheduleDebouncedPersist = useCallback(
+    (next: TodoTriggerRecord[]) => {
+      if (creatingIdRef.current) return;
+      clearPersistTimer();
+      persistTimerRef.current = window.setTimeout(() => {
+        persistTimerRef.current = null;
+        void persistTriggers(next);
+      }, 550);
+    },
+    [persistTriggers]
+  );
+
+  const patchSelected = useCallback(
+    (patch: Partial<TodoTriggerRecord>) => {
+      if (!selectedId) return;
+      setTriggers((prev) => {
+        const next = prev.map((x) => (x.id === selectedId ? { ...x, ...patch, updatedAt: Date.now() } : x));
+        if (creatingIdRef.current !== selectedId) scheduleDebouncedPersist(next);
+        return next;
+      });
+    },
+    [selectedId, scheduleDebouncedPersist]
+  );
+
+  const patchTrigger = useCallback(
+    (partial: Partial<TodoTriggerRecord['trigger']>) => {
+      if (!selectedId) return;
+      setTriggers((prev) => {
+        const next = prev.map((x) =>
+          x.id === selectedId
+            ? { ...x, trigger: { ...x.trigger, ...partial } as TodoTriggerRecord['trigger'], updatedAt: Date.now() }
+            : x
+        );
+        if (creatingIdRef.current !== selectedId) scheduleDebouncedPersist(next);
+        return next;
+      });
+    },
+    [selectedId, scheduleDebouncedPersist]
+  );
+
+  const patchAction = useCallback(
+    (partial: Partial<TodoTriggerRecord['action']>) => {
+      if (!selectedId) return;
+      setTriggers((prev) => {
+        const next = prev.map((x) =>
+          x.id === selectedId ? { ...x, action: { ...x.action, ...partial }, updatedAt: Date.now() } : x
+        );
+        if (creatingIdRef.current !== selectedId) scheduleDebouncedPersist(next);
+        return next;
+      });
+    },
+    [selectedId, scheduleDebouncedPersist]
+  );
 
   const onAdd = () => {
+    if (creatingId) return;
     const n = defaultTodoTrigger({ title: t('todoTriggers.newTitle') });
     setTriggers((prev) => [n, ...prev]);
     setSelectedId(n.id);
+    setCreatingId(n.id);
   };
 
-  const onDelete = () => {
-    if (!selectedId) return;
-    setTriggers((prev) => prev.filter((x) => x.id !== selectedId));
-    setSelectedId(null);
+  const onCancelDraft = () => {
+    if (!creatingId) return;
+    const id = creatingId;
+    clearPersistTimer();
+    const next = triggers.filter((x) => x.id !== id);
+    setTriggers(next);
+    setCreatingId(null);
+    setSelectedId((sid) => {
+      if (sid !== id) return sid;
+      const pend = next.find((x) => x.status === 'pending');
+      return pend?.id ?? next[0]?.id ?? null;
+    });
+  };
+
+  const onSaveDraft = async () => {
+    if (!creatingId || selectedId !== creatingId) return;
+    clearPersistTimer();
+    const ok = await persistTriggers(triggers, { toastSuccess: true });
+    if (ok) setCreatingId(null);
+  };
+
+  const deleteTriggerById = async (id: string) => {
+    if (!window.confirm(t('todoTriggers.confirmDeleteIrreversible'))) return;
+    clearPersistTimer();
+    const next = triggers.filter((x) => x.id !== id);
+    setTriggers(next);
+    if (creatingId === id) setCreatingId(null);
+    setSelectedId((sid) => {
+      if (sid !== id) return sid;
+      const pend = next.find((x) => x.status === 'pending');
+      return pend?.id ?? next[0]?.id ?? null;
+    });
+    await persistTriggers(next);
   };
 
   if (!workspacePath?.trim()) {
@@ -139,52 +249,62 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   return (
     <div className="cf-todoPanel">
       <div className="cf-todoPanel__toolbar">
-        <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => void onSave()} disabled={saving}>
-          <SaveOutlined /> {t('common.save')}
-        </button>
-        <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={onAdd} disabled={readOnly}>
+        <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={onAdd} disabled={creatingId != null}>
           <PlusOutlined /> {t('todoTriggers.add')}
-        </button>
-        <button
-          type="button"
-          className="cf-btn cf-btnGhost cf-btnSmall"
-          onClick={onDelete}
-          disabled={!selected || readOnly}
-        >
-          <DeleteOutlined /> {t('common.delete')}
         </button>
       </div>
       <div className="cf-todoPanel__split">
         <div className="cf-todoPanel__listCol">
-          <div className="cf-todoPanel__sectionTitle">{t('todoTriggers.sectionPending')}</div>
-          <div className="cf-todoPanel__list" role="list">
-            {pending.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                role="listitem"
-                className={`cf-todoPanel__row${x.id === selectedId ? ' cf-todoPanel__row--active' : ''}${
-                  !x.enabled ? ' cf-todoPanel__row--off' : ''
-                }`}
-                onClick={() => setSelectedId(x.id)}
-              >
-                <span className="cf-todoPanel__rowTitle">{x.title}</span>
-              </button>
-            ))}
-          </div>
-          <div className="cf-todoPanel__sectionTitle cf-todoPanel__sectionTitle--done">{t('todoTriggers.sectionDone')}</div>
-          <div className="cf-todoPanel__list" role="list">
-            {done.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                role="listitem"
-                className={`cf-todoPanel__row cf-todoPanel__row--done${x.id === selectedId ? ' cf-todoPanel__row--active' : ''}`}
-                onClick={() => setSelectedId(x.id)}
-              >
-                <span className="cf-todoPanel__rowTitle">{x.title}</span>
-              </button>
-            ))}
+          <div className="cf-todoPanel__list cf-todoPanel__list--unified" role="list">
+            {sortedRows.length === 0 ? (
+              <div className="cf-todoPanel__listEmpty cf-sub">{t('todoTriggers.listEmpty')}</div>
+            ) : (
+              sortedRows.map((x) => {
+                const running = x.status === 'pending';
+                return (
+                  <div
+                    key={x.id}
+                    className={`cf-todoPanel__row${x.id === selectedId ? ' cf-todoPanel__row--active' : ''}${
+                      !x.enabled && running ? ' cf-todoPanel__row--off' : ''
+                    }`}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      className="cf-todoPanel__rowSelect"
+                      onClick={() => setSelectedId(x.id)}
+                    >
+                      <span className="cf-todoPanel__rowTitleLine">
+                        <span className="cf-todoPanel__rowTitle">{x.title}</span>
+                        <span className="cf-todoPanel__rowStatus">
+                          <span
+                            className={
+                              running ? 'cf-todoPanel__statusDot cf-todoPanel__statusDot--running' : 'cf-todoPanel__statusDot cf-todoPanel__statusDot--archived'
+                            }
+                            aria-hidden
+                          />
+                          <span className="cf-todoPanel__statusLabel">
+                            {running ? t('todoTriggers.statusRunning') : t('todoTriggers.statusArchived')}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="cf-todoPanel__rowDel"
+                      aria-label={t('todoTriggers.deleteRowAria')}
+                      title={t('common.delete')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deleteTriggerById(x.id);
+                      }}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
         <div className="cf-todoPanel__gutter" aria-hidden />
@@ -237,7 +357,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                       value={nextFireStr}
                       disabled={readOnly || selected.trigger.repeat === 'interval'}
                       onChange={(e) => patchTrigger({ nextFireAt: fromLocalDatetimeValue(e.target.value) })}
-                  />
+                    />
                   </label>
                   {selected.trigger.repeat === 'interval' ? (
                     <label className="cf-todoPanel__field">
@@ -285,9 +405,53 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                   <span>{t('todoTriggers.fieldConsumeOnFire')}</span>
                 </label>
               ) : null}
-              {selected.lastFiredAt ? (
+              {!readOnly && selected.lastFiredAt ? (
                 <div className="cf-sub cf-todoPanel__meta">
                   {t('todoTriggers.lastFired', { time: new Date(selected.lastFiredAt).toLocaleString() })}
+                </div>
+              ) : null}
+              {readOnly ? (
+                <div className="cf-todoPanel__receipt">
+                  <div className="cf-todoPanel__receiptHead">{t('todoTriggers.fireReceiptTitle')}</div>
+                  {selected.lastFiredAt != null ? (
+                    <div className="cf-todoPanel__receiptTime cf-sub">
+                      {t('todoTriggers.fireReceiptTime', {
+                        time: new Date(selected.lastFiredAt).toLocaleString(),
+                      })}
+                    </div>
+                  ) : null}
+                  {showArchivedAiReceipt ? (
+                    <>
+                      <div className="cf-todoPanel__receiptLabel cf-sub">
+                        {t('todoTriggers.fireReceiptAiReply')}
+                      </div>
+                      <pre className="cf-todoPanel__receiptBody">
+                        {String(selected.lastFireAiReceipt ?? '').trim() || t('todoTriggers.fireReceiptAiEmpty')}
+                      </pre>
+                    </>
+                  ) : (
+                    <div className="cf-todoPanel__receiptNoAi cf-sub">{t('todoTriggers.fireReceiptNoModel')}</div>
+                  )}
+                </div>
+              ) : null}
+              {isDraft ? (
+                <div className="cf-todoPanel__draftBar">
+                  <button
+                    type="button"
+                    className="cf-btn cf-btnPrimary cf-btnSmall"
+                    disabled={saving}
+                    onClick={() => void onSaveDraft()}
+                  >
+                    {t('common.save')}
+                  </button>
+                  <button
+                    type="button"
+                    className="cf-btn cf-btnGhost cf-btnSmall"
+                    disabled={saving}
+                    onClick={onCancelDraft}
+                  >
+                    {t('common.cancel')}
+                  </button>
                 </div>
               ) : null}
             </>

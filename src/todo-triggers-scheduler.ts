@@ -51,10 +51,14 @@ async function applyPostFireMutation(workspaceRoot: string, triggerId: string): 
   if (idx < 0) return;
   const t = list[idx];
   const now = Date.now();
+  const fireSnapshot = String(t.action?.text ?? '');
+  const fireSubmit = Boolean(t.action?.submitToModel);
   let next: TodoTriggerRecord = {
     ...t,
     lastFiredAt: now,
     updatedAt: now,
+    lastFireDeliveredText: fireSnapshot,
+    lastFireSubmitToModel: fireSubmit,
   };
 
   if (t.trigger.kind === 'schedule') {
@@ -97,8 +101,9 @@ async function handleFire(workspaceRoot: string, triggerId: string): Promise<voi
     rescheduleTodoTriggersForWorkspace(workspaceRoot);
     return;
   }
-  broadcastFire(workspaceRoot, t);
+  /** 先落盘再广播，避免渲染进程 load 仍读到「触发前」快照并随后用旧列表 saveAll 覆盖回执字段 */
   await applyPostFireMutation(workspaceRoot, triggerId);
+  broadcastFire(workspaceRoot, t);
   rescheduleTodoTriggersForWorkspace(workspaceRoot);
 }
 

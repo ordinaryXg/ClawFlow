@@ -36,6 +36,12 @@ export type TodoTriggerRecord = {
   /** 触发一次后自动标为完成（适用于 once；interval 通常 false） */
   consumeOnFire?: boolean;
   lastFiredAt?: number;
+  /** 最近一次触发写入会话的正文快照（调度侧记录） */
+  lastFireDeliveredText?: string;
+  /** 最近一次触发时是否已请求模型跟进 */
+  lastFireSubmitToModel?: boolean;
+  /** 最近一次触发后经模型生成的助手回复正文（用户可见「回执」） */
+  lastFireAiReceipt?: string;
 };
 
 export type TodoTriggersFile = {

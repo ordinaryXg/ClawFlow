@@ -16,6 +16,8 @@ export type StoredMessage = {
   role: StoredMessageRole;
   content: string;
   timestamp: number;
+  /** 前端写入的对话气泡渠道（persist 后与 chatStore.channel 对齐） */
+  channel?: string;
   // Provider-specific fields (optional; used by the new engine)
   reasoning_content?: string;
   tool_calls?: StoredToolCall[];

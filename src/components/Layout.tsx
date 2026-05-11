@@ -95,6 +95,7 @@ const Layout: FC = () => {
         workspaceRoot: p.workspaceRoot,
         text: p.text,
         submitToModel: Boolean(p.submitToModel),
+        triggerId: typeof p.triggerId === 'string' ? p.triggerId : undefined,
       });
       void useTodoTriggerStore.getState().load();
     });

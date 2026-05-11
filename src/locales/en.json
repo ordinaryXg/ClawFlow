@@ -59,6 +59,11 @@
     "saveFailed": "Save failed",
     "intervalInvalid": "Interval repeat needs at least 1 minute",
     "newTitle": "New item",
+    "statusRunning": "Active",
+    "statusArchived": "Archived",
+    "listEmpty": "No items yet. Use New to create one.",
+    "deleteRowAria": "Delete this item",
+    "confirmDeleteIrreversible": "Delete this todo? This cannot be undone.",
     "sectionPending": "Open",
     "sectionDone": "Done",
     "selectHint": "Select an item on the left to edit",
@@ -72,7 +77,12 @@
     "fieldPayload": "Message to insert into chat",
     "fieldSubmitToModel": "Auto-send to model after insert",
     "fieldConsumeOnFire": "Mark done after fire (interval only)",
-    "lastFired": "Last fired: {{time}}"
+    "lastFired": "Last fired: {{time}}",
+    "fireReceiptTitle": "Fire receipt",
+    "fireReceiptTime": "Time: {{time}}",
+    "fireReceiptAiReply": "Assistant reply (AI receipt)",
+    "fireReceiptAiEmpty": "No assistant text was saved (request may have failed).",
+    "fireReceiptNoModel": "This run did not request a model reply; there is no assistant receipt."
   },
   "workspace": {
     "title": "Workspace",
@@ -381,6 +391,13 @@
     "createdTitle": "New conversation",
     "createdBody": "You can start typing.",
     "msgCount": "{{count}} messages",
+    "messageChannel": {
+      "user_todo_auto": "Todo fired",
+      "user_tool_delegate": "Tool / agent",
+      "user_workflow": "Workflow",
+      "user_system": "System",
+      "assistant_tool_summary": "Tool summary"
+    },
     "toolApproval": {
       "aria": "Tool call confirmation",
       "title": "Tool execution pending",

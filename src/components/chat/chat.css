@@ -6,16 +6,79 @@
 
 .cf-msgItem {
   display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
   box-sizing: border-box;
 }
 
 .cf-msgItem--user {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .cf-msgItem--assistant {
-  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.cf-msgItem__strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(860px, 92%);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+}
+:root[data-theme='light'] .cf-msgItem__strip {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.cf-msgItem__stripText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-msgItem__chIcon {
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+/* 渠道色相（气泡仍保留原有 user / assistant 结构） */
+.cf-msgItem--ch-user-todo-auto .cf-msgItem__bubble {
+  border-left: 3px solid rgba(63, 185, 80, 0.82);
+  padding-left: 11px;
+}
+
+.cf-msgItem--ch-user-tool-delegate .cf-msgItem__bubble {
+  border-left: 3px solid rgba(210, 153, 34, 0.88);
+  padding-left: 11px;
+}
+
+.cf-msgItem--ch-user-workflow .cf-msgItem__bubble {
+  border-left: 3px solid rgba(88, 166, 255, 0.85);
+  padding-left: 11px;
+}
+
+.cf-msgItem--ch-user-system .cf-msgItem__bubble {
+  border-left: 3px solid rgba(139, 148, 158, 0.75);
+  padding-left: 11px;
+}
+
+.cf-msgItem--assistant.cf-msgItem--ch-assistant-tool-summary .cf-msgItem__bubble {
+  border-left: 3px solid rgba(188, 140, 255, 0.82);
+  padding-left: 10px;
+}
+
+.cf-msgItem--ch-user-manual .cf-msgItem__strip,
+.cf-msgItem--ch-assistant-llm .cf-msgItem__strip {
+  display: none;
 }
 
 .cf-msgItem__bubble {

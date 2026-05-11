@@ -155,6 +155,25 @@ const ChatPage: FC = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, streamingActivity, streamingThinking]);
 
+  /** 从待办等视图切回会话时，强制对齐到对话末尾（双帧与短延迟覆盖布局未成时刻） */
+  useEffect(() => {
+    if (hubBranch !== 'sessions') return;
+    stickToBottomRef.current = true;
+    let alive = true;
+    const bump = () => {
+      if (!alive) return;
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+      bottomRef.current?.scrollIntoView({ block: 'end' });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(bump));
+    const t = window.setTimeout(bump, 120);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [hubBranch]);
+
   const reloadChatModels = useCallback(async () => {
     try {
       const res = await window.electronAPI?.engineGetChatModels?.();

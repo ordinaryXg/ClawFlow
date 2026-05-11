@@ -188,6 +188,10 @@ export interface IElectronAPI {
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  todoTriggersSetAiReceipt: (params: {
+    triggerId: string;
+    receiptText: string;
+  }) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onTodoTriggerFired: (
     cb: (payload: {
       workspaceRoot: string;

@@ -59,6 +59,11 @@
     "saveFailed": "保存失败",
     "intervalInvalid": "间隔重复需填写至少 1 分钟",
     "newTitle": "新待办",
+    "statusRunning": "执行中",
+    "statusArchived": "已归档",
+    "listEmpty": "暂无待办，点击「新建」创建。",
+    "deleteRowAria": "删除此待办",
+    "confirmDeleteIrreversible": "确定删除此待办？删除后不可恢复。",
     "sectionPending": "未完成",
     "sectionDone": "已完成",
     "selectHint": "在左侧选择一条待办以编辑配置",
@@ -72,7 +77,12 @@
     "fieldPayload": "触发内容（写入对话）",
     "fieldSubmitToModel": "触发后自动请求模型回复",
     "fieldConsumeOnFire": "触发后标记为完成（仅间隔模式可选）",
-    "lastFired": "上次触发：{{time}}"
+    "lastFired": "上次触发：{{time}}",
+    "fireReceiptTitle": "触发回执",
+    "fireReceiptTime": "触发时间：{{time}}",
+    "fireReceiptAiReply": "助手回复（AI 回执）",
+    "fireReceiptAiEmpty": "未能记录到助手回复正文（可能请求失败或未返回内容）。",
+    "fireReceiptNoModel": "触发时未勾选「触发后自动请求模型回复」，无助手回执。"
   },
   "workspace": {
     "title": "工作空间",
@@ -381,6 +391,13 @@
     "createdTitle": "已新建对话",
     "createdBody": "你可以立即开始输入。",
     "msgCount": "{{count}} 条消息",
+    "messageChannel": {
+      "user_todo_auto": "待办触发",
+      "user_tool_delegate": "工具 / Agent 投递",
+      "user_workflow": "工作流",
+      "user_system": "系统",
+      "assistant_tool_summary": "工具摘要"
+    },
     "toolApproval": {
       "aria": "工具调用确认",
       "title": "即将执行工具",

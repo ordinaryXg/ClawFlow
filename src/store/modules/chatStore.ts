@@ -7,6 +7,7 @@ import { autoPickMode, type ChatIntent } from '../../engine/mode-policy';
 import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
+import { useTodoTriggerStore } from './todoTriggerStore';
 
 export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
 
@@ -47,6 +48,42 @@ export type ToolApprovalPendingState = {
   tools: Array<{ name: string; argumentsPreview: string }>;
 };
 
+/** 对话气泡来源渠道：用于区分样式；未填写时按 role 推导默认外观 */
+export type MessageChannel =
+  | 'user_manual'
+  | 'user_todo_auto'
+  | 'user_tool_delegate'
+  | 'user_workflow'
+  | 'user_system'
+  | 'assistant_llm'
+  | 'assistant_tool_summary';
+
+const MESSAGE_CHANNELS: readonly MessageChannel[] = [
+  'user_manual',
+  'user_todo_auto',
+  'user_tool_delegate',
+  'user_workflow',
+  'user_system',
+  'assistant_llm',
+  'assistant_tool_summary',
+];
+
+function coerceMessageChannel(_role: Message['role'], raw: unknown): MessageChannel | undefined {
+  if (typeof raw !== 'string') return undefined;
+  if ((MESSAGE_CHANNELS as readonly string[]).includes(raw)) return raw as MessageChannel;
+  return undefined;
+}
+
+/** UI：缺省渠道与手写消息、模型回复对齐 */
+export function resolveMessagePresentationChannel(message: Message): MessageChannel {
+  return message.channel ?? (message.role === 'user' ? 'user_manual' : 'assistant_llm');
+}
+
+export function shouldShowMessageChannelStrip(message: Message): boolean {
+  const ch = resolveMessagePresentationChannel(message);
+  return ch !== 'user_manual' && ch !== 'assistant_llm';
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -54,6 +91,8 @@ export interface Message {
   timestamp: number;
   /** 模型思考过程（DeepSeek reasoning 等），与正文分开展示 */
   reasoningContent?: string;
+  /** 消息渠道（样式与角标）；缺省时 UI 视作 user_manual / assistant_llm */
+  channel?: MessageChannel;
 }
 
 export interface Conversation {
@@ -78,21 +117,25 @@ function normalizeConversation(raw: unknown): Conversation | null {
       const id = typeof m?.id === 'string' ? m.id : uuidv4();
       const ts = typeof m?.timestamp === 'number' ? m.timestamp : Date.now();
       if (m?.role === 'user') {
+        const ch = coerceMessageChannel('user', (m as Record<string, unknown>).channel);
         return {
           id,
           role: 'user' as const,
           content: String(m?.content ?? ''),
           timestamp: ts,
+          ...(ch ? { channel: ch } : {}),
         };
       }
       const merged = mergeCompletionReasoning(m?.content, m?.reasoning_content);
       const rc = merged.reasoningCombined.trim() || undefined;
+      const ach = coerceMessageChannel('assistant', (m as Record<string, unknown>).channel);
       return {
         id,
         role: 'assistant' as const,
         content: merged.displayContent,
         timestamp: ts,
         ...(rc ? { reasoningContent: rc } : {}),
+        ...(ach ? { channel: ach } : {}),
       };
     });
   const now = Date.now();
@@ -121,7 +164,11 @@ export interface ChatState {
 
   // Actions
   fetchConversations: () => Promise<void>;
-  sendMessage: (content: string, modelId?: string | null) => Promise<void>;
+  sendMessage: (
+    content: string,
+    modelId?: string | null,
+    opts?: { userChannel?: MessageChannel; todoFireReceipt?: { triggerId: string } }
+  ) => Promise<void>;
   createConversation: () => Promise<void>;
   switchConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
@@ -130,7 +177,12 @@ export interface ChatState {
   setInteractionMode: (mode: ChatInteractionMode) => void;
   respondToolApproval: (approved: boolean) => void;
   /** 待办触发器：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
-  applyTodoTrigger: (payload: { workspaceRoot: string; text: string; submitToModel: boolean }) => Promise<void>;
+  applyTodoTrigger: (payload: {
+    workspaceRoot: string;
+    text: string;
+    submitToModel: boolean;
+    triggerId?: string;
+  }) => Promise<void>;
 }
 
 let revealCleanup: (() => void) | null = null;
@@ -155,6 +207,7 @@ function conversationForEngineUpsert(conv: Conversation) {
       role: m.role,
       content: m.content,
       timestamp: m.timestamp,
+      ...(m.channel ? { channel: m.channel } : {}),
       ...(m.role === 'assistant' && m.reasoningContent?.trim()
         ? { reasoning_content: m.reasoningContent.trim() }
         : {}),
@@ -425,7 +478,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
     }
   },
 
-  sendMessage: async (content: string, modelId?: string | null) => {
+  sendMessage: async (
+    content: string,
+    modelId?: string | null,
+    opts?: { userChannel?: MessageChannel; todoFireReceipt?: { triggerId: string } }
+  ) => {
     cancelAssistantReveal();
     const now = Date.now();
     const { activeConversationId, interactionMode } = get();
@@ -441,12 +498,14 @@ export const useChatStore = create<ChatState>()((set, get) => {
       return;
     }
     const sessionId = conversationId;
+    const todoReceiptTriggerId = opts?.todoFireReceipt?.triggerId?.trim() ?? null;
 
     const userMessage: Message = {
       id: uuidv4(),
       role: 'user',
       content,
       timestamp: Date.now(),
+      ...(opts?.userChannel ? { channel: opts.userChannel } : { channel: 'user_manual' as const }),
     };
 
     set((state) => {
@@ -492,6 +551,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
           role: 'assistant',
           content: fullText,
           timestamp: Date.now(),
+          channel: 'assistant_llm',
           ...(rc ? { reasoningContent: rc } : {}),
         };
 
@@ -533,6 +593,17 @@ export const useChatStore = create<ChatState>()((set, get) => {
         console.log(
           `[chat] sendMessage engine=builtin ${log?.label ? `${log.label} ` : ''}ipc_ms=${ipcMs} chars=${fullText.length} mode=${interactionMode}`
         );
+
+        if (todoReceiptTriggerId) {
+          void window.electronAPI?.todoTriggersSetAiReceipt?.({
+            triggerId: todoReceiptTriggerId,
+            receiptText: String(fullText ?? ''),
+          }).then((res) => {
+            if (res && typeof res === 'object' && 'ok' in res && res.ok) {
+              void useTodoTriggerStore.getState().load();
+            }
+          });
+        }
       };
 
       const useBuiltinStream =
@@ -783,7 +854,12 @@ export const useChatStore = create<ChatState>()((set, get) => {
     set({ error });
   },
 
-  applyTodoTrigger: async (payload: { workspaceRoot: string; text: string; submitToModel: boolean }) => {
+  applyTodoTrigger: async (payload: {
+    workspaceRoot: string;
+    text: string;
+    submitToModel: boolean;
+    triggerId?: string;
+  }) => {
     const rawText = String(payload?.text ?? '').trim();
     if (!rawText) return;
     let activeWs = '';
@@ -795,7 +871,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
     }
     if (activeWs !== normWorkspacePath(payload.workspaceRoot)) return;
     if (payload.submitToModel) {
-      await get().sendMessage(rawText, null);
+      const tid = String(payload.triggerId ?? '').trim();
+      await get().sendMessage(rawText, null, {
+        userChannel: 'user_todo_auto',
+        ...(tid ? { todoFireReceipt: { triggerId: tid } } : {}),
+      });
       return;
     }
     cancelAssistantReveal();
@@ -811,6 +891,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       role: 'user',
       content: rawText,
       timestamp: Date.now(),
+      channel: 'user_todo_auto',
     };
     set((state) => {
       const updatedConversations = state.conversations.map((conv) => {

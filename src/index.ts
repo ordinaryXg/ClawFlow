@@ -201,6 +201,11 @@ function registerTodoTriggersIPC(): void {
   } catch {
     /* first load */
   }
+  try {
+    ipcMain.removeHandler('todoTriggers:setAiReceipt');
+  } catch {
+    /* first load */
+  }
   ipcMain.handle('todoTriggers:list', async (event) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     const triggers = await readTodoTriggers(root);
@@ -209,8 +214,31 @@ function registerTodoTriggersIPC(): void {
   ipcMain.handle('todoTriggers:saveAll', async (event, triggers: unknown) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     if (!Array.isArray(triggers)) return { ok: false as const, error: 'invalid_payload' };
-    await writeTodoTriggers(root, triggers as TodoTriggerRecord[]);
+    const incoming = triggers as TodoTriggerRecord[];
+    const disk = await readTodoTriggers(root);
+    const diskById = new Map(disk.map((x) => [x.id, x]));
+    /** 已归档条目以磁盘为准，防止渲染进程因防抖队列中的旧快照覆盖触发回执等字段 */
+    const merged = incoming.map((inc) => {
+      const ex = diskById.get(inc.id);
+      return ex?.status === 'done' ? ex : inc;
+    });
+    await writeTodoTriggers(root, merged);
     rescheduleTodoTriggersForWorkspace(root);
+    return { ok: true as const };
+  });
+  ipcMain.handle('todoTriggers:setAiReceipt', async (event, payload: unknown) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    if (!payload || typeof payload !== 'object') return { ok: false as const, error: 'invalid_payload' };
+    const o = payload as Record<string, unknown>;
+    const triggerId = typeof o.triggerId === 'string' ? o.triggerId.trim() : '';
+    const receiptText = typeof o.receiptText === 'string' ? o.receiptText : '';
+    if (!triggerId) return { ok: false as const, error: 'missing_trigger' };
+    const list = await readTodoTriggers(root);
+    const idx = list.findIndex((x) => x.id === triggerId);
+    if (idx < 0) return { ok: false as const, error: 'not_found' };
+    const now = Date.now();
+    list[idx] = { ...list[idx], lastFireAiReceipt: receiptText, updatedAt: now };
+    await writeTodoTriggers(root, list);
     return { ok: true as const };
   });
 }
