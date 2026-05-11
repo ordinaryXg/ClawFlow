@@ -34,6 +34,7 @@
   - 待办调度：`rescheduleTodoTriggersForWorkspace()`（`src/todo-triggers-scheduler.ts`）
   - 爬取记录 IPC：`scrape:listJobs` / `scrape:readArtifact`（`src/index.ts` + `src/scrape-service.ts`）
   - 子 Agent IPC：`subAgents:list` / `subAgents:saveAll`（`src/index.ts`）
+  - OpenClaw 相关：`registerOpenClawIPC()`（`src/engine/openclaw-engine.ts`）——**当前保留连接器/插件等 CLI 能力**；内置 **Skills 市场与 `openclaw:*Skill*` IPC 已移除**（见 PRD §3.5）。
 
 ### 2.2 Preload（安全桥）
 
@@ -47,6 +48,7 @@
   - 待办：`src/components/chat/TodoTriggersPanel.tsx` + `src/store/modules/todoTriggerStore.ts`
   - 子 Agent 槽位：`src/components/workspace-hub/SubAgentsHubPanel.tsx` + `src/store/modules/subAgentStore.ts`
   - 爬取：`src/components/chat/ScrapePanel.tsx`
+  - Skills（占位）：`src/pages/SkillsPage/index.tsx`、`src/components/workspace-hub/SkillsHubPanel.tsx`（Hermes 式自主技能方向，尚未接业务数据）
 
 ## 3. 工具（Tools）治理链路
 
@@ -79,8 +81,13 @@
 - 广播刷新：`subAgents:updated`（`src/sub-agent-broadcast.ts` + `src/preload.ts` 订阅）
 - 模型工具：`workspace_subagent_*`（`src/engine/tool-runtime.ts`）
 
+### 4.3 Skills（占位；已移除 OpenClaw 技能市场）
+
+- **无** `openclaw_skills_list`、**无** `tools.skills` manifest 类、**无** `skillMarket:getIndex` / `skill-store` 链路（见 `03_PRD.md` §3.5）。
+- UI 与 Hub 仅为产品占位；`.tool/skills.md` 说明由 `src/shared/workspace-tool-template-md.ts` `buildWorkspaceToolSkillsMd()` 维护。
+
 ## 5. 已知风险点（当前代码可见）
 
-- **Windows symlink 权限**：OpenClaw skills 目录可能因 `EPERM/EEXIST` 报错刷屏（需要后续统一修复策略与用户提示）。
+- **Windows symlink 权限**：使用 OpenClaw CLI 安装/同步**插件技能**等场景时，全局状态目录下可能因 `EPERM/EEXIST` 创建 symlink 失败并刷屏（连接器/OpenClaw 侧；与已移除的内置技能市场无关）。需要后续统一修复策略与用户提示。
 - **知识库/RAG**：目前仅有占位工具 `workspace_knowledge_query`，尚无索引构建与 Retriever 实现。
 

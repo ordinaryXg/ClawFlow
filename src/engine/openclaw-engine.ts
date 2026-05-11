@@ -590,70 +590,6 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
     return parsed;
   }
 
-  async getSkills(): Promise<any[]> {
-    // Windows 上某些环境（未开启开发者模式/无管理员权限）无法创建 symlink，
-    // OpenClaw 的 skills list 可能仍会输出完整 JSON，但以 exit_code=1 结束。
-    // 这里做 best-effort：仅对该已知场景放宽退出码检查，避免影响应用启动。
-    const listRes = await this.executeCommand(['skills', 'list', '--json'], { checkExitCode: false });
-    if ((listRes.exitCode ?? 0) !== 0) {
-      const stderrLower = String(listRes.stderr ?? '').toLowerCase();
-      const isKnownSymlinkEperm =
-        stderrLower.includes('failed to create plugin skill symlink') ||
-        (stderrLower.includes('eperm') && stderrLower.includes('symlink'));
-      if (!isKnownSymlinkEperm) {
-        throw new Error(`openclaw skills list failed (code=${listRes.exitCode ?? 'unknown'}): ${listRes.stderr || 'unknown error'}`);
-      }
-      this.logError('[OpenClawEngine] skills list exited non-zero due to symlink permission; continuing best-effort.');
-    }
-    const list = this.parseJson(listRes.stdout);
-    if (list === null) {
-      throw new Error('openclaw skills list 未返回可解析 JSON');
-    }
-    const check = await this.runJsonCommand(['skills', 'check', '--json']).catch(() => null);
-
-    const listArr: any[] = Array.isArray(list) ? list : Array.isArray((list as any)?.skills) ? (list as any).skills : [];
-    const enabledNames = new Set<string>();
-
-    if (check && typeof check === 'object') {
-      const enabled = (check as any).enabledSkills ?? (check as any).skills ?? (check as any).visible ?? null;
-      if (Array.isArray(enabled)) {
-        for (const it of enabled) {
-          const name = typeof it === 'string' ? it : (it?.name ?? it?.slug ?? it?.id);
-          if (typeof name === 'string' && name) enabledNames.add(name);
-        }
-      }
-    }
-
-    return listArr
-      .map((it) => {
-        const name = String(it?.name ?? it?.slug ?? it?.id ?? '');
-        if (!name) return null;
-        const version = String(it?.version ?? it?.pkg?.version ?? it?.meta?.version ?? '');
-        const description = String(it?.description ?? it?.summary ?? it?.meta?.summary ?? '');
-        return {
-          name,
-          version,
-          description,
-          installed: true,
-          enabled: enabledNames.size ? enabledNames.has(name) : true,
-        };
-      })
-      .filter(Boolean);
-  }
-
-  async installSkill(skillName: string): Promise<void> {
-    const id = String(skillName ?? '').trim();
-    if (!id) throw new Error('Missing skill name');
-    await this.executeCommand(['skills', 'install', JSON.stringify(id)], { checkExitCode: true });
-  }
-
-  async uninstallSkill(skillName: string): Promise<void> {
-    // Note: not documented in CLI reference; attempt best-effort.
-    const id = String(skillName ?? '').trim();
-    if (!id) throw new Error('Missing skill name');
-    await this.executeCommand(['skills', 'uninstall', JSON.stringify(id)], { checkExitCode: true });
-  }
-
   async runAgentMessage(message: string, sessionId?: string, modelId?: string): Promise<string> {
     const args = ['agent', '--local', '--json', '--agent', 'main'];
     if (sessionId) {
@@ -1338,38 +1274,6 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
       throw new Error('Invalid conversation payload');
     }
     await getActiveEngine().upsertConversation(conversation);
-    return { success: true };
-  });
-
-  // 技能管理 IPC 接口
-  ipcMain.handle('openclaw:getSkills', async () => {
-    try {
-      const skills = await getGlobalOpenClawCliEngine().getSkills();
-      return { skills };
-    } catch (e: any) {
-      console.warn('[OpenClawEngine] getSkills failed:', e?.message || e);
-      return { skills: [], error: e?.message || String(e) };
-    }
-  });
-
-  ipcMain.handle('openclaw:installSkill', async (_event, skillName: string) => {
-    await getGlobalOpenClawCliEngine().installSkill(skillName);
-    return { success: true };
-  });
-
-  ipcMain.handle('openclaw:uninstallSkill', async (_event, skillName: string) => {
-    await getGlobalOpenClawCliEngine().uninstallSkill(skillName);
-    return { success: true };
-  });
-
-  ipcMain.handle('openclaw:enableSkill', async (_event, skillName: string) => {
-    // Enable/disable are not first-class in CLI; frontend treats this as a local capability flag for now.
-    console.log('[OpenClawEngine] enableSkill (no-op):', skillName);
-    return { success: true };
-  });
-
-  ipcMain.handle('openclaw:disableSkill', async (_event, skillName: string) => {
-    console.log('[OpenClawEngine] disableSkill (no-op):', skillName);
     return { success: true };
   });
 

@@ -224,34 +224,19 @@ export function buildWorkspaceToolSubagentsMd(): string {
   ].join('\n');
 }
 
-/** `.tool/skills.md` */
+/** `.tool/skills.md` — 产品向「自主进化型 Skills」演进，不再绑定 OpenClaw 技能市场 */
 export function buildWorkspaceToolSkillsMd(): string {
   return [
-    `# OpenClaw 技能清单（skills）`,
+    `# 技能（Skills，规划中）`,
     ``,
-    `## 是什么`,
+    `## 方向`,
     ``,
-    `用于查询 OpenClaw 已安装技能（skills）的清单信息。该能力不会自动把技能全文注入为模型工具，只提供“可编排的查询入口”。`,
+    `ClawFlow 将技能设计为 **类似 Hermes 的自主进化型 Skills**（由应用内管线管理，而非外部 CLI 技能市场）。当前版本 **不提供** OpenClaw 技能市场安装/同步，也不暴露 \`openclaw_skills_list\` 等工具。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.skills\``,
+    `## 工作区说明`,
     ``,
-    `## 有什么用`,
-    ``,
-    `- 让模型知道当前环境有哪些可用技能（用于后续决策/编排）`,
-    `- 在不同工作区/机器上对齐能力差异（哪些技能 eligible / missing）`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- 优先用 UI 查看；需要自动化时再用工具查询`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 你不确定某个技能是否已安装/可用`,
-    `- 需要排查“为什么某技能不可用（missing bins/env）”`,
-    ``,
-    `下列工具受 \`tools.skills\` 关断。通过 OpenClaw CLI 列出已安装技能；**不会**自动把技能全文注入为模型工具，仅为可编排的查询入口：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.skills),
+    `- 历史 \`manifest.json\` 中的 \`tools.skills\` 将被忽略（若仍存在）。`,
+    `- 后续接入时，技能开关与契约将在此文件与 \`manifest.json\` 中另行约定。`,
     ``,
   ].join('\n');
 }

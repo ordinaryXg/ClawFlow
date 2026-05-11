@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { SkillMarketFetchResult } from './skill-market-shared';
 import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
 // 暴露给渲染进程的 API 类型声明
@@ -65,14 +64,7 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
-  // 技能管理
-  getSkills: () => Promise<any>;
-  installSkill: (skillName: string) => Promise<{ success: boolean }>;
-  uninstallSkill: (skillName: string) => Promise<{ success: boolean }>;
-  enableSkill: (skillName: string) => Promise<{ success: boolean }>;
-  disableSkill: (skillName: string) => Promise<{ success: boolean }>;
-  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => Promise<SkillMarketFetchResult>;
-  // 连接器管理
+  // 连接器管理（OpenClaw CLI 插件）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
@@ -284,13 +276,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('embedded-browser:navigate', handler);
     return () => ipcRenderer.removeListener('embedded-browser:navigate', handler);
   },
-  // 技能管理
-  getSkills: () => ipcRenderer.invoke('openclaw:getSkills'),
-  installSkill: (skillName: string) => ipcRenderer.invoke('openclaw:installSkill', skillName),
-  uninstallSkill: (skillName: string) => ipcRenderer.invoke('openclaw:uninstallSkill', skillName),
-  enableSkill: (skillName: string) => ipcRenderer.invoke('openclaw:enableSkill', skillName),
-  disableSkill: (skillName: string) => ipcRenderer.invoke('openclaw:disableSkill', skillName),
-  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => ipcRenderer.invoke('skillMarket:getIndex', opts ?? {}),
   // 连接器管理
   getConnectors: () => ipcRenderer.invoke('openclaw:getConnectors'),
   addConnector: (config: any) => ipcRenderer.invoke('openclaw:addConnector', config),

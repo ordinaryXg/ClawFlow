@@ -39,17 +39,18 @@
   - `src/shared/workspace-tool-template-md.ts`
   - `src/workspace-service.ts` `ensureWorkspaceToolBundle()`
 
-## P1：技能注入策略与知识库最小闭环
+## P1：自主 Skills 与知识库最小闭环
 
-### T1.1 技能：明确“动态 tools 注入 vs 上下文注入”
+### T1.1 自主进化型 Skills：设计落地（替代 OpenClaw 市场）
 
-- **目标**：把技能加载路径与安全边界写清，并落到代码结构上
+- **目标**：在**无** OpenClaw 技能市场、**无** `openclaw_skills_list` 工具的前提下，定义 Hermes 式 Skills 的存储、版本与注入策略
 - **验收**
-  - [ ] 文档说明“技能清单查询”与“技能内容注入”的差异
-  - [ ] 对应代码落点与 manifest 开关策略明确
-- **代码线索**
-  - `src/engine/openclaw-engine.ts`（skills IPC）
-  - `src/engine/tool-runtime.ts` `openclaw_skills_list`
+  - [ ] 文档说明：Skills 数据落点、与模型上下文/tools 的边界、失败降级
+  - [ ] 未来 manifest 键（若需要）与 `workspace-tool-manifest-bridge.ts` 扩展方式明确
+- **代码线索（当前占位 / 扩展点）**
+  - `src/pages/SkillsPage/index.tsx`、`src/components/workspace-hub/SkillsHubPanel.tsx`（UI 占位）
+  - `src/shared/workspace-tool-template-md.ts` `buildWorkspaceToolSkillsMd()`
+  - `src/shared/workspace-tools.ts`（当前 **无** `skills` 工具类 ID；新增能力时同步 bridge + runtime）
 
 ### T1.2 知识库：替换 `workspace_knowledge_query` stub
 

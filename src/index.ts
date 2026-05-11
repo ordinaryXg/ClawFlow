@@ -12,7 +12,6 @@ import { getGatewayDaemon, registerGatewayIPC } from './engine/gateway-daemon';
 import * as workspaceService from './workspace-service';
 import * as workspaceExplorer from './workspace-explorer';
 import * as workspaceChangeLog from './workspace-change-log';
-import { fetchSkillMarketIndex } from './skill-market-service';
 import type { WorkspaceToolSelection } from './shared/workspace-tools';
 import { resolveWorkspaceRootForWebContents } from './electron-workspace-context';
 import { stickySatellitePathByWindowId } from './sticky-satellite-windows';
@@ -1041,15 +1040,6 @@ app.whenReady().then(async () => {
   } catch (e: any) {
     console.warn('[GatewayDaemon] auto-start failed:', e?.message ?? e);
   }
-  ipcMain.handle('skillMarket:getIndex', async (_e, opts?: { forceRefresh?: boolean }) => {
-    try {
-      return await fetchSkillMarketIndex({ forceRefresh: Boolean(opts?.forceRefresh) });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[skillMarket:getIndex]', msg);
-      return { ok: false as const, error: msg || 'skill market handler failed' };
-    }
-  });
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('app:setLanguage', (_event, lang: string) => {
     currentLang = String(lang).toLowerCase().startsWith('en') ? 'en' : 'zh';

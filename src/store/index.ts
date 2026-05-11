@@ -3,6 +3,5 @@
 
 export { default as gatewayStore } from './modules/gatewayStore';
 export { default as chatStore } from './modules/chatStore';
-export { default as skillStore } from './modules/skillStore';
 export { default as connectorStore } from './modules/connectorStore';
 export { default as settingsStore } from './modules/settingsStore';

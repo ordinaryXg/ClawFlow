@@ -15,7 +15,7 @@ ClawFlow 是一个以 **Workspace（本地目录）为边界** 的桌面 AI 协�
 
 - **模型可调度的待办工具（IPC）**：模型可创建/更新/删除待办触发器；写盘后主进程调度并通知 UI 刷新。
 - **子 Agent：先做 IPC + 最小 slots 状态**：只做 slots 元数据与 UI 展示/编辑闭环，不实现真正的“委派执行/并行调度”。
-- **技能（OpenClaw）路径梳理**：明确“技能清单查询”与“动态 tools 注入/上下文注入”的边界。
+- **自主进化型 Skills（规划中）**：产品方向为类似 Hermes 的应用内技能管线；**已移除** OpenClaw 技能市场、`openclaw_skills_list` 与 `tools.skills` manifest 项。
 - **知识库**：先确定数据模型（向量/路径）与 Retriever 工具形态，再决定 manifest 是否单独键及 RAG 管线。
 
 ## 3. 用户故事（User Stories）
@@ -96,21 +96,19 @@ ClawFlow 是一个以 **Workspace（本地目录）为边界** 的桌面 AI 协�
   - 对 SPA/强客户端渲染页面支持有限（当前走静态 HTML 拉取）
   - URL 安全策略/robots/限流等治理未成体系（目前仅基础 URL 校验与超时/大小限制）
 
-### 3.5 技能（OpenClaw Skills）
+### 3.5 技能（Skills，自主进化 / 规划中）
 
-作为用户，我希望在 UI 中管理技能；同时希望模型在必要时能查询技能清单，但不默认把技能注入为动态工具。
+作为用户，我希望技能由应用内管线管理（类似 Hermes 的自主进化型 Skills），而非依赖外部 OpenClaw 技能市场或 CLI `skills` 子命令清单。
 
-- **已落地**
-  - UI 侧技能管理：`window.electronAPI.getSkills/installSkill/...`  
-    - 证据：`src/preload.ts` / `src/global.d.ts`
-  - 主进程 OpenClaw IPC：`openclaw:getSkills` 等  
-    - 证据：`src/engine/openclaw-engine.ts` 的 `registerOpenClawIPC()`
-  - **模型工具（阶段 3 新增）**：`openclaw_skills_list`（仅清单查询入口）  
-    - 证据：`src/engine/tool-runtime.ts`
+- **当前状态（已调整）**
+  - **已移除**：OpenClaw 技能市场（远程索引 + 安装引导）、`skillMarket:getIndex` IPC、`window.electronAPI` 上的 `getSkills` / `installSkill` / `uninstallSkill` / `enableSkill` / `disableSkill` / `skillMarketGetIndex`；主进程侧对应 `openclaw:*Skill*` IPC 与 `openclaw-engine` 内 `skills install/list` 封装。
+  - **已移除模型工具**：`openclaw_skills_list`（原注册于 `src/engine/tool-runtime.ts`）。
+  - **manifest**：`WorkspaceToolId` 不再包含 `skills`；历史 `.tool/manifest.json` 中的 `tools.skills` 读盘时 **告警并忽略**（见 `src/workspace-service.ts` `readWorkspaceToolManifest()`）。
+  - **UI 占位**：`/skills` 与 Workspace Hub「技能」分支为占位文案（`src/pages/SkillsPage/index.tsx`、`src/components/workspace-hub/SkillsHubPanel.tsx`）；i18n 键 `skills.hermes*`。
+  - **工作区说明**：`.tool/skills.md` 由 `buildWorkspaceToolSkillsMd()` 生成，描述产品方向与「无 OpenClaw 市场」事实（`src/shared/workspace-tool-template-md.ts`）。
 
-- **待定（阶段 3 的结论）**
-  - **技能注入策略**：目前实现的是“可编排的 skills list 工具”，**不是**“动态 tools 注入”。
-  - 后续若要支持动态注入，需要明确：注入内容来源（markdown / json schema）、权限边界、manifest 开关与缓存策略。
+- **未实现（后续）**
+  - 自主技能的数据模型、索引/版本、启用策略，以及与「动态 tools 注入 / 上下文注入」的边界（替代原 M2 仅围绕 OpenClaw list 工具的表述）。
 
 ### 3.6 知识库（Knowledge Base / RAG）
 
@@ -136,12 +134,12 @@ ClawFlow 是一个以 **Workspace（本地目录）为边界** 的桌面 AI 协�
 
 - **安全**：Renderer 无 Node 权限；敏感信息不落到 Renderer；文件操作限制在 workspace 内（以实现为准）
 - **可观测性**：关键链路需要“可定位”的日志/错误码（尤其是 IPC 与 OpenClaw 侧）
-- **可恢复性**：端口占用、OpenClaw skill symlink 权限问题要有可操作的用户提示/修复路径（现阶段仍需补强）
+- **可恢复性**：端口占用、OpenClaw CLI 插件/symlink 权限问题（连接器场景）要有可操作的用户提示/修复路径（现阶段仍需补强）
 
 ## 6. 已落地功能清单（快速总结）
 
 - 工作区：最近列表/切换/初始化；`.tool/manifest.json` 能力开关
-- 工具：docs/git/web_search/web_scrape/embedded_browser +（阶段 3）todos/subagents/skills list/kb stub
+- 工具：docs/git/web_search/web_scrape/embedded_browser +（阶段 3）todos/subagents + kb stub（**无** OpenClaw `skills list` 工具）
 - 待办：UI 编辑 + IPC + 主进程调度 + 广播刷新
 - 子 Agent：slots 最小元数据 + IPC + Hub 展示 + 广播刷新
 - 爬取：`web_scrape` 保存工件 + UI 查看
@@ -150,6 +148,6 @@ ClawFlow 是一个以 **Workspace（本地目录）为边界** 的桌面 AI 协�
 
 - 子 Agent 的真实委派执行（`delegate_to_subagent` 类工具）与生命周期管理
 - 知识库数据模型与 Retriever 工具（向量索引、路径映射、增量更新、RAG 管线）
-- 技能注入策略明确：动态 tools 注入 vs 上下文注入（权限/性能/缓存）
-- OpenClaw 在 Windows 下的 symlink 权限与冲突处理（减少刷屏、提供“一键修复”）
+- 自主进化型 Skills：数据模型、运行时注入策略（动态 tools vs 上下文 vs 混合）、manifest 开关与缓存
+- OpenClaw 在 Windows 下的 symlink 权限与冲突处理（主要影响**连接器/插件**路径；减少刷屏、提供“一键修复”）
 

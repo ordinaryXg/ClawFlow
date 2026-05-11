@@ -5,3 +5,22 @@
   gap: 0;
 }
 
+.cf-skillsPage__hero {
+  padding: 24px 28px;
+  max-width: 720px;
+}
+
+.cf-skillsPage__hero h2 {
+  margin: 0 0 12px;
+}
+
+.cf-skillsPage__hero .cf-sub {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+
+.cf-skillsPage__hero .cf-help {
+  margin: 0;
+  line-height: 1.5;
+}
+

@@ -25,7 +25,6 @@ import {
 } from '../workspace-office-preview';
 import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
 import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
-import { getGlobalOpenClawCliEngine } from './openclaw-engine';
 import { runSubAgentOnce } from '../sub-agent-runner';
 
 export type ToolExecutionContext = {
@@ -1711,32 +1710,6 @@ export function createDefaultToolRuntime(): ToolRuntime {
       await writeSubAgentSlots(ctx.workspaceRoot, next);
       broadcastSubAgentsUpdated(ctx.workspaceRoot);
       return `OK removed subAgent ${id}`;
-    }
-  );
-
-  rt.register(
-    {
-      type: 'function',
-      function: {
-        name: 'openclaw_skills_list',
-        description: 'List OpenClaw CLI skills (installed / available summary via openclaw engine)',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (_args, _ctx) => {
-      try {
-        const skills = await getGlobalOpenClawCliEngine().getSkills();
-        const text = JSON.stringify(skills ?? [], null, 2);
-        return truncateForToolLog(text, 16_000);
-      } catch (e: any) {
-        return `ERROR: ${String(e?.message ?? e)}`;
-      }
     }
   );
 

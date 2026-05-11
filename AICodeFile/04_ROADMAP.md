@@ -9,7 +9,7 @@
 - 爬取：`web_scrape` 工具 + 记录/工件落盘 + UI 查看
 - 待办：UI + IPC + 调度；阶段 3 新增模型工具 `workspace_todo_*`
 - 子 Agent：slots 元数据 + IPC + Hub 展示；阶段 3 新增模型工具 `workspace_subagent_*`
-- 技能：UI 管理；阶段 3 新增 `openclaw_skills_list`（仅清单查询入口）
+- 技能：**OpenClaw 技能市场已移除**；`/skills` 与 Hub 为占位，方向为 Hermes 式自主进化型 Skills（应用内管线，未落地）
 - 知识库：manifest 键与 `workspace_knowledge_query` 仅占位
 
 ## M1：阶段 3 收尾（工具可编排闭环稳定）
@@ -22,14 +22,14 @@
   - 子 Agent：模型工具 upsert/remove 后，Hub 刷新可见
   - `.tool/*.md` 与 manifest 能力一致（至少“缺失补写”正确）
 
-## M2：技能加载策略落地（动态 tools vs 上下文注入）
+## M2：自主进化型 Skills（替代原 OpenClaw 技能清单方案）
 
 - **目标**
-  - 明确技能信息的“运行时注入路径”：动态 tools 注入/仅上下文注入/两者混合
-  - 明确权限边界与 manifest 开关策略
+  - 定义应用内 Skills 数据模型与生命周期（发现、版本、启用/禁用），参考 Hermes 式「自主进化」产品形态
+  - 明确运行时注入路径：动态 tools 注入 / 仅上下文注入 / 混合；权限边界与（未来）manifest 开关
 - **验收标准**
-  - 有清晰的技能加载策略文档（含代码落点、缓存、失败降级）
-  - 不再出现“文档说不依赖 CLI，但代码实际依赖”的歧义描述
+  - 有清晰的 Skills 策略文档（含代码落点、缓存、失败降级），且与「无 OpenClaw 技能市场」现状一致
+  - 对话主链路不依赖 OpenClaw CLI `skills` 子命令；连接器如需 OpenClaw 仅在 Connectors 功能域内说明
 
 ## M3：知识库（RAG）最小可用
 

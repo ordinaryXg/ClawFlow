@@ -1,5 +1,4 @@
 // 全局类型声明
-import type { SkillMarketFetchResult } from './skill-market-shared';
 
 export interface IElectronAPI {
   getVersion: () => Promise<string>;
@@ -65,14 +64,7 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
-  // 技能管理
-  getSkills: () => Promise<any>;
-  installSkill: (skillName: string) => Promise<{ success: boolean }>;
-  uninstallSkill: (skillName: string) => Promise<{ success: boolean }>;
-  enableSkill: (skillName: string) => Promise<{ success: boolean }>;
-  disableSkill: (skillName: string) => Promise<{ success: boolean }>;
-  skillMarketGetIndex: (opts?: { forceRefresh?: boolean }) => Promise<SkillMarketFetchResult>;
-  // 连接器管理
+  // 连接器管理（OpenClaw CLI 插件）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;

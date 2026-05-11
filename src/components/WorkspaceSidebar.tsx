@@ -7,7 +7,6 @@ import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
 import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
 import { useSubAgentStore } from '../store/modules/subAgentStore';
-import { useSkillStore } from '../store/modules/skillStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
@@ -77,11 +76,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     };
   }, [activeWorkspacePath, loadTodoTriggers, loadSubAgents]);
 
-  const fetchSkills = useSkillStore((s) => s.fetchSkills);
-  useEffect(() => {
-    void fetchSkills();
-  }, [fetchSkills, activeWorkspacePath]);
-
   useEffect(() => {
     void window.electronAPI?.workspaceGetDefaultPath?.().then((p) => {
       if (typeof p === 'string' && p.trim()) setDefaultWorkspacePath(p.trim());
@@ -116,8 +110,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     [todoTriggersList]
   );
   const subAgentsHubCount = useSubAgentStore((s) => s.slots.length);
-  const skillsList = useSkillStore((s) => s.skills);
-  const skillsHubCount = useMemo(() => skillsList.filter((sk) => sk.installed).length, [skillsList]);
   /** 知识库条目：能力接入前占位为 0 */
   const kbHubCount = 0;
 
@@ -396,14 +388,14 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                                   type="button"
                                   className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
                                   onClick={() => selectHubBranch(p, 'skills')}
-                                  title={t('chat.workspaceHub.hubCountSkills', { count: skillsHubCount })}
+                                  title={t('chat.workspaceHub.skillsBranchHint')}
                                 >
                                   <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
                                   <span className="cf-sideTree__hubMainLabel">
                                     {t('chat.workspaceHub.branchSkills')}
                                   </span>
                                   <span className="cf-sideTree__hubTrailingCount cf-sub">
-                                    {t('chat.workspaceHub.hubCountSkills', { count: skillsHubCount })}
+                                    {t('chat.workspaceHub.skillsBranchBadge')}
                                   </span>
                                 </button>
                                 <span className="cf-sideTree__hubChevSpacer" aria-hidden />
