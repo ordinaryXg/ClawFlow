@@ -1,13 +1,13 @@
 .cf-msgList {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 2px;
 }
 
 .cf-msgItem {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -85,21 +85,21 @@
   max-width: min(860px, 92%);
   width: fit-content;
   border-radius: 0;
-  padding: 6px 0;
+  padding: 2px 0;
   border: 0;
   background: transparent;
   box-sizing: border-box;
 }
 
 .cf-msgItem--user .cf-msgItem__bubble {
-  padding: 5px 10px;
+  padding: 4px 9px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: var(--radiusSm, 4px);
 }
 
 .cf-msgItem--assistant .cf-msgItem__bubble {
-  padding: 6px 0;
+  padding: 2px 0;
 }
 
 .cf-msgItem__actions {
@@ -115,6 +115,29 @@
 
 .cf-msgItem__content pre {
   margin: 10px 0;
+}
+
+/* AI 回复：压缩 Markdown 段落/列表间距（默认太松） */
+.cf-msgItem--assistant .cf-msgItem__content p {
+  margin: 0.38em 0;
+}
+
+.cf-msgItem--assistant .cf-msgItem__content ul,
+.cf-msgItem--assistant .cf-msgItem__content ol {
+  margin: 0.38em 0;
+  padding-left: 1.2em;
+}
+
+.cf-msgItem--assistant .cf-msgItem__content li {
+  margin: 0.12em 0;
+}
+
+.cf-msgItem--assistant .cf-msgItem__content > :first-child {
+  margin-top: 0;
+}
+
+.cf-msgItem--assistant .cf-msgItem__content > :last-child {
+  margin-bottom: 0;
 }
 
 /* 用户发送：降低整块视觉高度（内边距 + 正文行高 + Markdown 段落间距） */
@@ -150,6 +173,137 @@
   border-radius: 0;
   overflow: auto;
   border: 1px solid rgba(255,255,255,.06);
+}
+
+.cf-toolMsg {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: min(860px, 92%);
+}
+
+.cf-toolMsg__details {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+  padding: 8px 10px;
+}
+
+:root[data-theme='light'] .cf-toolMsg__details {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.cf-toolMsg__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.cf-toolMsg__summary::-webkit-details-marker {
+  display: none;
+}
+
+.cf-toolMsg__icon {
+  font-size: 14px;
+  opacity: 0.92;
+}
+
+.cf-toolMsg__risk {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.cf-toolMsg__risk--high {
+  color: rgba(248, 81, 73, 0.95);
+}
+
+.cf-toolMsg__risk--medium {
+  color: rgba(212, 168, 75, 0.95);
+}
+
+.cf-toolMsg__risk--low {
+  color: rgba(63, 185, 80, 0.92);
+}
+
+.cf-toolMsg__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.cf-toolMsg__status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cf-toolMsg__oneLine {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-toolMsg__body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cf-toolMsg__sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.cf-toolMsg__pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+:root[data-theme='light'] .cf-toolMsg__pre {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.cf-toolMsg__kv {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.cf-toolMsg__k {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cf-toolMsg__v {
+  color: var(--text);
+  word-break: break-all;
 }
 
 .cf-chatApiKeyBar {
@@ -405,7 +559,7 @@
 
 /* 历史消息与流式区共用的「思考」折叠块 */
 .cf-thinkingBlock {
-  margin: 0 0 8px;
+  margin: 0 0 2px;
   border-radius: var(--radiusSm, 4px);
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
@@ -458,7 +612,7 @@
 }
 
 .cf-thinkingBlock__body {
-  padding: 0 10px 10px 30px;
+  padding: 0 10px 7px 30px;
   font-size: 11px;
   line-height: 1.55;
   color: var(--muted);
@@ -468,7 +622,7 @@
 }
 
 .cf-thinkingBlock__pre {
-  margin: 0 10px 10px 30px;
+  margin: 0 10px 7px 30px;
   padding: 8px 10px;
   font-size: 10px;
   line-height: 1.45;
@@ -479,6 +633,73 @@
   border-radius: 4px;
   overflow: auto;
   max-height: 320px;
+}
+
+.cf-toolApproval {
+  border: 1px solid rgba(212, 168, 75, 0.42);
+  background: rgba(212, 168, 75, 0.09);
+  padding: 8px 10px;
+  font-size: 12px;
+  position: relative;
+}
+
+.cf-toolApproval__title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.cf-toolApproval__hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.cf-toolApproval__list {
+  margin: 0 0 8px;
+  padding-left: 16px;
+}
+
+.cf-toolApproval__item {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0;
+  min-width: 0;
+}
+
+.cf-toolApproval__name {
+  flex-shrink: 0;
+}
+
+.cf-toolApproval__args {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 520px;
+}
+
+.cf-toolApproval__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* 倒计时黄线（从右到左收缩） */
+.cf-toolApproval__countdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(212, 168, 75, 0.22);
+  overflow: hidden;
+}
+
+.cf-toolApproval__countdownFill {
+  height: 100%;
+  background: rgba(212, 168, 75, 0.95);
+  transition: width 0.12s linear;
 }
 
 .cf-textarea{

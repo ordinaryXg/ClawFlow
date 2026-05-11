@@ -17,6 +17,7 @@ import {
   shouldShowMessageChannelStrip,
 } from '../../store/modules/chatStore';
 import ThinkingBlock from './ThinkingBlock';
+import ToolMessageItem from './ToolMessageItem';
 import './chat.css';
 
 interface Props {
@@ -38,6 +39,9 @@ function channelSlug(ch: MessageChannel): string {
 
 const MessageItem: FC<Props> = ({ message }) => {
   const { t } = useTranslation();
+  if (message.role === 'tool') {
+    return <ToolMessageItem message={message} />;
+  }
   const isUser = message.role === 'user';
   const ch = resolveMessagePresentationChannel(message);
   const strip = shouldShowMessageChannelStrip(message);

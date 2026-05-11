@@ -52,6 +52,9 @@ type WsServerEvent =
       conversationId: string;
       approvalId: string;
       tools: Array<{ name: string; argumentsPreview: string }>;
+      riskLevel: 'medium' | 'high';
+      timeoutMs: number;
+      defaultApproved: boolean;
     }
   | { type: 'gateway:log'; entry: GatewayLogEntry }
   | { type: 'gateway:status'; status: GatewayStatus; port: number; uptimeMs: number };
@@ -403,6 +406,9 @@ class GatewayDaemon extends EventEmitter {
             conversationId,
             approvalId: p.approvalId,
             tools: p.tools,
+            riskLevel: p.riskLevel,
+            timeoutMs: p.timeoutMs,
+            defaultApproved: p.defaultApproved,
           });
         },
       });

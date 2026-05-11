@@ -26,6 +26,15 @@ export type ToolExecutionContext = {
   config?: { verbose?: boolean; webSearch?: ResolvedClawFlowWebSearch };
   /** Optional stream hook for tool progress (delta text) */
   onDelta?: (text: string) => void;
+  /** Optional hook to persist tool lifecycle events */
+  onToolEvent?: (ev: {
+    phase: 'start' | 'done' | 'fail';
+    tool_call_id: string;
+    toolName: string;
+    argumentsText: string;
+    outputText?: string;
+    ts: number;
+  }) => void | Promise<void>;
   /** Optional abort signal to cancel tool execution */
   abortSignal?: AbortSignal;
   /** 在主窗口内嵌浏览器（右侧 webview）中打开 URL；由 IPC 注入，无则仅能走系统浏览器 */
@@ -272,8 +281,9 @@ export class ToolRuntime {
         continue;
       }
       let args: any = {};
+      const rawArgsText = typeof call?.function?.arguments === 'string' ? call.function.arguments : '';
       try {
-        args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+        args = rawArgsText ? JSON.parse(rawArgsText) : {};
       } catch {
         args = {};
       }
@@ -287,15 +297,38 @@ export class ToolRuntime {
       }
       try {
         ctx.onDelta?.(`\n[tool:start] ${name}\n`);
+        await ctx.onToolEvent?.({
+          phase: 'start',
+          tool_call_id: call.id,
+          toolName: String(name ?? 'unknown'),
+          argumentsText: rawArgsText,
+          ts: Date.now(),
+        });
         const out = await entry.handler(args, ctx);
         const content = typeof out === 'string' ? out : JSON.stringify(out);
         results.push({ tool_call_id: call.id, content });
         const summary = truncateForToolLog(content, 320);
         ctx.onDelta?.(`[tool:done] ${name}${summary ? `\n${summary}\n` : '\n'}`);
+        await ctx.onToolEvent?.({
+          phase: 'done',
+          tool_call_id: call.id,
+          toolName: String(name ?? 'unknown'),
+          argumentsText: rawArgsText,
+          outputText: content,
+          ts: Date.now(),
+        });
       } catch (e: any) {
         const msg = `Tool error: ${e?.message ?? String(e)}`;
         results.push({ tool_call_id: call.id, content: msg });
         ctx.onDelta?.(`[tool:fail] ${name}\n${truncateForToolLog(msg, 320)}\n`);
+        await ctx.onToolEvent?.({
+          phase: 'fail',
+          tool_call_id: call.id,
+          toolName: String(name ?? 'unknown'),
+          argumentsText: rawArgsText,
+          outputText: msg,
+          ts: Date.now(),
+        });
       }
     }
     return results;

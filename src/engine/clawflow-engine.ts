@@ -70,6 +70,12 @@ export type ToolApprovalNeededPayload = {
   requestId?: string;
   conversationId: string;
   tools: ToolApprovalToolSummary[];
+  /** 风险级别：用于 UI 倒计时与默认动作 */
+  riskLevel: 'medium' | 'high';
+  /** UI 倒计时毫秒（例如 20000 / 60000） */
+  timeoutMs: number;
+  /** 超时默认动作：true=默认同意执行；false=默认拒绝 */
+  defaultApproved: boolean;
 };
 
 export interface ClawFlowEngine {
@@ -234,13 +240,27 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     const convsBefore = await store.readAll();
     const conv = convsBefore.find((c) => c.id === conversationId) ?? null;
     const tail: ChatMessage[] = (conv?.messages ?? [])
-      .filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'tool'))
+      .filter((m) => {
+        if (!m) return false;
+        if (m.role === 'user' || m.role === 'assistant') return true;
+        if (m.role !== 'tool') return false;
+        // DeepSeek 对 messages schema 较严格：tool_call_id 仅允许出现在 role="tool"。
+        // 同时我们会把工具生命周期（start/done/fail）落盘用于 UI 展示，但不应回灌给模型上下文，
+        // 否则会污染上下文并可能触发 provider 的严格校验。
+        // DeepSeek 要求 role="tool" 必须带 tool_call_id；否则会 400 missing field tool_call_id
+        const toolCallId = typeof (m as any)?.tool_call_id === 'string' ? String((m as any).tool_call_id).trim() : '';
+        if (!toolCallId) return false;
+
+        const meta = (m as any)?.meta;
+        const status = typeof meta?.status === 'string' ? meta.status : '';
+        return status === 'result' || !status;
+      })
       .map((m) => ({
         role: m.role as ChatMessage['role'],
         content: String(m.content ?? ''),
         ...(typeof m.reasoning_content === 'string' ? { reasoning_content: m.reasoning_content } : {}),
         ...(Array.isArray(m.tool_calls) ? { tool_calls: m.tool_calls as ChatMessage['tool_calls'] } : {}),
-        ...(typeof m.tool_call_id === 'string' ? { tool_call_id: m.tool_call_id } : {}),
+        ...(m.role === 'tool' && typeof (m as any).tool_call_id === 'string' ? { tool_call_id: (m as any).tool_call_id } : {}),
       }));
 
     const last = tail[tail.length - 1];
@@ -338,7 +358,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     };
   }
 
-  private toStoredToolMessage(params: { tool_call_id: string; content: string }): StoredMessage {
+  private toStoredToolMessage(params: { tool_call_id: string; content: string; meta?: Record<string, unknown> }): StoredMessage {
     const now = Date.now();
     return {
       id: randomUUID(),
@@ -346,6 +366,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       content: String(params.content ?? ''),
       timestamp: now,
       tool_call_id: String(params.tool_call_id ?? ''),
+      ...(params.meta && typeof params.meta === 'object' ? { meta: params.meta } : {}),
     };
   }
 
@@ -532,8 +553,109 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         }
 
         let toolResults: Array<{ tool_call_id: string; content: string }>;
+        const toolCallMetaById = new Map<string, { toolName: string; argsPreview: string }>();
+        for (const tc of toolCalls as ToolCall[]) {
+          toolCallMetaById.set(tc.id, {
+            toolName: tc.function?.name ?? 'unknown',
+            argsPreview: this.toolArgumentsPreview(tc.function?.arguments ?? ''),
+          });
+        }
 
-        if (params.onToolApprovalNeeded && toolCalls.length > 0) {
+        const toolCardForName = (toolName: string): { kind: string; title: string } => {
+          const n = String(toolName ?? '').trim();
+          if (n === 'web_search') return { kind: 'tool.network.search', title: '网络搜索' };
+          if (n === 'web_scrape') return { kind: 'tool.network.scrape', title: '网页爬取' };
+          if (n === 'delegate_to_subagent') return { kind: 'tool.subagent.run', title: '子 Agent 调用' };
+          if (n.startsWith('workspace_todo_')) return { kind: 'tool.todo.receipt', title: '待办/回执' };
+          if (n.startsWith('workspace_git_')) return { kind: 'tool.exec.git', title: '命令行：git' };
+          if (n === 'workspace_rg_search') return { kind: 'tool.exec.rg', title: '命令行：rg' };
+          if (n === 'workspace_run_tsc_no_emit') return { kind: 'tool.exec.tsc', title: '命令行：tsc' };
+          if (n.startsWith('workspace_')) return { kind: 'tool.exec.fs', title: '工作区操作' };
+          return { kind: 'tool.exec', title: '工具调用' };
+        };
+
+        const appendToolEvent = async (ev: {
+          phase: 'start' | 'done' | 'fail';
+          tool_call_id: string;
+          toolName: string;
+          argumentsText: string;
+          outputText?: string;
+          ts: number;
+        }) => {
+          const card = toolCardForName(ev.toolName);
+          const riskLevel = toolRiskForName(ev.toolName);
+          const status = ev.phase === 'start' ? 'running' : ev.phase === 'done' ? 'success' : 'error';
+          const msg: StoredMessage = this.toStoredToolMessage({
+            tool_call_id: ev.tool_call_id,
+            content: ev.phase === 'start' ? `[start] ${ev.toolName}` : String(ev.outputText ?? ''),
+            meta: {
+              kind: card.kind,
+              title: card.title,
+              riskLevel,
+              status,
+              toolName: ev.toolName,
+              argumentsPreview: this.toolArgumentsPreview(ev.argumentsText ?? ''),
+              phase: ev.phase,
+              ts: ev.ts,
+            },
+          });
+          try {
+            await this.appendMessages(params.conversationId, [msg], store);
+          } catch (e: any) {
+            console.warn('[ClawFlowEngine] persist tool event failed:', e?.message ?? e);
+          }
+        };
+
+        type Risk = 'low' | 'medium' | 'high';
+        const toolRiskForName = (toolName: string): Risk => {
+          const n = String(toolName ?? '').trim();
+          // 文档/目录读取：低风险（白名单自动放行）
+          if (n === 'workspace_list_dir' || n === 'workspace_read_file_preview' || n === 'workspace_read_file') return 'low';
+          // 写文件/打补丁/重命名/建目录/回滚：中风险（20s 默认执行）
+          if (
+            n === 'workspace_write_file' ||
+            n === 'workspace_apply_patch' ||
+            n === 'workspace_mkdir' ||
+            n === 'workspace_rename_path' ||
+            n === 'workspace_rollback_op'
+          )
+            return 'medium';
+          // 删除 / destructive patch：高风险（60s 默认不执行）
+          if (n === 'workspace_delete_path' || n === 'workspace_apply_patch_v2') return 'high';
+          // 其它工具默认低风险（未来可按需提升）
+          return 'low';
+        };
+
+        const toolTimeoutForRisk = (risk: Exclude<Risk, 'low'>): { timeoutMs: number; defaultApproved: boolean } => {
+          if (risk === 'high') return { timeoutMs: 60_000, defaultApproved: false };
+          return { timeoutMs: 20_000, defaultApproved: true };
+        };
+
+        const allCalls = toolCalls as ToolCall[];
+        const indexed = allCalls.map((tc, idx) => ({
+          idx,
+          call: tc,
+          name: tc.function?.name ?? 'unknown',
+          risk: toolRiskForName(tc.function?.name ?? 'unknown'),
+        }));
+        const lowCalls = indexed.filter((x) => x.risk === 'low');
+        const gatedCalls = indexed.filter((x) => x.risk !== 'low');
+
+        const executeCalls = async (list: typeof indexed) =>
+          this.tools.executeToolCalls(
+            list.map((x) => x.call) as any,
+            {
+              workspaceRoot: effRoot,
+              config: toolRuntimeConfig,
+              onDelta: params.onDelta,
+              onToolEvent: appendToolEvent,
+              abortSignal: params.abortSignal,
+              openEmbeddedBrowser: params.openEmbeddedBrowser,
+              workspaceToolSelection,
+            }
+          );
+
+        if (params.onToolApprovalNeeded && gatedCalls.length > 0) {
           const approvalId = randomUUID();
           let settled = false;
           let resolveApproval!: (v: boolean) => void;
@@ -554,50 +676,62 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
             settleApproval(false);
           } else {
             params.abortSignal?.addEventListener('abort', onApprovalAbort, { once: true });
+            const maxRisk: Exclude<Risk, 'low'> = gatedCalls.some((x) => x.risk === 'high') ? 'high' : 'medium';
+            const { timeoutMs, defaultApproved } = toolTimeoutForRisk(maxRisk);
             void Promise.resolve(
               params.onToolApprovalNeeded({
                 approvalId,
                 requestId: params.requestId,
                 conversationId: params.conversationId,
-                tools: (toolCalls as ToolCall[]).map((tc) => ({
-                  name: tc.function?.name ?? 'unknown',
-                  argumentsPreview: this.toolArgumentsPreview(tc.function?.arguments ?? ''),
+                tools: gatedCalls.map((x) => ({
+                  name: x.name,
+                  argumentsPreview: this.toolArgumentsPreview(x.call.function?.arguments ?? ''),
                 })),
+                riskLevel: maxRisk,
+                timeoutMs,
+                defaultApproved,
               })
             ).catch(() => undefined);
           }
 
           const approved = await waitApproval;
-          if (!approved) {
-            toolResults = (toolCalls as ToolCall[]).map((tc) => ({
-              tool_call_id: tc.id,
-              content: 'User declined tool execution; tools were not run.',
-            }));
-          } else {
-            toolResults = await this.tools.executeToolCalls(toolCalls as any, {
-              workspaceRoot: effRoot,
-              config: toolRuntimeConfig,
-              onDelta: params.onDelta,
-              abortSignal: params.abortSignal,
-              openEmbeddedBrowser: params.openEmbeddedBrowser,
-              workspaceToolSelection,
-            });
-          }
+          const lowRes = lowCalls.length ? await executeCalls(lowCalls) : [];
+          const gatedRes = approved
+            ? await executeCalls(gatedCalls)
+            : gatedCalls.map((x) => ({ tool_call_id: x.call.id, content: 'User declined tool execution; tools were not run.' }));
+          const merged = [
+            ...lowCalls.map((x, i) => ({ idx: x.idx, res: lowRes[i] })),
+            ...gatedCalls.map((x, i) => ({ idx: x.idx, res: gatedRes[i] })),
+          ]
+            .filter((x) => x.res)
+            .sort((a, b) => a.idx - b.idx)
+            .map((x) => x.res);
+          toolResults = merged;
         } else {
-          toolResults = await this.tools.executeToolCalls(toolCalls as any, {
-            workspaceRoot: effRoot,
-            config: toolRuntimeConfig,
-            onDelta: params.onDelta,
-            abortSignal: params.abortSignal,
-            openEmbeddedBrowser: params.openEmbeddedBrowser,
-            workspaceToolSelection,
-          });
+          // 无 UI（或无需要确认的工具）：全部直接执行
+          toolResults = await executeCalls(indexed);
         }
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];
         for (const tr of toolResults) {
           toolMsgs.push({ role: 'tool', tool_call_id: tr.tool_call_id, content: tr.content });
-          storedTools.push(this.toStoredToolMessage({ tool_call_id: tr.tool_call_id, content: tr.content }));
+          const meta0 = toolCallMetaById.get(tr.tool_call_id);
+          storedTools.push(
+            this.toStoredToolMessage({
+              tool_call_id: tr.tool_call_id,
+              content: tr.content,
+              meta: meta0
+                ? {
+                    kind: toolCardForName(meta0.toolName).kind,
+                    title: toolCardForName(meta0.toolName).title,
+                    riskLevel: toolRiskForName(meta0.toolName),
+                    status: 'result',
+                    toolName: meta0.toolName,
+                    argumentsPreview: meta0.argsPreview,
+                  }
+                : undefined,
+            })
+          );
         }
         for (const tm of toolMsgs) loopMessages.push(tm);
 

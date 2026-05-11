@@ -3,6 +3,8 @@
  * 参考：openclaw/src/agents/tools/web-search.ts、extensions/brave、extensions/duckduckgo
  */
 
+import { classifyNetworkFailure, fetchWithProxyRetry } from '../utils/net-fetch';
+
 export const WEB_SEARCH_MAX_COUNT = 10;
 export const WEB_SEARCH_DEFAULT_COUNT = 5;
 
@@ -200,11 +202,11 @@ async function fetchBraveWebSearch(params: {
   const t = setTimeout(() => ac.abort(), params.timeoutMs);
   const signal = params.signal ? mergeAbortSignals(params.signal, ac.signal) : ac.signal;
   try {
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: { Accept: 'application/json', 'X-Subscription-Token': params.apiKey },
-      signal,
-    });
+    const res = await fetchWithProxyRetry(
+      url.toString(),
+      { method: 'GET', headers: { Accept: 'application/json', 'X-Subscription-Token': params.apiKey } },
+      { timeoutMs: params.timeoutMs, retries: 1, signal }
+    );
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`Brave Search API error (${res.status}): ${detail.slice(0, 500) || res.statusText}`);
@@ -255,14 +257,17 @@ async function fetchDuckDuckGoSearch(params: {
   const t = setTimeout(() => ac.abort(), params.timeoutMs);
   const signal = params.signal ? mergeAbortSignals(params.signal, ac.signal) : ac.signal;
   try {
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    const res = await fetchWithProxyRetry(
+      url.toString(),
+      {
+        method: 'GET',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        },
       },
-      signal,
-    });
+      { timeoutMs: params.timeoutMs, retries: 1, signal }
+    );
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`DuckDuckGo search error (${res.status}): ${detail.slice(0, 400) || res.statusText}`);
@@ -425,26 +430,56 @@ export async function runClawFlowWebSearch(
     };
   };
 
+  const wrapFailure = (provider: 'brave' | 'duckduckgo', e: unknown) => {
+    const nf = classifyNetworkFailure(e, provider === 'brave' ? ws.braveBaseUrl : DDG_HTML);
+    return {
+      ok: false,
+      provider,
+      errorCode: nf.errorCode,
+      hint: nf.hint,
+      details: nf.details ?? null,
+      note: '如在公司/校园网，请优先设置 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量；ClawFlow 已支持代理与轻量重试。',
+    } as Record<string, unknown>;
+  };
+
   if (ws.provider === 'duckduckgo') {
-    const out = await runDdg();
-    return out.payload;
+    try {
+      const out = await runDdg();
+      return out.payload;
+    } catch (e: unknown) {
+      return wrapFailure('duckduckgo', e);
+    }
   }
 
   if (preferBrave) {
-    const b = await runBrave();
-    if (b.ok) return b.payload;
+    try {
+      const b = await runBrave();
+      if (b.ok) return b.payload;
+      // missing_brave_api_key：继续走原有逻辑
+    } catch (e: unknown) {
+      if (ws.provider === 'brave') return wrapFailure('brave', e);
+      // auto：Brave 失败则回退 DDG
+    }
     if (ws.provider === 'brave') {
       throw new Error(
         'web_search (brave) needs a Brave Search API key. Set BRAVE_API_KEY in the environment or configure webSearch.braveApiKey when creating the engine. If you do not want to use Brave, set webSearch.provider to "duckduckgo".'
       );
     }
-    const ddg = await runDdg();
-    return {
-      ...ddg.payload,
-      fallbackFrom: 'brave_unconfigured',
-    };
+    try {
+      const ddg = await runDdg();
+      return {
+        ...ddg.payload,
+        fallbackFrom: 'brave_unconfigured',
+      };
+    } catch (e: unknown) {
+      return wrapFailure('duckduckgo', e);
+    }
   }
 
-  const ddg = await runDdg();
-  return ddg.payload;
+  try {
+    const ddg = await runDdg();
+    return ddg.payload;
+  } catch (e: unknown) {
+    return wrapFailure('duckduckgo', e);
+  }
 }

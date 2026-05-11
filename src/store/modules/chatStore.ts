@@ -21,6 +21,9 @@ type GatewayWsEvent =
       conversationId: string;
       approvalId: string;
       tools: Array<{ name: string; argumentsPreview: string }>;
+      riskLevel?: 'medium' | 'high';
+      timeoutMs?: number;
+      defaultApproved?: boolean;
     }
   | { type: 'gateway:log'; entry: { ts: number; level: string; msg: string } }
   | { type: 'gateway:status'; status: string; port: number; uptimeMs: number };
@@ -46,6 +49,10 @@ export type ToolApprovalPendingState = {
   conversationId: string;
   approvalId: string;
   tools: Array<{ name: string; argumentsPreview: string }>;
+  riskLevel: 'medium' | 'high';
+  timeoutMs: number;
+  defaultApproved: boolean;
+  startedAt: number;
 };
 
 /** 对话气泡来源渠道：用于区分样式；未填写时按 role 推导默认外观 */
@@ -86,13 +93,17 @@ export function shouldShowMessageChannelStrip(message: Message): boolean {
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   timestamp: number;
   /** 模型思考过程（DeepSeek reasoning 等），与正文分开展示 */
   reasoningContent?: string;
   /** 消息渠道（样式与角标）；缺省时 UI 视作 user_manual / assistant_llm */
   channel?: MessageChannel;
+  /** tool 消息：与 tool_calls 对齐的 id（用于聚合/追溯） */
+  toolCallId?: string;
+  /** 原样透传 stored meta（用于工具卡片渲染） */
+  meta?: Record<string, unknown>;
 }
 
 export interface Conversation {
@@ -111,7 +122,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
   const messages: Message[] = msgs
     .filter((m) => {
       const r = m as Record<string, unknown>;
-      return r?.role === 'user' || r?.role === 'assistant';
+      return r?.role === 'user' || r?.role === 'assistant' || r?.role === 'tool';
     })
     .map((m: any) => {
       const id = typeof m?.id === 'string' ? m.id : uuidv4();
@@ -126,9 +137,23 @@ function normalizeConversation(raw: unknown): Conversation | null {
           ...(ch ? { channel: ch } : {}),
         };
       }
+      if (m?.role === 'tool') {
+        const toolCallId = typeof m?.tool_call_id === 'string' ? m.tool_call_id : '';
+        const meta = m?.meta && typeof m.meta === 'object' ? (m.meta as Record<string, unknown>) : undefined;
+        // tool 消息默认不展示渠道 strip（channel 缺省），通过 ToolMessageItem 自己做样式
+        return {
+          id,
+          role: 'tool' as const,
+          content: String(m?.content ?? ''),
+          timestamp: ts,
+          ...(toolCallId ? { toolCallId } : {}),
+          ...(meta ? { meta } : {}),
+        };
+      }
       const merged = mergeCompletionReasoning(m?.content, m?.reasoning_content);
       const rc = merged.reasoningCombined.trim() || undefined;
       const ach = coerceMessageChannel('assistant', (m as Record<string, unknown>).channel);
+      const meta = m?.meta && typeof m.meta === 'object' ? (m.meta as Record<string, unknown>) : undefined;
       return {
         id,
         role: 'assistant' as const,
@@ -136,6 +161,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
         timestamp: ts,
         ...(rc ? { reasoningContent: rc } : {}),
         ...(ach ? { channel: ach } : {}),
+        ...(meta ? { meta } : {}),
       };
     });
   const now = Date.now();
@@ -377,12 +403,21 @@ export const useChatStore = create<ChatState>()((set, get) => {
       : [];
     const approvalId = String(payload.approvalId ?? '').trim();
     if (!approvalId) return;
+    const riskLevel = payload.riskLevel === 'high' ? 'high' : 'medium';
+    const timeoutMsRaw = typeof payload.timeoutMs === 'number' && Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 20_000;
+    const timeoutMs = Math.max(1000, Math.min(120_000, Math.floor(timeoutMsRaw)));
+    const defaultApproved = typeof payload.defaultApproved === 'boolean' ? payload.defaultApproved : riskLevel === 'medium';
+    const startedAt = Date.now();
     set({
       toolApprovalPending: {
         requestId: String(payload.requestId ?? ''),
         conversationId: String(payload.conversationId ?? ''),
         approvalId,
         tools,
+        riskLevel,
+        timeoutMs,
+        defaultApproved,
+        startedAt,
       },
     });
   };

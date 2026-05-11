@@ -62,6 +62,11 @@ const SubAgentsHubPanel: FC = () => {
         conversationId: p.conversationId ?? '',
         approvalId: p.approvalId ?? '',
         tools: p.tools ?? [],
+        // 子 Agent 工具审批：先按中风险处理（20s 默认执行），后续可在 sub-agent-runner 里也做风险分级
+        riskLevel: 'medium',
+        timeoutMs: 20_000,
+        defaultApproved: true,
+        startedAt: Date.now(),
       });
     });
     return () => {

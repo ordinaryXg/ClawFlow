@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { isSafeHttpUrl, normalizeHttpUrl } from './utils/normalize-http-url';
+import { classifyNetworkFailure, fetchWithProxyRetry } from './utils/net-fetch';
 import { appendScrapeJob, ensureScrapeArtifactsDir, scrapeArtifactRelPath } from './scrape-service';
 import type { ScrapeJobRecord } from './shared/scrape-jobs';
 import { broadcastScrapeJobsUpdated } from './scrape-broadcast';
@@ -81,15 +82,18 @@ export async function runWebScrapeForTool(
     : controller.signal;
 
   try {
-    const res = await fetch(normalized, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: merged,
-      headers: {
-        Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'ClawFlow/1.0 (+https://github.com/ordinaryXg/ClawFlow) web_scrape',
+    const res = await fetchWithProxyRetry(
+      normalized,
+      {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+          'User-Agent': 'ClawFlow/1.0 (+https://github.com/ordinaryXg/ClawFlow) web_scrape',
+        },
       },
-    });
+      { timeoutMs: FETCH_TIMEOUT_MS, retries: 1, signal: merged }
+    );
 
     const buf = await res.arrayBuffer();
     const slice = buf.byteLength > FETCH_MAX_BYTES ? buf.slice(0, FETCH_MAX_BYTES) : buf;
@@ -107,6 +111,11 @@ export async function runWebScrapeForTool(
         {
           ok: false,
           error: 'http_error',
+          errorCode: res.status === 407 ? 'proxy_auth_required' : 'http_error',
+          hint:
+            res.status === 407
+              ? '代理需要认证（HTTP 407）。请配置带账号密码的 HTTP_PROXY/HTTPS_PROXY，或使用允许的代理出口。'
+              : 'HTTP 返回非 2xx。若是 403/429 可能被站点风控；可稍后重试或更换数据源。',
           status: res.status,
           recordId: id,
         },
@@ -155,6 +164,7 @@ export async function runWebScrapeForTool(
     );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    const nf = classifyNetworkFailure(e, normalized);
     const job: ScrapeJobRecord = {
       ...jobBase,
       status: 'error',
@@ -162,7 +172,19 @@ export async function runWebScrapeForTool(
     };
     await appendScrapeJob(ws, job);
     broadcastScrapeJobsUpdated(ws);
-    return JSON.stringify({ ok: false, error: 'fetch_failed', message: msg, recordId: id }, null, 2);
+    return JSON.stringify(
+      {
+        ok: false,
+        error: 'fetch_failed',
+        errorCode: nf.errorCode,
+        hint: nf.hint,
+        message: msg,
+        recordId: id,
+        details: nf.details ?? null,
+      },
+      null,
+      2
+    );
   } finally {
     clearTimeout(timer);
   }
