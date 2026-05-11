@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { WebContents } from 'electron';
 import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from './engine/clawflow-engine';
-import { buildRoleAgentSystemContent } from './engine/role-agent-context';
+import { buildSubAgentRoleSystemContent } from './engine/subagent-role-context';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
 
@@ -65,10 +65,11 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     const slot = slots.find((s) => s.id === slotId);
     const label = slot?.label?.trim() || slotId;
     const behavior = slot?.behavior?.trim() || '';
+    const roleTemplateId = slot?.roleTemplateId ?? 'assistant';
 
     await setStatus('running');
 
-    const roleAgent = await buildRoleAgentSystemContent(ws);
+    const roleAgent = await buildSubAgentRoleSystemContent(ws, roleTemplateId);
     const systemPrefix = [
       roleAgent,
       '',
@@ -76,6 +77,7 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
       '[ClawFlow] 你是一个子 Agent（sub-agent）。请严格遵守工作区规则与工具边界。',
       `子 Agent ID：${slotId}`,
       `子 Agent 名称：${label}`,
+      `子 Agent 角色模板：${roleTemplateId}`,
       behavior ? `子 Agent 行为摘要：\n${behavior}` : '子 Agent 行为摘要：（空）',
       '---',
       '',

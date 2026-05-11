@@ -8,6 +8,7 @@ import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates, WORKSPACE_ROLE_AGENT_DIR } from './workspace-agent-bootstrap';
+import { ensureWorkspaceSubAgentRoleTemplates } from './workspace-subagent-role-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
@@ -414,6 +415,17 @@ export async function ensureWorkspaceInitialized(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
+  }
+
+  // 子 Agent 的角色模板（program/creative/data/assistant），缺失才补写到 `.clawflow/subagent-roles/`
+  try {
+    const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
+    if (created.length) {
+      console.log('[workspace-service] sub-agent role templates created:', created.join(', '));
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
   }
 
   const now = Date.now();

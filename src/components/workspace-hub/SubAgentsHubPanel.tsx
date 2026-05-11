@@ -1,6 +1,6 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Input } from 'antd';
+import { Modal, Input, Select } from 'antd';
 import { useSubAgentStore } from '../../store/modules/subAgentStore';
 import { useChatStore } from '../../store/modules/chatStore';
 import './WorkspaceHubPanels.css';
@@ -29,6 +29,7 @@ const SubAgentsHubPanel: FC = () => {
   const [editId, setEditId] = useState<string>('');
   const [editLabel, setEditLabel] = useState<string>('');
   const [editBehavior, setEditBehavior] = useState<string>('');
+  const [editRoleTemplateId, setEditRoleTemplateId] = useState<'program' | 'creative' | 'data' | 'assistant'>('assistant');
   const [saving, setSaving] = useState(false);
 
   const [runOpen, setRunOpen] = useState(false);
@@ -80,6 +81,7 @@ const SubAgentsHubPanel: FC = () => {
     setEditId('');
     setEditLabel('');
     setEditBehavior('');
+    setEditRoleTemplateId('assistant');
     setEditOpen(true);
   };
 
@@ -87,6 +89,7 @@ const SubAgentsHubPanel: FC = () => {
     setEditId(a.id);
     setEditLabel(a.label ?? '');
     setEditBehavior(a.behavior ?? '');
+    setEditRoleTemplateId((a as any).roleTemplateId ?? 'assistant');
     setEditOpen(true);
   };
 
@@ -98,11 +101,11 @@ const SubAgentsHubPanel: FC = () => {
       const next: SubAgentSlot[] = (() => {
         const base = [...slots];
         if (!editId) {
-          base.push({ id: crypto.randomUUID(), label, behavior: editBehavior, status: 'stopped' });
+          base.push({ id: crypto.randomUUID(), label, behavior: editBehavior, roleTemplateId: editRoleTemplateId, status: 'stopped' } as any);
           return base;
         }
         const idx = base.findIndex((x) => x.id === editId);
-        if (idx >= 0) base[idx] = { ...base[idx], label, behavior: editBehavior };
+        if (idx >= 0) base[idx] = { ...base[idx], label, behavior: editBehavior, roleTemplateId: editRoleTemplateId } as any;
         return base;
       })();
       await window.electronAPI?.subAgentsSaveAll?.(next as unknown[]);
@@ -224,6 +227,17 @@ const SubAgentsHubPanel: FC = () => {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
+          <Select
+            value={editRoleTemplateId}
+            onChange={(v) => setEditRoleTemplateId(v)}
+            style={{ width: '100%' }}
+            options={[
+              { value: 'program', label: '程序 Agent（可运行/可验证交付）' },
+              { value: 'creative', label: '创意 Agent（方案/文案/脚本）' },
+              { value: 'data', label: '数据 Agent（可复现分析/结论）' },
+              { value: 'assistant', label: '助理 Agent（推进/拆解/闭环）' },
+            ]}
+          />
           <Input.TextArea
             value={editBehavior}
             onChange={(e) => setEditBehavior(e.target.value)}

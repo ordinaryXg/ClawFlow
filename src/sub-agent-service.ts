@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SubAgentSlot } from './shared/sub-agent-types';
+import type { SubAgentRoleTemplateId, SubAgentSlot } from './shared/sub-agent-types';
 import * as workspaceService from './workspace-service';
 
 export type { SubAgentSlot, SubAgentRunStatus } from './shared/sub-agent-types';
@@ -17,6 +17,14 @@ function isSlot(x: unknown): x is SubAgentSlot {
   if (!x || typeof x !== 'object') return false;
   const o = x as Record<string, unknown>;
   if (typeof o.id !== 'string' || typeof o.label !== 'string' || typeof o.behavior !== 'string') return false;
+  if (
+    o.roleTemplateId !== undefined &&
+    o.roleTemplateId !== 'program' &&
+    o.roleTemplateId !== 'creative' &&
+    o.roleTemplateId !== 'data' &&
+    o.roleTemplateId !== 'assistant'
+  )
+    return false;
   const st = o.status;
   return st === 'stopped' || st === 'starting' || st === 'running' || st === 'error';
 }
