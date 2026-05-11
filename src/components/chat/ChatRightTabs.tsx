@@ -1,6 +1,7 @@
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChangeHistoryPanel from './ChangeHistoryPanel';
+import ScrapePanel from './ScrapePanel';
 import SimpleEmbeddedBrowser from './SimpleEmbeddedBrowser';
 import WorkspaceFilesSplit from './WorkspaceFilesSplit';
 
@@ -10,7 +11,7 @@ type Props = {
   widthPx?: number;
 };
 
-type TabKey = 'workspace' | 'browser' | 'changes';
+type TabKey = 'workspace' | 'browser' | 'changes' | 'scrape';
 
 const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
@@ -35,6 +36,7 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
       { key: 'workspace' as const, label: t('chat.rightTabs.workspaceDir') },
       { key: 'browser' as const, label: t('chat.rightTabs.headlessBrowser') },
       { key: 'changes' as const, label: t('chat.rightTabs.changeLog') },
+      { key: 'scrape' as const, label: t('chat.rightTabs.scrape') },
     ],
     [t]
   );
@@ -74,6 +76,9 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
         </div>
         <div style={{ display: active === 'changes' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
           <ChangeHistoryPanel workspacePath={workspacePath} />
+        </div>
+        <div style={{ display: active === 'scrape' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+          <ScrapePanel workspacePath={workspacePath} />
         </div>
       </div>
     </aside>

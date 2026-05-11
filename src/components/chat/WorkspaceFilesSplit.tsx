@@ -573,36 +573,38 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
             ) : null}
           </div>
           <div className="cf-filePreview">
-            {!selectedFile ? (
-              <div className="cf-sub">{t('chat.rightTabs.previewEmpty')}</div>
-            ) : preview.state === 'loading' ? (
-              <div className="cf-sub">{t('chat.rightTabs.previewLoading')}</div>
-            ) : preview.state === 'error' ? (
-              <div className="cf-errorText">{preview.message}</div>
-            ) : preview.state === 'binary' ? (
-              <div className="cf-sub">{t('chat.rightTabs.previewBinary')}</div>
-            ) : preview.state === 'image' ? (
-              <>
-                <div className="cf-filePreview__imgWrap">
-                  <img className="cf-filePreview__img" src={preview.dataUrl} alt="" decoding="async" />
-                </div>
-              </>
-            ) : preview.state === 'text' ? (
-              <>
-                {preview.truncated ? (
-                  <div className="cf-filePreview__warn cf-sub">{t('chat.rightTabs.previewTruncated')}</div>
-                ) : null}
-                {selectedFile && isMarkdownFilename(selectedFile) && mdViewMode === 'preview' ? (
-                  <div className="cf-filePreview__mdBody cf-msgItem__content">
-                    <Markdown options={markdownOptions}>{preview.content}</Markdown>
+            <div className="cf-filePreview__scroll">
+              {!selectedFile ? (
+                <div className="cf-sub">{t('chat.rightTabs.previewEmpty')}</div>
+              ) : preview.state === 'loading' ? (
+                <div className="cf-sub">{t('chat.rightTabs.previewLoading')}</div>
+              ) : preview.state === 'error' ? (
+                <div className="cf-errorText">{preview.message}</div>
+              ) : preview.state === 'binary' ? (
+                <div className="cf-sub">{t('chat.rightTabs.previewBinary')}</div>
+              ) : preview.state === 'image' ? (
+                <>
+                  <div className="cf-filePreview__imgWrap">
+                    <img className="cf-filePreview__img" src={preview.dataUrl} alt="" decoding="async" />
                   </div>
-                ) : (
-                  <pre className="cf-filePreview__pre">{preview.content}</pre>
-                )}
-              </>
-            ) : (
-              <div className="cf-sub">{t('chat.rightTabs.previewEmpty')}</div>
-            )}
+                </>
+              ) : preview.state === 'text' ? (
+                <>
+                  {preview.truncated ? (
+                    <div className="cf-filePreview__warn cf-sub">{t('chat.rightTabs.previewTruncated')}</div>
+                  ) : null}
+                  {selectedFile && isMarkdownFilename(selectedFile) && mdViewMode === 'preview' ? (
+                    <div className="cf-filePreview__mdBody cf-msgItem__content">
+                      <Markdown options={markdownOptions}>{preview.content}</Markdown>
+                    </div>
+                  ) : (
+                    <pre className="cf-filePreview__pre">{preview.content}</pre>
+                  )}
+                </>
+              ) : (
+                <div className="cf-sub">{t('chat.rightTabs.previewEmpty')}</div>
+              )}
+            </div>
           </div>
         </div>
       </div>

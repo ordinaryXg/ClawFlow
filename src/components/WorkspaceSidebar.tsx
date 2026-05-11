@@ -59,6 +59,24 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     void loadTodoTriggers();
   }, [loadTodoTriggers, activeWorkspacePath]);
 
+  const loadSubAgents = useSubAgentStore((s) => s.load);
+  useEffect(() => {
+    void loadSubAgents();
+  }, [loadSubAgents, activeWorkspacePath]);
+
+  useEffect(() => {
+    const off1 = window.electronAPI?.onTodoTriggersUpdated?.((p) => {
+      if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadTodoTriggers();
+    });
+    const off2 = window.electronAPI?.onSubAgentsUpdated?.((p) => {
+      if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadSubAgents();
+    });
+    return () => {
+      off1?.();
+      off2?.();
+    };
+  }, [activeWorkspacePath, loadTodoTriggers, loadSubAgents]);
+
   const fetchSkills = useSkillStore((s) => s.fetchSkills);
   useEffect(() => {
     void fetchSkills();

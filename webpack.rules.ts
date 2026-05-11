@@ -1,4 +1,7 @@
+import path from 'path';
 import type { ModuleOptions } from 'webpack';
+
+const workspaceTemplatesDir = path.join(__dirname, 'src', 'workspace-templates');
 
 export const rules: Required<ModuleOptions>['rules'] = [
   // Add support for native node modules
@@ -27,5 +30,11 @@ export const rules: Required<ModuleOptions>['rules'] = [
         transpileOnly: true,
       },
     },
+  },
+  /** 工作区初始化模板：仅打包 src/workspace-templates 下 .md 为纯文本 */
+  {
+    test: /\.md$/i,
+    include: workspaceTemplatesDir,
+    type: 'asset/source',
   },
 ];

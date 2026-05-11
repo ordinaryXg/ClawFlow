@@ -62,7 +62,7 @@ const WorkspaceNewToolsModal: FC<Props> = ({ open, folderPath, mode = 'create', 
       onOk={() => onConfirm(sel)}
       confirmLoading={loading}
       destroyOnHidden
-      width={480}
+      width={520}
     >
       <p className="cf-sub" style={{ marginBottom: 12 }}>
         {intro}
@@ -72,7 +72,7 @@ const WorkspaceNewToolsModal: FC<Props> = ({ open, folderPath, mode = 'create', 
           {folderPath}
         </div>
       ) : null}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflowY: 'auto' }}>
         {WORKSPACE_TOOL_IDS.map((id) => (
           <Checkbox
             key={id}

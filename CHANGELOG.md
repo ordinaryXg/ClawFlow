@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Workspace 阶段 3：待办 / 子 Agent / 技能清单 / 知识库占位
+
+- **Manifest**：`todos`、`subagents`、`skills`、`knowledge_base` 能力开关；默认开启待办与子 Agent 槽位，技能与知识库默认关闭。
+- **工具**：`workspace_todo_*`、`workspace_subagent_*`、`openclaw_skills_list`、`workspace_knowledge_query`（Stub）；写盘后调度待办、广播刷新 UI。
+- **持久化**：`.clawflow/sub-agents.v1.json`；IPC `subAgents:list` / `saveAll`；`onTodoTriggersUpdated` / `onSubAgentsUpdated`。
+- **说明文件**：`.tool/todos.md`、`subagents.md`、`skills.md`、`knowledge_base.md`（缺失时补写）。
+
+### 其它（本轮一并提交）
+
+- **爬取**：`scrape-*` 服务与 `ScrapePanel` 等侧栏相关改动；`ambient-md.d.ts`、workspace 模板目录增量。
+- **构建**：`webpack.rules.ts` 注释内反引号导致 Forge 解析失败，已去除反引号。
+
 ### Chat: thinking vs answer
 
 - **UI**: 思考过程单独折叠块（淡色小字）；流式时与工具/正文 activity 分区展示；一旦有 activity，流式思考区自动收折为一行（仍可展开）。

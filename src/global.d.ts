@@ -201,6 +201,13 @@ export interface IElectronAPI {
       submitToModel: boolean;
     }) => void
   ) => () => void;
+  onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  subAgentsList: () => Promise<{ slots: unknown[] }>;
+  subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  onSubAgentsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
+  scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
+  onScrapeJobsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
 }
 
 declare global {

@@ -190,6 +190,13 @@ export interface IElectronAPI {
       submitToModel: boolean;
     }) => void
   ) => () => void;
+  onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  subAgentsList: () => Promise<{ slots: unknown[] }>;
+  subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  onSubAgentsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
+  scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
+  onScrapeJobsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
 }
 
 // 通过 contextBridge 安全地暴露 API
@@ -380,5 +387,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('todo-trigger:fired', handler);
     return () => ipcRenderer.removeListener('todo-trigger:fired', handler);
+  },
+  onTodoTriggersUpdated: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
+    };
+    ipcRenderer.on('todo-triggers:updated', handler);
+    return () => ipcRenderer.removeListener('todo-triggers:updated', handler);
+  },
+  subAgentsList: () => ipcRenderer.invoke('subAgents:list'),
+  subAgentsSaveAll: (slots: unknown[]) => ipcRenderer.invoke('subAgents:saveAll', slots),
+  onSubAgentsUpdated: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
+    };
+    ipcRenderer.on('subAgents:updated', handler);
+    return () => ipcRenderer.removeListener('subAgents:updated', handler);
+  },
+  scrapeListJobs: () => ipcRenderer.invoke('scrape:listJobs'),
+  scrapeReadArtifact: (params: { jobId: string }) => ipcRenderer.invoke('scrape:readArtifact', params),
+  onScrapeJobsUpdated: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
+    };
+    ipcRenderer.on('scrape:jobsUpdated', handler);
+    return () => ipcRenderer.removeListener('scrape:jobsUpdated', handler);
   },
 } as IElectronAPI);

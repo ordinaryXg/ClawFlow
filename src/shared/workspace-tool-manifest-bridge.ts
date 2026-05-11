@@ -1,5 +1,5 @@
 /**
- * 将 `.tool/manifest.json` 中的能力开关映射到 ClawFlow 内置 tool function 名称。
+ * 将 `.tool/manifest.json` 中的能力开关映射到 ClawFlow 内置 tool function.name。
  * 在 `tool-runtime.ts` 新增 register 时，须同步更新此映射（否则新工具默认不可见且执行会被拒绝）。
  */
 
@@ -14,6 +14,7 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
     'workspace_read_file',
     'workspace_write_file',
     'workspace_apply_patch',
+    'workspace_apply_patch_v2',
     'workspace_mkdir',
     'workspace_rename_path',
     'workspace_delete_path',
@@ -21,8 +22,15 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
     'workspace_run_tsc_no_emit',
     'workspace_rg_search',
   ],
-  browser: ['web_search', 'open_embedded_browser'],
+  web_search: ['web_search'],
+  web_scrape: ['web_scrape'],
+  embedded_browser: ['open_embedded_browser'],
   git: ['workspace_git_status', 'workspace_git_diff', 'workspace_git_log'],
+  todos: ['workspace_todo_list', 'workspace_todo_create', 'workspace_todo_update', 'workspace_todo_remove'],
+  subagents: ['workspace_subagent_list', 'workspace_subagent_upsert', 'workspace_subagent_remove'],
+  /** OpenClaw CLI `skills list` 的摘要；启用后模型可主动拉技能清单（不等同于自动把 skill 注入为 tools）。 */
+  skills: ['openclaw_skills_list'],
+  knowledge_base: ['workspace_knowledge_query'],
 };
 
 /** 不纳入 manifest 关断、始终暴露给模型的轻量工具 */
@@ -31,6 +39,11 @@ export const WORKSPACE_TOOLS_ALWAYS_ALLOWED: readonly string[] = ['get_date'];
 const gatedNameSet: ReadonlySet<string> = new Set(
   WORKSPACE_TOOL_IDS.flatMap((id) => [...WORKSPACE_CAPABILITY_TOOL_NAMES[id]])
 );
+
+/** 供审计：`tool-runtime` 中每个受 manifest 约束的 function.name 都应在此集合或 ALWAYS_ALLOWED 中 */
+export function getAllManifestGatedToolNames(): readonly string[] {
+  return [...gatedNameSet];
+}
 
 export function isWorkspaceGatedToolName(name: string): boolean {
   return gatedNameSet.has(name);

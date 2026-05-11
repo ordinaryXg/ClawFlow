@@ -11,6 +11,14 @@ import { createHash, randomUUID } from 'crypto';
 import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './openclaw-apply-patch';
 import type { WorkspaceToolId } from '../shared/workspace-tools';
 import { toolNameAllowedByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
+import { runWebScrapeForTool } from '../scrape-runner';
+import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../todo-triggers-service';
+import { rescheduleTodoTriggersForWorkspace } from '../todo-triggers-scheduler';
+import { broadcastTodoTriggersUpdated } from '../todo-triggers-broadcast';
+import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-triggers';
+import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
+import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
+import { getGlobalOpenClawCliEngine } from './openclaw-engine';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -436,6 +444,43 @@ export function createDefaultToolRuntime(): ToolRuntime {
         { ok: true, opened: 'system_browser_fallback', url: normalized, note: 'embedded panel unavailable' },
         null,
         2
+      );
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'web_scrape',
+        description:
+          'HTTP(S) GET a public page, convert HTML to plain text, save full text under workspace .clawflow/scrapes, and return a JSON receipt with excerpt for the chat. Best for static/document pages; heavy client-side rendering may yield incomplete text.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'https URL or domain; http(s) only.' },
+            max_chars: {
+              type: 'number',
+              description:
+                'Optional cap on excerpt length in tool JSON (default ~24000; full plain text still saved under .clawflow/scrapes).',
+              minimum: 2000,
+              maximum: 100000,
+            },
+          },
+          required: ['url'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const maxChars =
+        typeof (args as { max_chars?: unknown })?.max_chars === 'number'
+          ? (args as { max_chars: number }).max_chars
+          : undefined;
+      return await runWebScrapeForTool(
+        { url: String((args as { url?: unknown })?.url ?? ''), max_chars: maxChars },
+        { workspaceRoot: ctx.workspaceRoot, abortSignal: ctx.abortSignal }
       );
     }
   );
@@ -1229,6 +1274,334 @@ export function createDefaultToolRuntime(): ToolRuntime {
         const msg = String(e?.message ?? e);
         return truncateForToolLog(`ERROR: ${msg}\n${out}`.trim(), 6000);
       }
+    }
+  );
+
+  // --- 工作区待办（持久化 + 调度 + 广播）---
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_todo_list',
+        description: 'List scheduled todo triggers for this workspace (persistent under .clawflow)',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, ctx) => {
+      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const summary = list.map((t) => ({
+        id: t.id,
+        title: t.title,
+        enabled: t.enabled,
+        status: t.status,
+        nextFireAt: t.trigger.kind === 'schedule' ? t.trigger.nextFireAt : undefined,
+        repeat: t.trigger.kind === 'schedule' ? t.trigger.repeat : undefined,
+        submitToModel: t.action.submitToModel,
+      }));
+      return truncateForToolLog(JSON.stringify(summary, null, 2), 12_000);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_todo_create',
+        description:
+          'Create a scheduled todo in this workspace. repeat=once|interval; for interval, set intervalMinutes>0.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short title' },
+            actionText: { type: 'string', description: 'Body text injected when the todo fires' },
+            submitToModel: { type: 'boolean', description: 'Whether firing should submit to the model' },
+            repeat: { type: 'string', description: 'once or interval', enum: ['once', 'interval'] },
+            intervalMinutes: { type: 'number', description: 'For repeat=interval, minutes between fires (ignored for once)' },
+          },
+          required: ['title', 'actionText', 'submitToModel', 'repeat', 'intervalMinutes'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const title = String(args?.title ?? '').trim();
+      const actionText = String(args?.actionText ?? '');
+      const submitToModel = Boolean(args?.submitToModel);
+      const repeat = args?.repeat === 'interval' ? 'interval' : 'once';
+      const intervalMinutes =
+        typeof args?.intervalMinutes === 'number' && Number.isFinite(args.intervalMinutes) && args.intervalMinutes > 0
+          ? Math.max(1, Math.floor(args.intervalMinutes))
+          : undefined;
+
+      let t = defaultTodoTrigger({ title: title || undefined });
+      t = {
+        ...t,
+        title: title || t.title,
+        action: { text: actionText, submitToModel },
+        updatedAt: Date.now(),
+      };
+      if (repeat === 'interval' && intervalMinutes) {
+        t = {
+          ...t,
+          trigger: {
+            kind: 'schedule',
+            repeat: 'interval',
+            intervalMinutes,
+            nextFireAt: Date.now() + intervalMinutes * 60_000,
+          },
+          consumeOnFire: false,
+        };
+      }
+      t = ensureScheduleNextFire(t);
+      const list = [...(await readTodoTriggers(ctx.workspaceRoot)), t];
+      await writeTodoTriggers(ctx.workspaceRoot, list);
+      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
+      return `OK created todo id=${t.id}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_todo_update',
+        description: 'Update an existing todo by id (title, enabled, status, action, schedule fields)',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Todo id' },
+            title: { type: 'string', description: 'New title (optional)' },
+            enabled: { type: 'boolean', description: 'Enable/disable' },
+            status: { type: 'string', enum: ['pending', 'done'], description: 'Mark pending or done' },
+            actionText: { type: 'string', description: 'Replace action body text' },
+            submitToModel: { type: 'boolean', description: 'Replace submit-to-model flag' },
+            repeat: { type: 'string', enum: ['once', 'interval'], description: 'Schedule repeat mode' },
+            intervalMinutes: { type: 'number', description: 'Interval minutes when repeat=interval' },
+          },
+          required: ['id'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const id = String(args?.id ?? '').trim();
+      if (!id) return 'ERROR: missing id';
+      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const idx = list.findIndex((x) => x.id === id);
+      if (idx < 0) return `ERROR: not found: ${id}`;
+      let t: TodoTriggerRecord = { ...list[idx] };
+      const now = Date.now();
+      if (typeof args.title === 'string' && args.title.trim()) t = { ...t, title: args.title.trim(), updatedAt: now };
+      if (typeof args.enabled === 'boolean') t = { ...t, enabled: args.enabled, updatedAt: now };
+      if (args.status === 'pending' || args.status === 'done') t = { ...t, status: args.status, updatedAt: now };
+      if (typeof args.actionText === 'string')
+        t = { ...t, action: { ...t.action, text: args.actionText }, updatedAt: now };
+      if (typeof args.submitToModel === 'boolean')
+        t = { ...t, action: { ...t.action, submitToModel: args.submitToModel }, updatedAt: now };
+      if ((args.repeat === 'once' || args.repeat === 'interval') && t.trigger.kind === 'schedule') {
+        const tr = t.trigger;
+        t = {
+          ...t,
+          trigger: { ...tr, repeat: args.repeat },
+          updatedAt: now,
+        };
+      }
+      if (typeof args.intervalMinutes === 'number' && args.intervalMinutes > 0 && t.trigger.kind === 'schedule') {
+        const tr = t.trigger;
+        t = {
+          ...t,
+          trigger: {
+            ...tr,
+            intervalMinutes: Math.max(1, Math.floor(args.intervalMinutes)),
+            repeat: tr.repeat === 'once' ? 'interval' : tr.repeat,
+            nextFireAt: Date.now() + Math.max(1, Math.floor(args.intervalMinutes)) * 60_000,
+          },
+          updatedAt: now,
+        };
+      }
+      t = ensureScheduleNextFire(t);
+      const next = [...list];
+      next[idx] = t;
+      await writeTodoTriggers(ctx.workspaceRoot, next);
+      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
+      return `OK updated todo ${id}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_todo_remove',
+        description: 'Remove a todo trigger by id from this workspace',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Todo id' } },
+          required: ['id'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const id = String(args?.id ?? '').trim();
+      if (!id) return 'ERROR: missing id';
+      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const next = list.filter((x) => x.id !== id);
+      if (next.length === list.length) return `ERROR: not found: ${id}`;
+      await writeTodoTriggers(ctx.workspaceRoot, next);
+      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
+      return `OK removed todo ${id}`;
+    }
+  );
+
+  // --- 子 Agent 槽位（最小元数据）---
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_subagent_list',
+        description: 'List sub-agent slots (metadata) persisted for this workspace',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, ctx) => {
+      const slots = await readSubAgentSlots(ctx.workspaceRoot);
+      return truncateForToolLog(JSON.stringify(slots, null, 2), 12_000);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_subagent_upsert',
+        description:
+          'Create or update a sub-agent slot. Pass empty id to allocate a new id; status defaults to stopped.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Slot id; empty string creates a new slot' },
+            label: { type: 'string', description: 'Short label' },
+            behavior: { type: 'string', description: 'Role / behavior summary' },
+          },
+          required: ['id', 'label', 'behavior'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const rawId = String(args?.id ?? '').trim();
+      const label = String(args?.label ?? '').trim();
+      const behavior = String(args?.behavior ?? '');
+      if (!label) return 'ERROR: missing label';
+      const id = rawId || randomUUID();
+      const slots = await readSubAgentSlots(ctx.workspaceRoot);
+      const idx = slots.findIndex((s) => s.id === id);
+      const next = [...slots];
+      if (idx >= 0) {
+        next[idx] = { ...next[idx], label, behavior };
+      } else {
+        next.push({ id, label, behavior, status: 'stopped' });
+      }
+      await writeSubAgentSlots(ctx.workspaceRoot, next);
+      broadcastSubAgentsUpdated(ctx.workspaceRoot);
+      return `OK upsert subAgent id=${id}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_subagent_remove',
+        description: 'Remove a sub-agent slot by id',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Slot id' } },
+          required: ['id'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const id = String(args?.id ?? '').trim();
+      if (!id) return 'ERROR: missing id';
+      const slots = await readSubAgentSlots(ctx.workspaceRoot);
+      const next = slots.filter((s) => s.id !== id);
+      if (next.length === slots.length) return `ERROR: not found: ${id}`;
+      await writeSubAgentSlots(ctx.workspaceRoot, next);
+      broadcastSubAgentsUpdated(ctx.workspaceRoot);
+      return `OK removed subAgent ${id}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'openclaw_skills_list',
+        description: 'List OpenClaw CLI skills (installed / available summary via openclaw engine)',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, _ctx) => {
+      try {
+        const skills = await getGlobalOpenClawCliEngine().getSkills();
+        const text = JSON.stringify(skills ?? [], null, 2);
+        return truncateForToolLog(text, 16_000);
+      } catch (e: any) {
+        return `ERROR: ${String(e?.message ?? e)}`;
+      }
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_knowledge_query',
+        description: 'Query workspace knowledge base (placeholder until RAG is wired)',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'User question or keywords' },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, _ctx) => {
+      const q = String(args?.query ?? '').trim();
+      if (!q) return 'ERROR: missing query';
+      return 'Knowledge base is not configured for this workspace yet. (stub)';
     }
   );
 

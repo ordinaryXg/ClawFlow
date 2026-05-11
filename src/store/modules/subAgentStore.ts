@@ -1,24 +1,30 @@
 import { create } from 'zustand';
+import type { SubAgentSlot } from '../../shared/sub-agent-types';
 
-/** 多 Agent 并行扩展：占位状态，后续可接引擎/进程实际状态 */
-export type SubAgentRunStatus = 'stopped' | 'starting' | 'running' | 'error';
-
-export interface SubAgentSlot {
-  id: string;
-  label: string;
-  /** 行为说明（提示词职责摘要等） */
-  behavior: string;
-  status: SubAgentRunStatus;
+function coerceSlots(raw: unknown): SubAgentSlot[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => {
+    if (!x || typeof x !== 'object') return false;
+    const o = x as Record<string, unknown>;
+    if (typeof o.id !== 'string' || typeof o.label !== 'string' || typeof o.behavior !== 'string') return false;
+    const st = o.status;
+    return st === 'stopped' || st === 'starting' || st === 'running' || st === 'error';
+  }) as SubAgentSlot[];
 }
 
 interface SubAgentState {
   slots: SubAgentSlot[];
+  load: () => Promise<void>;
 }
 
-/**
- * 当前为 UI 占位：展示「启用中的子 Agent」列表结构。
- * 后续可将 slots 与工作区 IPC、任务调度对齐。
- */
-export const useSubAgentStore = create<SubAgentState>(() => ({
+export const useSubAgentStore = create<SubAgentState>((set) => ({
   slots: [],
+  load: async () => {
+    try {
+      const res = await window.electronAPI?.subAgentsList?.();
+      set({ slots: coerceSlots(res?.slots) });
+    } catch {
+      set({ slots: [] });
+    }
+  },
 }));

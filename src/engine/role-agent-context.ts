@@ -12,7 +12,7 @@ const MAX_FILE_CHARS = 24_000;
 function trimFileBody(name: string, body: string): string {
   const s = String(body ?? '');
   if (s.length <= MAX_FILE_CHARS) return s;
-  return `${s.slice(0, MAX_FILE_CHARS)}\n\n… (truncated, ${name} exceeds ${MAX_FILE_CHARS} chars) …\n`;
+  return `${s.slice(0, MAX_FILE_CHARS)}\n\n…（已截断：${name} 超过 ${MAX_FILE_CHARS} 字符）…\n`;
 }
 
 /**
@@ -33,15 +33,15 @@ export async function buildRoleAgentSystemContent(workspaceRoot: string): Promis
       .sort();
   } catch {
     return [
-      '[ClawFlow] Workspace role directory is missing or unreadable.',
-      `Expected path: ${path.join(WORKSPACE_ROLE_AGENT_DIR, '*.md')}`,
-      'Open this folder as a ClawFlow workspace or create `.roleAgent/` with AGENTS.md, SOUL.md, etc.',
+      '[ClawFlow] 工作区角色目录缺失或无法读取。',
+      `预期路径：${path.join(WORKSPACE_ROLE_AGENT_DIR, '*.md')}`,
+      '请用 ClawFlow 打开本文件夹作为工作区，或在根目录创建 `.roleAgent/` 并放入 AGENTS.md、SOUL.md 等文件。',
     ].join('\n');
   }
 
   const orderedNames = [...WORKSPACE_ROLE_AGENT_FILES_ORDER, ...extraMd];
   const parts: string[] = [
-    'The following files are from the workspace `.roleAgent/` directory. Treat them as binding role, identity, and local notes for this session.',
+    '以下内容来自工作区 `.roleAgent/` 目录下的 Markdown。请将其视为本会话中具有约束力的角色设定、身份与本地备忘。',
     '',
   ];
 
@@ -58,9 +58,7 @@ export async function buildRoleAgentSystemContent(workspaceRoot: string): Promis
     const trimmed = trimFileBody(name, body);
     const block = [`### .roleAgent/${name}`, '', trimmed, ''].join('\n');
     if (total + block.length > MAX_TOTAL_CHARS) {
-      parts.push(
-        `… (further .roleAgent files omitted: total context would exceed ${MAX_TOTAL_CHARS} characters) …`
-      );
+      parts.push(`…（后续 .roleAgent 文件已省略：总上下文将超过 ${MAX_TOTAL_CHARS} 字符）…`);
       break;
     }
     parts.push(block);
@@ -70,8 +68,8 @@ export async function buildRoleAgentSystemContent(workspaceRoot: string): Promis
   const text = parts.join('\n').trim();
   if (text.length < 80) {
     return [
-      '[ClawFlow] No `.md` files were found under `.roleAgent/`.',
-      'Initialize the workspace in ClawFlow to create role templates, or add AGENTS.md / SOUL.md there.',
+      '[ClawFlow] 在 `.roleAgent/` 下未发现任何 `.md` 文件。',
+      '可在 ClawFlow 中初始化工作区以生成角色模板，或自行在该目录添加 AGENTS.md、SOUL.md 等。',
     ].join('\n');
   }
   return text;

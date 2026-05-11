@@ -7,54 +7,46 @@ import { randomUUID } from 'crypto';
 import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
+import { ensureWorkspaceAgentRoleTemplates, WORKSPACE_ROLE_AGENT_DIR } from './workspace-agent-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
   type WorkspaceToolId,
   type WorkspaceToolSelection,
+  type WorkspaceToolSelectionInput,
 } from './shared/workspace-tools';
+import {
+  buildWorkspaceToolBrowserMd,
+  buildWorkspaceToolDocsMd,
+  buildWorkspaceToolGitMd,
+  buildWorkspaceToolKnowledgeBaseMd,
+  buildWorkspaceToolSkillsMd,
+  buildWorkspaceToolSubagentsMd,
+  buildWorkspaceToolTodosMd,
+} from './shared/workspace-tool-template-md';
 
 export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
 export const CLAWFLOW_DIR = '.clawflow';
 
-const TOOL_README = `# 工作区工具说明（.tool）
+/** 工作区根下由 ClawFlow 写入的能力与说明目录（与 toolBundleDir 一致） */
+const WORKSPACE_TOOL_DIR = '.tool';
 
-与根目录下另外两类目录分工如下：
-
-| 目录 | 作用 |
-|------|------|
-| \`.clawflow/\` | 应用内部状态：会话 JSON、工作区元数据、工具操作留痕等（机器读写为主）。 |
-| \`.roleAgent/\` | 角色与行为约定（Markdown），每次请求注入 system，由你编辑。 |
-| \`.tool/\`（本目录） | **能力契约**：人类可读的说明 + \`manifest.json\` 中的开关；引擎会按开关过滤可注册的模型工具并在执行前再次校验。 |
-
-本目录由 ClawFlow 初始化；各能力详见 \`docs.md\` / \`browser.md\` / \`git.md\`。
-
-- \`manifest.json\`：\`tools.docs\` / \`tools.browser\` / \`tools.git\` 布尔值；侧栏、便签与设置中的「能力」勾选会写回此文件。
-- 未列在 manifest 中的多余字段会被忽略；新增工具类型时需升级应用以识别。
-`;
-
-const TOOL_DOCS_MD = `# 文档读写能力
-
-在工作区根及子目录内列出、读取、写入、重命名与删除文件（受沙箱与安全规则约束）。
-
-适用于：整理笔记、批量处理文本、生成项目脚手架说明等。
-`;
-
-const TOOL_BROWSER_MD = `# 浏览器能力
-
-通过受控的无头/自动化浏览器访问网页、抓取可见内容、执行简单页面操作（具体以引擎与策略为准）。
-
-适用于：抓取公开文档、对照网页说明完成任务等。
-`;
-
-const TOOL_GIT_MD = `# Git 操作能力
-
-在工作区内执行受允许的 Git 命令（如状态、差异、提交、分支等，具体以工具策略为准）。
-
-适用于：查看变更、撰写提交说明、分支管理等。
-`;
+/**
+ * 仅从工作区根删除 ClawFlow 管理的三套目录，不删除用户项目文件。
+ * 各目录不存在时忽略。
+ */
+export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
+  const root = path.resolve(workspaceRoot);
+  const dirs = [path.join(root, CLAWFLOW_DIR), path.join(root, WORKSPACE_ROLE_AGENT_DIR), path.join(root, WORKSPACE_TOOL_DIR)];
+  for (const d of dirs) {
+    try {
+      await fs.promises.rm(d, { recursive: true, force: true });
+    } catch {
+      /* ENOENT 等 */
+    }
+  }
+}
 
 function toolBundleDir(workspaceRoot: string): string {
   return path.join(path.resolve(workspaceRoot), '.tool');
@@ -80,7 +72,7 @@ export async function ensureWorkspaceToolBundle(
   const shouldWriteManifest = tools != null || !dirExists;
   await fs.promises.mkdir(dir, { recursive: true });
   if (shouldWriteManifest) {
-    const manifest = { version: 1 as const, tools: merged, updatedAt: Date.now() };
+    const manifest = { version: 2 as const, tools: merged, updatedAt: Date.now() };
     await fs.promises.writeFile(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
   }
 
@@ -93,27 +85,42 @@ export async function ensureWorkspaceToolBundle(
     }
   };
 
-  await writeIfMissing('README.md', TOOL_README);
-  await writeIfMissing('docs.md', TOOL_DOCS_MD);
-  await writeIfMissing('browser.md', TOOL_BROWSER_MD);
-  await writeIfMissing('git.md', TOOL_GIT_MD);
+  const docsBody = buildWorkspaceToolDocsMd();
+  const browserBody = buildWorkspaceToolBrowserMd();
+  const gitBody = buildWorkspaceToolGitMd();
+  const todosBody = buildWorkspaceToolTodosMd();
+  const subagentsBody = buildWorkspaceToolSubagentsMd();
+  const skillsBody = buildWorkspaceToolSkillsMd();
+  const kbBody = buildWorkspaceToolKnowledgeBaseMd();
+
+  await writeIfMissing('docs.md', docsBody.endsWith('\n') ? docsBody : `${docsBody}\n`);
+  await writeIfMissing('browser.md', browserBody.endsWith('\n') ? browserBody : `${browserBody}\n`);
+  await writeIfMissing('git.md', gitBody.endsWith('\n') ? gitBody : `${gitBody}\n`);
+  await writeIfMissing('todos.md', todosBody.endsWith('\n') ? todosBody : `${todosBody}\n`);
+  await writeIfMissing('subagents.md', subagentsBody.endsWith('\n') ? subagentsBody : `${subagentsBody}\n`);
+  await writeIfMissing('skills.md', skillsBody.endsWith('\n') ? skillsBody : `${skillsBody}\n`);
+  await writeIfMissing('knowledge_base.md', kbBody.endsWith('\n') ? kbBody : `${kbBody}\n`);
 }
 
-/** 读取 `.tool/manifest.json` 中的 tools；缺失则返回默认全开 */
+const LEGACY_MANIFEST_TOOL_KEYS = new Set<string>([
+  ...WORKSPACE_TOOL_IDS,
+  'browser', // v1 总开关
+]);
+
+/** 读取 `.tool/manifest.json` 中的 tools；缺失则返回默认全开；兼容 v1 `browser` */
 export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<Record<WorkspaceToolId, boolean>> {
   const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
-    const parsed = JSON.parse(buf) as { tools?: unknown };
+    const parsed = JSON.parse(buf) as { tools?: unknown; version?: unknown };
     if (parsed && typeof parsed === 'object' && parsed.tools && typeof parsed.tools === 'object') {
       const raw = parsed.tools as Record<string, unknown>;
-      const known = new Set<string>(WORKSPACE_TOOL_IDS as unknown as string[]);
       for (const k of Object.keys(raw)) {
-        if (!known.has(k)) {
+        if (!LEGACY_MANIFEST_TOOL_KEYS.has(k)) {
           console.warn(`[workspace-service] manifest.json: ignoring unknown tools key "${k}"`);
         }
       }
-      return mergeToolSelection(raw as WorkspaceToolSelection);
+      return mergeToolSelection(raw as WorkspaceToolSelectionInput);
     }
   } catch {
     /* no manifest */
@@ -520,7 +527,7 @@ export type RemoveWorkspaceUserResult =
   | { ok: false; error: string };
 
 /**
- * 从最近列表移除；非「默认工作区」目录则递归删除该文件夹。
+ * 从最近列表移除；非「默认工作区」时仅删除工作区根下的 `.clawflow`、`.roleAgent`、`.tool`，不删除用户其余文件。
  */
 export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
   const abs = path.resolve(workspacePath);
@@ -530,7 +537,7 @@ export async function removeWorkspaceForUser(workspacePath: string): Promise<Rem
     if (isSameWorkspacePath(abs, def)) {
       return { ok: true, newActivePath, deletedFromDisk: false };
     }
-    await fs.promises.rm(abs, { recursive: true, force: true });
+    await removeWorkspaceManagedMetadataDirs(abs);
     return { ok: true, newActivePath, deletedFromDisk: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
