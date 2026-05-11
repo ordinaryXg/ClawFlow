@@ -10,6 +10,11 @@ import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
 import ToolApprovalBar from '../../components/chat/ToolApprovalBar';
 import TodoTriggersStickyFloat from '../../components/chat/TodoTriggersStickyFloat';
+import TodoTriggersPanel from '../../components/chat/TodoTriggersPanel';
+import SubAgentsHubPanel from '../../components/workspace-hub/SubAgentsHubPanel';
+import SkillsHubPanel from '../../components/workspace-hub/SkillsHubPanel';
+import KnowledgeBaseHubPanel from '../../components/workspace-hub/KnowledgeBaseHubPanel';
+import { useWorkspaceHubStore } from '../../store/modules/workspaceHubStore';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import './styles.css';
 
@@ -53,6 +58,8 @@ const ChatPage: FC = () => {
   const [modelRows, setModelRows] = useState<Array<{ id: string; label: string; available: boolean }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
+  const hubBranch = useWorkspaceHubStore((s) => s.getHubBranch(activeWorkspacePath));
+  const setWorkspaceHubBranch = useWorkspaceHubStore((s) => s.setHubBranch);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const chatIntent = useSettingsStore((s) => s.chatIntent);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -214,6 +221,42 @@ const ChatPage: FC = () => {
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.classList.add('cf-chatCenter__resize--active');
   };
+
+  if (hubBranch !== 'sessions') {
+    let hubBody: React.ReactNode = null;
+    if (hubBranch === 'todos') {
+      hubBody = (
+        <div className="cf-hubTodosWrap">
+          <TodoTriggersPanel workspacePath={activeWorkspacePath} />
+        </div>
+      );
+    } else if (hubBranch === 'subagents') hubBody = <SubAgentsHubPanel />;
+    else if (hubBranch === 'skills') hubBody = <SkillsHubPanel />;
+    else hubBody = <KnowledgeBaseHubPanel />;
+
+    return (
+      <div
+        ref={rootRef}
+        className={`cf-chatCenter${isAlternateShell ? ' cf-chatCenter--alternate' : ''}`}
+      >
+        {isAlternateShell ? (
+          <div className="cf-chatCenter__hubBackWrap">
+            <button
+              type="button"
+              className="cf-btn cf-btnGhost cf-btnSmall"
+              onClick={() => {
+                const wp = activeWorkspacePath?.trim();
+                if (wp) setWorkspaceHubBranch(wp, 'sessions');
+              }}
+            >
+              {t('chat.workspaceHub.backToSessions')}
+            </button>
+          </div>
+        ) : null}
+        <div className="cf-chatCenter__hubBody">{hubBody}</div>
+      </div>
+    );
+  }
 
   const onResizePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const drag = resizeDragRef.current;

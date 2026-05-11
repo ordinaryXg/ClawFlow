@@ -1,12 +1,17 @@
 import { FC, useEffect, useMemo, useState } from 'react';
-import { CommentOutlined, DeleteOutlined, FolderOutlined, SettingOutlined } from '@ant-design/icons';
+import { DeleteOutlined, FolderOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
+import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
+import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
+import { useSubAgentStore } from '../store/modules/subAgentStore';
+import { useSkillStore } from '../store/modules/skillStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
+import { countTodoTriggersForWorkspaceHub } from '../shared/todo-triggers';
 
 type Props = {
   sidebarWidthPx: number;
@@ -18,7 +23,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const { conversations, activeConversationId, fetchConversations, switchConversation } = useChatStore();
+  const { conversations, fetchConversations, switchConversation } = useChatStore();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
@@ -30,8 +35,14 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const removeWorkspace = useWorkspaceStore((s) => s.removeWorkspace);
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
 
+  const setHubBranch = useWorkspaceHubStore((s) => s.setHubBranch);
+  const hubBranchPathKey = activeWorkspacePath ?? '';
+  const branchForActiveWs = useWorkspaceHubStore((s) =>
+    hubBranchPathKey ? (s.branchByPath[hubBranchPathKey] ?? 'sessions') : 'sessions'
+  );
+
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
-  const [convBranchOpen, setConvBranchOpen] = useState(true);
+  const [wsHubExpanded, setWsHubExpanded] = useState(true);
   const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
   const [toolModal, setToolModal] = useState<{
     open: boolean;
@@ -43,6 +54,16 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     void fetchConversations();
   }, [fetchConversations, activeWorkspacePath]);
 
+  const loadTodoTriggers = useTodoTriggerStore((s) => s.load);
+  useEffect(() => {
+    void loadTodoTriggers();
+  }, [loadTodoTriggers, activeWorkspacePath]);
+
+  const fetchSkills = useSkillStore((s) => s.fetchSkills);
+  useEffect(() => {
+    void fetchSkills();
+  }, [fetchSkills, activeWorkspacePath]);
+
   useEffect(() => {
     void window.electronAPI?.workspaceGetDefaultPath?.().then((p) => {
       if (typeof p === 'string' && p.trim()) setDefaultWorkspacePath(p.trim());
@@ -50,8 +71,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   }, []);
 
   useEffect(() => {
-    setConvBranchOpen(true);
+    setWsHubExpanded(true);
   }, [activeWorkspacePath]);
+
+  const selectHubBranch = (folderPath: string, branch: WorkspaceHubBranch) => {
+    setHubBranch(folderPath, branch);
+    navigate('/chat');
+  };
 
   const workspaceLabel =
     (workspaceMeta?.name && String(workspaceMeta.name).trim()) ||
@@ -62,6 +88,20 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations]
   );
+
+  /** 侧栏「会话」摘要：当前主会话消息数 */
+  const sessionsHubMsgCount = useMemo(() => sortedConversations[0]?.messages.length ?? 0, [sortedConversations]);
+
+  const todoTriggersList = useTodoTriggerStore((s) => s.triggers);
+  const todosHubCount = useMemo(
+    () => countTodoTriggersForWorkspaceHub(todoTriggersList),
+    [todoTriggersList]
+  );
+  const subAgentsHubCount = useSubAgentStore((s) => s.slots.length);
+  const skillsList = useSkillStore((s) => s.skills);
+  const skillsHubCount = useMemo(() => skillsList.filter((sk) => sk.installed).length, [skillsList]);
+  /** 知识库条目：能力接入前占位为 0 */
+  const kbHubCount = 0;
 
   const workspaceRows = useMemo(() => {
     const r = [...(workspaceRecent ?? [])];
@@ -170,7 +210,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                 <ul className="cf-sideTree__rootList" role="tree">
                   {workspaceRows.map((p) => {
                     const isActiveWs = Boolean(activeWorkspacePath && p === activeWorkspacePath);
-                    const showNest = isActiveWs && convBranchOpen;
+                    const showNest = isActiveWs && wsHubExpanded;
 
                     return (
                       <li key={p} className="cf-sideTree__wsLi" role="none">
@@ -181,7 +221,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                               : 'cf-sideTree__wsRow'
                           }
                           role={isActiveWs ? 'treeitem' : 'none'}
-                          aria-expanded={isActiveWs ? convBranchOpen : undefined}
+                          aria-expanded={isActiveWs ? wsHubExpanded : undefined}
                         >
                           <span className="cf-sideTree__typeIcon" aria-hidden title={t('workspace.title')}>
                             <FolderOutlined />
@@ -232,11 +272,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                               className="cf-sideTree__chevBtn"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setConvBranchOpen((v) => !v);
+                                setWsHubExpanded((v) => !v);
                               }}
-                              aria-label={convBranchOpen ? t('chat.collapseSessions') : t('chat.expandSessions')}
+                              aria-label={
+                                wsHubExpanded ? t('chat.collapseWorkspaceHub') : t('chat.expandWorkspaceHub')
+                              }
                             >
-                              {convBranchOpen ? '▾' : '▸'}
+                              {wsHubExpanded ? '▾' : '▸'}
                             </button>
                           ) : (
                             <span className="cf-sideTree__chevSpacer" aria-hidden />
@@ -244,51 +286,136 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                         </div>
 
                         {showNest ? (
-                          <ul className="cf-sideTree__nest" role="group" aria-label={t('chat.sessions')}>
-                            {sortedConversations.length === 0 ? (
-                              <li className="cf-sideTree__nestHint">
-                                <div className="cf-sideTree__nestHintText cf-sub">{t('chat.noConversationsSub')}</div>
-                              </li>
-                            ) : (
-                              sortedConversations.map((conv) => {
-                                const isActiveConv = conv.id === activeConversationId;
-
-                                return (
-                                  <li key={conv.id} className="cf-sideTree__convLi" role="none">
-                                    <div
-                                      className={
-                                        isActiveConv
-                                          ? 'cf-sideTree__convRow cf-convItem cf-convItem--active'
-                                          : 'cf-sideTree__convRow cf-convItem'
-                                      }
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => {
-                                        switchConversation(conv.id);
-                                        navigate('/chat');
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
-                                          switchConversation(conv.id);
-                                          navigate('/chat');
-                                        }
-                                      }}
-                                    >
-                                      <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--conv" aria-hidden>
-                                        <CommentOutlined />
-                                      </span>
-                                      <div className="cf-convItem__content">
-                                        <div className="cf-convItem__title">{conv.title || t('chat.unnamed')}</div>
-                                        <div className="cf-convItem__meta">
-                                          {t('chat.msgCount', { count: conv.messages.length })}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </li>
-                                );
-                              })
-                            )}
+                          <ul className="cf-sideTree__hubNest" role="group" aria-label={t('workspace.title')}>
+                            <li className="cf-sideTree__hubLi" role="none">
+                              <div
+                                className={
+                                  branchForActiveWs === 'sessions'
+                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
+                                    : 'cf-sideTree__hubRow'
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
+                                  onClick={() => {
+                                    selectHubBranch(p, 'sessions');
+                                    const top = sortedConversations[0];
+                                    if (top) switchConversation(top.id);
+                                  }}
+                                  title={t('chat.msgCount', { count: sessionsHubMsgCount })}
+                                >
+                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
+                                  <span className="cf-sideTree__hubMainLabel">{t('chat.sessions')}</span>
+                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
+                                    {t('chat.msgCount', { count: sessionsHubMsgCount })}
+                                  </span>
+                                </button>
+                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
+                              </div>
+                            </li>
+                            <li className="cf-sideTree__hubLi" role="none">
+                              <div
+                                className={
+                                  branchForActiveWs === 'todos'
+                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
+                                    : 'cf-sideTree__hubRow'
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
+                                  onClick={() => selectHubBranch(p, 'todos')}
+                                  title={t('chat.workspaceHub.hubCountTodos', { count: todosHubCount })}
+                                >
+                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
+                                  <span className="cf-sideTree__hubMainLabel">
+                                    {t('chat.workspaceHub.branchTodos')}
+                                  </span>
+                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
+                                    {t('chat.workspaceHub.hubCountTodos', { count: todosHubCount })}
+                                  </span>
+                                </button>
+                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
+                              </div>
+                            </li>
+                            <li className="cf-sideTree__hubLi" role="none">
+                              <div
+                                className={
+                                  branchForActiveWs === 'subagents'
+                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
+                                    : 'cf-sideTree__hubRow'
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
+                                  onClick={() => selectHubBranch(p, 'subagents')}
+                                  title={t('chat.workspaceHub.hubCountSubAgents', {
+                                    count: subAgentsHubCount,
+                                  })}
+                                >
+                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
+                                  <span className="cf-sideTree__hubMainLabel">
+                                    {t('chat.workspaceHub.branchSubAgents')}
+                                  </span>
+                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
+                                    {t('chat.workspaceHub.hubCountSubAgents', { count: subAgentsHubCount })}
+                                  </span>
+                                </button>
+                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
+                              </div>
+                            </li>
+                            <li className="cf-sideTree__hubLi" role="none">
+                              <div
+                                className={
+                                  branchForActiveWs === 'skills'
+                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
+                                    : 'cf-sideTree__hubRow'
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
+                                  onClick={() => selectHubBranch(p, 'skills')}
+                                  title={t('chat.workspaceHub.hubCountSkills', { count: skillsHubCount })}
+                                >
+                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
+                                  <span className="cf-sideTree__hubMainLabel">
+                                    {t('chat.workspaceHub.branchSkills')}
+                                  </span>
+                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
+                                    {t('chat.workspaceHub.hubCountSkills', { count: skillsHubCount })}
+                                  </span>
+                                </button>
+                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
+                              </div>
+                            </li>
+                            <li className="cf-sideTree__hubLi" role="none">
+                              <div
+                                className={
+                                  branchForActiveWs === 'kb'
+                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
+                                    : 'cf-sideTree__hubRow'
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
+                                  onClick={() => selectHubBranch(p, 'kb')}
+                                  title={t('chat.workspaceHub.kbHint')}
+                                >
+                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
+                                  <span className="cf-sideTree__hubMainLabel">
+                                    {t('chat.workspaceHub.branchKb')}
+                                  </span>
+                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
+                                    {t('chat.workspaceHub.hubCountKb', { count: kbHubCount })}
+                                  </span>
+                                </button>
+                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
+                              </div>
+                            </li>
                           </ul>
                         ) : null}
                       </li>

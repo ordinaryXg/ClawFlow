@@ -1,0 +1,101 @@
+.cf-hubPage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cf-hubPage__toolbar {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.cf-hubPage__titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cf-hubPage__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cf-hubPage__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.cf-hubCard {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.12);
+  margin-bottom: 10px;
+}
+:root[data-theme='light'] .cf-hubCard {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.cf-hubCard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cf-hubCard__name {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.cf-hubBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.cf-hubBadge--running {
+  background: rgba(63, 185, 80, 0.22);
+  color: rgba(120, 220, 150, 0.98);
+}
+.cf-hubBadge--starting {
+  background: rgba(220, 180, 70, 0.22);
+  color: rgba(240, 210, 120, 0.98);
+}
+.cf-hubBadge--stopped {
+  background: rgba(120, 120, 140, 0.2);
+  color: var(--muted);
+}
+.cf-hubBadge--error {
+  background: rgba(200, 72, 72, 0.22);
+  color: rgba(255, 160, 150, 0.96);
+}
+
+.cf-hubCard__body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.cf-hubTodosWrap {
+  height: 100%;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cf-hubTodosWrap .cf-todoPanel {
+  flex: 1;
+  min-height: 0;
+}

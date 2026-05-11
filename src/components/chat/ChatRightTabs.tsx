@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import ChangeHistoryPanel from './ChangeHistoryPanel';
 import SimpleEmbeddedBrowser from './SimpleEmbeddedBrowser';
 import WorkspaceFilesSplit from './WorkspaceFilesSplit';
-import TodoTriggersPanel from './TodoTriggersPanel';
 
 type Props = {
   workspacePath: string | null;
@@ -11,7 +10,7 @@ type Props = {
   widthPx?: number;
 };
 
-type TabKey = 'workspace' | 'browser' | 'changes' | 'todoTriggers';
+type TabKey = 'workspace' | 'browser' | 'changes';
 
 const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
@@ -34,7 +33,6 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const tabs = useMemo(
     () => [
       { key: 'workspace' as const, label: t('chat.rightTabs.workspaceDir') },
-      { key: 'todoTriggers' as const, label: t('chat.rightTabs.todoTriggers') },
       { key: 'browser' as const, label: t('chat.rightTabs.headlessBrowser') },
       { key: 'changes' as const, label: t('chat.rightTabs.changeLog') },
     ],
@@ -67,16 +65,6 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
       <div className="cf-chatRight__body" role="tabpanel">
         <div style={{ display: active === 'workspace' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
           <WorkspaceFilesSplit workspacePath={workspacePath} />
-        </div>
-        <div
-          style={{
-            display: active === 'todoTriggers' ? 'flex' : 'none',
-            flexDirection: 'column',
-            height: '100%',
-            minHeight: 0,
-          }}
-        >
-          <TodoTriggersPanel workspacePath={workspacePath} />
         </div>
         <div style={{ display: active === 'browser' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
           <SimpleEmbeddedBrowser

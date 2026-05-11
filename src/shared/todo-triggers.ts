@@ -43,6 +43,20 @@ export type TodoTriggersFile = {
   triggers: TodoTriggerRecord[];
 };
 
+/**
+ * 侧栏等摘要：计入「未执行」(仅一次) + 「固定执行」(按间隔) 且仍未完成的待办；
+ * `status === 'done'` 视为已归档/已完成，不计入。
+ */
+export function isTodoTriggerCountedInWorkspaceHub(t: TodoTriggerRecord): boolean {
+  if (t.status !== 'pending') return false;
+  if (t.trigger.kind !== 'schedule') return false;
+  return t.trigger.repeat === 'once' || t.trigger.repeat === 'interval';
+}
+
+export function countTodoTriggersForWorkspaceHub(triggers: TodoTriggerRecord[]): number {
+  return triggers.reduce((n, t) => n + (isTodoTriggerCountedInWorkspaceHub(t) ? 1 : 0), 0);
+}
+
 function newTriggerId(): string {
   const c = typeof globalThis !== 'undefined' ? (globalThis as { crypto?: { randomUUID?: () => string } }).crypto : undefined;
   if (c && typeof c.randomUUID === 'function') return c.randomUUID();

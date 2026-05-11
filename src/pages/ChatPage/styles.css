@@ -6,6 +6,20 @@
   overflow:hidden;
 }
 
+.cf-chatCenter__hubBackWrap{
+  flex-shrink:0;
+  padding:8px 12px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel);
+}
+.cf-chatCenter__hubBody{
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
 .cf-chatCenter--alternate .cf-chatCenter__sessionHint{
   flex-shrink:0;
   display:flex;

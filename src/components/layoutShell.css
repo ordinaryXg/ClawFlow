@@ -300,6 +300,14 @@
   font-size:12px;
   color:rgba(130,165,210,.88);
 }
+.cf-sideTree__typeIcon--hub{
+  width:8px;
+  min-width:8px;
+  height:8px;
+  padding:0;
+  border-radius:999px;
+  background:rgba(120,165,138,.72);
+}
 .cf-sideTree__wsRow--active .cf-sideTree__typeIcon{
   color:rgba(85,200,120,.95);
 }
@@ -447,6 +455,113 @@
   font-weight:700;
 }
 .cf-sideTree__convRow:last-child{border-bottom:0}
+
+/* 激活工作区展开：五段工作中心 + 会话下再嵌套对话 */
+.cf-sideTree__hubNest{
+  list-style:none;
+  margin:0 4px 6px 8px;
+  padding:4px 0 6px 0;
+  border-left:2px solid rgba(30,91,69,.42);
+  background:rgba(0,0,0,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+:root[data-theme="light"] .cf-sideTree__hubNest{
+  background:rgba(0,0,0,.05);
+  border-left-color:rgba(30,91,69,.52);
+}
+.cf-sideTree__hubLi{
+  list-style:none;
+  margin:0;
+  padding:0;
+}
+.cf-sideTree__hubRow{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  min-height:28px;
+  padding:2px 4px 2px 4px;
+  border-bottom:1px solid var(--border);
+  border-left:3px solid transparent;
+  box-sizing:border-box;
+  background:transparent;
+}
+.cf-sideTree__hubRow:hover{
+  background:rgba(255,255,255,.05);
+}
+:root[data-theme="light"] .cf-sideTree__hubRow:hover{
+  background:rgba(0,0,0,.045);
+}
+.cf-sideTree__hubRow--active{
+  background:rgba(30,91,69,.22);
+  border-left-color:rgba(63,185,80,.92);
+}
+:root[data-theme="light"] .cf-sideTree__hubRow--active{
+  background:rgba(30,91,69,.14);
+}
+.cf-sideTree__hubMain{
+  flex:1;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:5px;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  text-align:left;
+  padding:5px 4px;
+  border-radius:3px;
+  font-size:11px;
+  font-weight:600;
+}
+.cf-sideTree__hubMain:hover{opacity:.95}
+/* 工作区子项：标题 + 小号数量同一行，压低行高 */
+.cf-sideTree__hubMain--inlineCount{
+  flex-wrap:nowrap;
+  align-items:baseline;
+  padding-top:4px;
+  padding-bottom:4px;
+  line-height:1.15;
+}
+.cf-sideTree__hubMain--inlineCount .cf-sideTree__typeIcon--hub{
+  align-self:center;
+}
+.cf-sideTree__hubMainLabel{
+  flex:0 1 auto;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.cf-sideTree__hubTrailingCount{
+  flex-shrink:0;
+  font-size:9px;
+  font-weight:500;
+  line-height:1.15;
+  margin-left:3px;
+  letter-spacing:-0.01em;
+}
+.cf-sideTree__hubChev{
+  flex-shrink:0;
+  width:22px;
+  height:24px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  font-size:10px;
+  border-radius:3px;
+}
+.cf-sideTree__hubChev:hover{
+  color:var(--text);
+  background:rgba(255,255,255,.06);
+}
+.cf-sideTree__hubChevSpacer{
+  flex-shrink:0;
+  width:22px;
+  height:1px;
+}
 
 .cf-wsList{display:flex;flex-direction:column}
 .cf-wsLoading{
