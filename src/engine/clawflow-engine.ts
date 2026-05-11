@@ -581,10 +581,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           argumentsText: string;
           outputText?: string;
           ts: number;
+          statusOverride?: 'running' | 'success' | 'error' | 'result';
         }) => {
           const card = toolCardForName(ev.toolName);
           const riskLevel = toolRiskForName(ev.toolName);
-          const status = ev.phase === 'start' ? 'running' : ev.phase === 'done' ? 'success' : 'error';
+          const status =
+            ev.statusOverride ??
+            (ev.phase === 'start' ? 'running' : ev.phase === 'done' ? 'success' : 'error');
           const msg: StoredMessage = this.toStoredToolMessage({
             tool_call_id: ev.tool_call_id,
             content: ev.phase === 'start' ? `[start] ${ev.toolName}` : String(ev.outputText ?? ''),

@@ -228,6 +228,12 @@
   color: rgba(63, 185, 80, 0.92);
 }
 
+.cf-toolMsg__loading {
+  font-size: 13px;
+  opacity: 0.9;
+  color: var(--muted);
+}
+
 .cf-toolMsg__title {
   font-size: 12px;
   font-weight: 600;

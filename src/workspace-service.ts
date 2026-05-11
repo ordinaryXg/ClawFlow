@@ -86,6 +86,24 @@ export async function ensureWorkspaceToolBundle(
     }
   };
 
+  // `.tool/README.md`：避免与 `.roleAgent/TOOLS.md` 重复，仅保留指引（覆盖写入）。
+  // 该目录属于 ClawFlow 管理目录，README 用作“入口跳转”而非完整说明。
+  try {
+    const readme = [
+      '# .tool 说明（入口）',
+      '',
+      '本目录由 ClawFlow 管理，包含工作区工具能力的开关与契约说明。',
+      '',
+      '- 总览入口：请阅读工作区根目录的 `.roleAgent/TOOLS.md`',
+      '- 能力开关：`manifest.json`',
+      '- 契约说明：`docs.md` / `browser.md` / `git.md` / `todos.md` / `subagents.md` / `skills.md` / `knowledge_base.md`',
+      '',
+    ].join('\n');
+    await fs.promises.writeFile(path.join(dir, 'README.md'), readme, 'utf-8');
+  } catch {
+    /* ignore */
+  }
+
   const docsBody = buildWorkspaceToolDocsMd();
   const browserBody = buildWorkspaceToolBrowserMd();
   const gitBody = buildWorkspaceToolGitMd();

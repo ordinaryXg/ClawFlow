@@ -34,7 +34,11 @@ export type ToolExecutionContext = {
     argumentsText: string;
     outputText?: string;
     ts: number;
+    /** Optional override for UI status */
+    statusOverride?: 'running' | 'success' | 'error' | 'result';
   }) => void | Promise<void>;
+  /** ToolRuntime internal: current tool call id (for handlers needing async follow-up) */
+  currentToolCallId?: string;
   /** Optional abort signal to cancel tool execution */
   abortSignal?: AbortSignal;
   /** 在主窗口内嵌浏览器（右侧 webview）中打开 URL；由 IPC 注入，无则仅能走系统浏览器 */
@@ -282,6 +286,7 @@ export class ToolRuntime {
       }
       let args: any = {};
       const rawArgsText = typeof call?.function?.arguments === 'string' ? call.function.arguments : '';
+      ctx.currentToolCallId = call.id;
       try {
         args = rawArgsText ? JSON.parse(rawArgsText) : {};
       } catch {
@@ -309,6 +314,8 @@ export class ToolRuntime {
         results.push({ tool_call_id: call.id, content });
         const summary = truncateForToolLog(content, 320);
         ctx.onDelta?.(`[tool:done] ${name}${summary ? `\n${summary}\n` : '\n'}`);
+        const isAsyncReceipt =
+          String(name ?? '') === 'delegate_to_subagent' && /"state"\s*:\s*"running"/i.test(String(content ?? ''));
         await ctx.onToolEvent?.({
           phase: 'done',
           tool_call_id: call.id,
@@ -316,6 +323,7 @@ export class ToolRuntime {
           argumentsText: rawArgsText,
           outputText: content,
           ts: Date.now(),
+          ...(isAsyncReceipt ? { statusOverride: 'running' } : {}),
         });
       } catch (e: any) {
         const msg = `Tool error: ${e?.message ?? String(e)}`;
@@ -391,16 +399,44 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const modelId = typeof args?.modelId === 'string' && args.modelId.trim() ? args.modelId.trim() : undefined;
       if (!slotId || !taskText || !conversationId) return 'ERROR: missing required fields';
 
-      const res = await runSubAgentOnce({
-        workspaceRoot: ctx.workspaceRoot,
+      // 一次性子 Agent：不阻塞当前会话；先返回运行回执，再异步写入最终结果 tool 消息
+      const runId = randomUUID();
+      const receipt = {
+        ok: true,
+        state: 'running',
+        runId,
         slotId,
-        taskText,
-        conversationId,
-        modelId,
-        // AI 调度路径：不提供 onToolApprovalNeeded => 默认自动同意（由 engine 行为决定）
-      });
-      if (!res.ok) return `ERROR: sub-agent failed: ${res.error}`;
-      return truncateForToolLog(res.message || '(empty)', 12_000);
+        note: 'Sub-agent started asynchronously; final receipt will be appended to this conversation.',
+      };
+
+      void (async () => {
+        try {
+          const res = await runSubAgentOnce({
+            workspaceRoot: ctx.workspaceRoot,
+            slotId,
+            taskText,
+            conversationId,
+            modelId,
+            oneOff: true,
+            // AI 调度路径：不提供 onToolApprovalNeeded => 默认自动同意（由 engine 行为决定）
+          });
+          const msg = res.ok ? truncateForToolLog(res.message || '(empty)', 12_000) : `ERROR: sub-agent failed: ${res.error}`;
+          // 追加一条 tool 消息（kind=tool.subagent.run），用于 UI loading → done
+          await ctx.onToolEvent?.({
+            phase: res.ok ? 'done' : 'fail',
+            tool_call_id: String(ctx.currentToolCallId ?? ''),
+            toolName: 'delegate_to_subagent',
+            argumentsText: JSON.stringify({ slotId, taskText, conversationId, modelId }, null, 0),
+            outputText: msg,
+            ts: Date.now(),
+            statusOverride: res.ok ? 'success' : 'error',
+          });
+        } catch {
+          /* ignore */
+        }
+      })();
+
+      return JSON.stringify(receipt, null, 2);
     }
   );
 

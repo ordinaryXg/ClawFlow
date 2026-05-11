@@ -232,7 +232,14 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
    */
   private log(...args: any[]): void {
     if (this.config.verbose) {
-      console.log('[OpenClawEngine]', ...args);
+      try {
+        // 在某些窗口/管道关闭场景下，console.log 可能抛出 EPIPE（broken pipe）。
+        // 日志不应导致主进程崩溃，因此这里做 best-effort 吞掉写入失败。
+        // eslint-disable-next-line no-console
+        console.log('[OpenClawEngine]', ...args);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -240,7 +247,12 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
    * 内部错误日志方法
    */
   private logError(...args: any[]): void {
-    console.error('[OpenClawEngine]', ...args);
+    try {
+      // eslint-disable-next-line no-console
+      console.error('[OpenClawEngine]', ...args);
+    } catch {
+      /* ignore */
+    }
   }
 
   private async readConversations(): Promise<ConversationRecord[]> {
@@ -579,7 +591,24 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
   }
 
   async getSkills(): Promise<any[]> {
-    const list = await this.runJsonCommand(['skills', 'list', '--json']);
+    // Windows 上某些环境（未开启开发者模式/无管理员权限）无法创建 symlink，
+    // OpenClaw 的 skills list 可能仍会输出完整 JSON，但以 exit_code=1 结束。
+    // 这里做 best-effort：仅对该已知场景放宽退出码检查，避免影响应用启动。
+    const listRes = await this.executeCommand(['skills', 'list', '--json'], { checkExitCode: false });
+    if ((listRes.exitCode ?? 0) !== 0) {
+      const stderrLower = String(listRes.stderr ?? '').toLowerCase();
+      const isKnownSymlinkEperm =
+        stderrLower.includes('failed to create plugin skill symlink') ||
+        (stderrLower.includes('eperm') && stderrLower.includes('symlink'));
+      if (!isKnownSymlinkEperm) {
+        throw new Error(`openclaw skills list failed (code=${listRes.exitCode ?? 'unknown'}): ${listRes.stderr || 'unknown error'}`);
+      }
+      this.logError('[OpenClawEngine] skills list exited non-zero due to symlink permission; continuing best-effort.');
+    }
+    const list = this.parseJson(listRes.stdout);
+    if (list === null) {
+      throw new Error('openclaw skills list 未返回可解析 JSON');
+    }
     const check = await this.runJsonCommand(['skills', 'check', '--json']).catch(() => null);
 
     const listArr: any[] = Array.isArray(list) ? list : Array.isArray((list as any)?.skills) ? (list as any).skills : [];

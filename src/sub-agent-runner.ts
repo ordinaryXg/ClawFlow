@@ -12,6 +12,8 @@ export type SubAgentRunRequest = {
   /** 追加到这个会话中（当前架构为每个 workspace 单会话；仍保留该字段以便未来拆分） */
   conversationId: string;
   modelId?: string;
+  /** 一次性子 Agent：完成后自动从 slots 持久化中移除（默认 false） */
+  oneOff?: boolean;
   /** 可选：在 UI 路径下用于工具审批弹窗 */
   onToolApprovalNeeded?: (p: ToolApprovalNeededPayload & { runId: string; slotId: string }) => void | Promise<void>;
   /** 可选：流式 delta */
@@ -116,6 +118,16 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     });
 
     await setStatus('stopped');
+    if (req.oneOff) {
+      try {
+        const latest = await readSubAgentSlots(ws);
+        const next = latest.filter((s) => s.id !== slotId);
+        await writeSubAgentSlots(ws, next);
+        broadcastSubAgentsUpdated(ws);
+      } catch {
+        /* ignore */
+      }
+    }
     return { ok: true, runId, message: out.message ?? '' };
   } catch (e: unknown) {
     await setStatus('error');

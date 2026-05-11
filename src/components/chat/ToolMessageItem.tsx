@@ -6,6 +6,7 @@ import {
   CodeOutlined,
   ExclamationCircleFilled,
   ExperimentOutlined,
+  LoadingOutlined,
   ToolOutlined,
   WarningFilled,
 } from '@ant-design/icons';
@@ -27,6 +28,11 @@ function pickRiskLevel(meta: Record<string, unknown> | undefined): 'low' | 'medi
   const r = coerceString(meta?.riskLevel) ?? coerceString(meta?.risk_level) ?? coerceString(meta?.risk);
   if (r === 'low' || r === 'medium' || r === 'high') return r;
   return null;
+}
+
+function isSubAgentKind(kind: string | null): boolean {
+  if (!kind) return false;
+  return kind === 'tool.subagent.run' || kind.startsWith('tool.subagent.');
 }
 
 function summarize(content: string, maxLen: number): string {
@@ -54,6 +60,16 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
 
   const status = useMemo(() => coerceString(meta?.status), [meta]);
   const summary = useMemo(() => summarize(message.content, 140), [message.content]);
+
+  const loadingIcon = useMemo(() => {
+    // 仅对子 Agent 异步回执展示 loading（避免普通工具 start 阶段也出现旋转）
+    if (status !== 'running') return null;
+    const toolName = coerceString(meta?.toolName);
+    if (toolName === 'delegate_to_subagent' || isSubAgentKind(kind)) {
+      return <LoadingOutlined className="cf-toolMsg__loading" spin />;
+    }
+    return null;
+  }, [kind, meta, status]);
 
   const riskIcon = useMemo(() => {
     if (riskLevel === 'high') return <ExclamationCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--high" />;
@@ -85,6 +101,7 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
         <summary className="cf-toolMsg__summary">
           {icon}
           {riskIcon}
+          {loadingIcon}
           <span className="cf-toolMsg__title">{title}</span>
           {status ? <span className={`cf-toolMsg__status cf-toolMsg__status--${status}`}>{status}</span> : null}
           {summary ? <span className="cf-toolMsg__oneLine">{summary}</span> : null}
