@@ -224,19 +224,20 @@ export function buildWorkspaceToolSubagentsMd(): string {
   ].join('\n');
 }
 
-/** `.tool/skills.md` — 产品向「自主进化型 Skills」演进，不再绑定 OpenClaw 技能市场 */
+/** `.tool/skills.md` — Hermes 式工作区技能（`.clawflow/skills`） */
 export function buildWorkspaceToolSkillsMd(): string {
   return [
-    `# 技能（Skills，规划中）`,
+    `# 技能（Skills，Hermes 式工作区技能）`,
     ``,
-    `## 方向`,
+    `## 是什么`,
     ``,
-    `ClawFlow 将技能设计为 **类似 Hermes 的自主进化型 Skills**（由应用内管线管理，而非外部 CLI 技能市场）。当前版本 **不提供** OpenClaw 技能市场安装/同步，也不暴露 \`openclaw_skills_list\` 等工具。`,
+    `工作区技能存放在 **\`.clawflow/skills/<名称>/\`**，主文件为 **\`SKILL.md\`**，可选 **\`references/\`** 下放补充 \`.md\` / \`.txt\`。由应用内 FTS 索引与 UI 只读浏览；**不提供** OpenClaw CLI 技能市场。`,
     ``,
-    `## 工作区说明`,
+    `> 开关：\`.tool/manifest.json\` → \`tools.skills\`（仅影响下列 **只读** 模型工具；浏览技能请用应用内「技能」面板）`,
     ``,
-    `- 历史 \`manifest.json\` 中的 \`tools.skills\` 将被忽略（若仍存在）。`,
-    `- 后续接入时，技能开关与契约将在此文件与 \`manifest.json\` 中另行约定。`,
+    `## 模型工具（只读）`,
+    ``,
+    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.skills),
     ``,
   ].join('\n');
 }

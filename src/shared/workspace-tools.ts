@@ -9,6 +9,7 @@ export type WorkspaceToolId =
   | 'embedded_browser'
   | 'todos'
   | 'subagents'
+  | 'skills'
   | 'knowledge_base';
 
 export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
@@ -19,6 +20,7 @@ export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'embedded_browser',
   'todos',
   'subagents',
+  'skills',
   'knowledge_base',
 ] as const;
 
@@ -35,6 +37,7 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   embedded_browser: true,
   todos: true,
   subagents: true,
+  skills: false,
   knowledge_base: false,
 };
 

@@ -4,6 +4,7 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
@@ -115,6 +116,7 @@ const config: ForgeConfig = {
     new MakerDeb({}),
   ],
   plugins: [
+    new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       port: 9001,
       // 允许 renderer 连接本机 GatewayDaemon（ws/http），否则浏览器 WebSocket 会被 CSP 拦截

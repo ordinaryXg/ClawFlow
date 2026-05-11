@@ -250,7 +250,7 @@ const ChatPage: FC = () => {
         </div>
       );
     } else if (hubBranch === 'subagents') hubBody = <SubAgentsHubPanel />;
-    else if (hubBranch === 'skills') hubBody = <SkillsHubPanel />;
+    else if (hubBranch === 'skills') hubBody = <SkillsHubPanel workspacePath={activeWorkspacePath} />;
     else hubBody = <KnowledgeBaseHubPanel />;
 
     return (

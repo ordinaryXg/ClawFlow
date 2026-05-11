@@ -180,6 +180,33 @@ export interface IElectronAPI {
     userPreview: string;
     assistantExcerpt: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  memoryFtsSearch: (params: {
+    query: string;
+    limit?: number;
+    skillName?: string;
+  }) => Promise<
+    | {
+        ok: true;
+        hits: Array<{
+          id: number;
+          source_kind: string;
+          source_path: string;
+          skill_name: string | null;
+          title: string | null;
+          snippet: string;
+          rank: number;
+        }>;
+      }
+    | { ok: false; error: string }
+  >;
+  memoryFtsRebuild: () => Promise<
+    { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
+  >;
+  workspaceSkillsList: () => Promise<
+    | { ok: true; skills: Array<{ skillRootRel: string; name: string; skillMdRel: string; referenceFiles: Array<{ relPath: string }> }> }
+    | { ok: false; error: string; skills: [] }
+  >;
+  workspaceSkillsReadFile: (relativePath: string) => Promise<{ ok: true; content: string } | { ok: false; error: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;

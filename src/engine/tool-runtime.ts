@@ -26,6 +26,16 @@ import {
 import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
 import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
 import { runSubAgentOnce } from '../sub-agent-runner';
+import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
+import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../workspace-skills-read';
+import { atomicWriteUtf8File } from './atomic-write';
+import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
+import {
+  refreshHermesSkillMemoryIndexBestEffort,
+  isWorkspaceRelativeUnderHermesSkillTree,
+  patchSummaryTouchesHermesSkillTree,
+} from './hermes-skill-index-hooks';
+import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeWorkspaceRel } from './workspace-skill-paths';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -795,6 +805,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': content }
       );
+      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
+        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      }
       return JSON.stringify(
         {
           ok: true,
@@ -861,6 +874,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': after }
       );
+      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
+        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      }
       return JSON.stringify(
         {
           ok: true,
@@ -1000,6 +1016,10 @@ export function createDefaultToolRuntime(): ToolRuntime {
         fileArtifacts
       );
 
+      if (patchSummaryTouchesHermesSkillTree(summary)) {
+        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      }
+
       return JSON.stringify(
         {
           ok: true,
@@ -1097,6 +1117,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
         details: { toRelativePath: toRel, overwrite },
         rollback: { available: false, hint: 'Rename rollback is not implemented yet.' },
       });
+      if (isWorkspaceRelativeUnderHermesSkillTree(fromRel) || isWorkspaceRelativeUnderHermesSkillTree(toRel)) {
+        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      }
       return JSON.stringify(
         {
           ok: true,
@@ -1154,6 +1177,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
         details: { trashRelativePath: trashRel, bytes: st.size },
         rollback: { available: true },
       });
+      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
+        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      }
       return JSON.stringify(
         {
           ok: true,
@@ -1718,22 +1744,370 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_knowledge_query',
-        description: 'Query workspace knowledge base (placeholder until RAG is wired)',
+        description:
+          'Search indexed workspace skills and references via local SQLite FTS5 (Hermes memory). Returns short snippets with paths.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'User question or keywords' },
+            query: { type: 'string', description: 'Keywords or question (AND tokenization)' },
           },
           required: ['query'],
           additionalProperties: false,
         },
       },
     },
-    async (args, _ctx) => {
+    async (args, ctx) => {
       const q = String(args?.query ?? '').trim();
       if (!q) return 'ERROR: missing query';
-      return 'Knowledge base is not configured for this workspace yet. (stub)';
+      const res = searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
+      if (!res.ok) return `ERROR: ${res.error}`;
+      if (!res.hits.length) {
+        return 'No matches in workspace memory/skills FTS index. Add `.clawflow/skills/**/SKILL.md` or references, or enable knowledge_base and rebuild if needed.';
+      }
+      return res.hits
+        .map(
+          (h) =>
+            `### ${h.source_path}${h.skill_name ? ` (skill: ${h.skill_name})` : ''}\n${h.snippet}\n`
+        )
+        .join('\n');
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_memory_search',
+        description:
+          'Full-text search over Hermes memory index (skills + references under .clawflow/skills). Returns JSON hits with snippets and bm25 rank.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Keywords; whitespace-separated tokens are AND-ed' },
+            limit: { type: 'number', description: 'Max hits 1–50', minimum: 1, maximum: 50 },
+            skill_name: { type: 'string', description: 'Optional filter: parent folder name of SKILL.md' },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const q = String(args?.query ?? '').trim();
+      if (!q) return 'ERROR: missing query';
+      const lim = args?.limit;
+      const skillName = args?.skill_name != null ? String(args.skill_name).trim() : undefined;
+      const res = searchHermesMemory(ctx.workspaceRoot, {
+        query: q,
+        limit: typeof lim === 'number' ? lim : 12,
+        skillName: skillName || undefined,
+      });
+      if (!res.ok) return JSON.stringify({ ok: false, error: res.error });
+      return JSON.stringify({ ok: true, hits: res.hits }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_list',
+        description:
+          'List Hermes-style skills under `.clawflow/skills/**` (directories containing SKILL.md). Read-only; returns JSON with skill roots and reference file paths.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, ctx) => {
+      const skills = listWorkspaceHermesSkills(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true, count: skills.length, skills }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_view',
+        description:
+          'Read a text file under `.clawflow/skills` (SKILL.md or references/*.md|*.txt). Pass workspace-relative POSIX path.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Relative path from workspace root, e.g. .clawflow/skills/my-skill/SKILL.md' },
+          },
+          required: ['path'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const rel = String(args?.path ?? '').trim().replace(/\\/g, '/');
+      if (!rel) return 'ERROR: missing path';
+      const r = readWorkspaceSkillTextFile(ctx.workspaceRoot, rel);
+      if (!r.ok) return `ERROR: ${r.error}`;
+      return r.content;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_create',
+        description:
+          'Create a new Hermes skill folder with `.clawflow/skills/<skill_name>/SKILL.md`. Fails if SKILL.md already exists.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            skill_name: { type: 'string', description: 'Directory name under .clawflow/skills (ASCII letters, digits, ._-)' },
+            initial_markdown: { type: 'string', description: 'Optional SKILL.md body; default stub heading' },
+          },
+          required: ['skill_name'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const checked = assertValidSkillFolderName(String(args?.skill_name ?? ''));
+      if (!checked.ok) return `ERROR: ${checked.reason}`;
+      const initialRaw = args?.initial_markdown;
+      const initial =
+        typeof initialRaw === 'string' && initialRaw.trim()
+          ? String(initialRaw)
+          : `# ${checked.name}\n\nDescribe what this skill does.\n`;
+      const gg = guardHermesSkillTextContent(initial);
+      if (!gg.ok) return `ERROR: skills_guard: ${gg.reason}`;
+      const rel = `.clawflow/skills/${checked.name}/SKILL.md`;
+      const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, rel);
+      const exists = await fs.promises
+        .stat(full)
+        .then((s) => s.isFile())
+        .catch(() => false);
+      if (exists) return `ERROR: skill already exists at ${rel}`;
+      await atomicWriteUtf8File(full, initial);
+      const opId = randomUUID();
+      await writeOpRecord(
+        ctx.workspaceRoot,
+        {
+          version: 1,
+          id: opId,
+          ts: Date.now(),
+          kind: 'write_file',
+          relativePath: rel,
+          details: { skillCreate: true },
+          rollback: { available: true },
+        },
+        { 'before.txt': '', 'after.txt': initial }
+      );
+      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true, path: rel, opId }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_patch',
+        description:
+          'Replace exact text in a skill document (SKILL.md or references/*.md|*.txt under .clawflow/skills). Subject to skills_guard on the full file after substitution.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            relativePath: { type: 'string', description: 'Workspace-relative path, must be under .clawflow/skills' },
+            oldText: { type: 'string', description: 'Exact old text' },
+            newText: { type: 'string', description: 'Replacement text' },
+            replaceAll: { type: 'boolean', description: 'Replace all occurrences' },
+          },
+          required: ['relativePath', 'oldText', 'newText', 'replaceAll'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const rel = normalizeWorkspaceRel(String(args?.relativePath ?? ''));
+      if (!isSkillIndexedDocumentRel(rel)) {
+        return 'ERROR: relativePath must be SKILL.md or references/*.md|*.txt under .clawflow/skills';
+      }
+      const oldText = String(args?.oldText ?? '');
+      const newText = String(args?.newText ?? '');
+      const replaceAll = Boolean(args?.replaceAll);
+      if (!oldText) return 'ERROR: oldText is required';
+      const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, rel);
+      let before: string;
+      try {
+        before = await fs.promises.readFile(full, 'utf8');
+      } catch {
+        return 'ERROR: file not found or not readable';
+      }
+      const occurrences = before.split(oldText).length - 1;
+      if (occurrences <= 0) return 'ERROR: oldText not found';
+      if (!replaceAll && occurrences !== 1) return `ERROR: oldText matched ${occurrences} times (replaceAll=false)`;
+      const after = replaceAll ? before.split(oldText).join(newText) : before.replace(oldText, newText);
+      const g = guardHermesSkillTextContent(after);
+      if (!g.ok) return `ERROR: skills_guard: ${g.reason}`;
+      await atomicWriteUtf8File(full, after);
+      const opId = randomUUID();
+      await writeOpRecord(
+        ctx.workspaceRoot,
+        {
+          version: 1,
+          id: opId,
+          ts: Date.now(),
+          kind: 'apply_patch',
+          relativePath: rel,
+          details: { occurrences, replaceAll, skillTool: true },
+          rollback: { available: true },
+        },
+        { 'before.txt': before, 'after.txt': after }
+      );
+      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      return JSON.stringify(
+        {
+          ok: true,
+          path: rel,
+          opId,
+          occurrences,
+          beforeHash: sha256(before),
+          afterHash: sha256(after),
+        },
+        null,
+        2
+      );
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_write_aux',
+        description:
+          'Create or overwrite an auxiliary file under `.clawflow/skills/<name>/references/` (.md or .txt only). Use workspace_skill_patch for SKILL.md.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            relativePath: { type: 'string', description: 'e.g. .clawflow/skills/my-skill/references/notes.md' },
+            content: { type: 'string', description: 'Full file content (utf-8)' },
+            createIfMissing: { type: 'boolean', description: 'Allow create when file missing' },
+            overwrite: { type: 'boolean', description: 'Allow overwrite when file exists' },
+          },
+          required: ['relativePath', 'content', 'createIfMissing', 'overwrite'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const rel = normalizeWorkspaceRel(String(args?.relativePath ?? ''));
+      if (!isSkillReferencesOnlyDocRel(rel)) {
+        return 'ERROR: only .clawflow/skills/<name>/references/*.md|*.txt allowed';
+      }
+      const content = String(args?.content ?? '');
+      const createIfMissing = Boolean(args?.createIfMissing);
+      const overwrite = Boolean(args?.overwrite);
+      const g = guardHermesSkillTextContent(content);
+      if (!g.ok) return `ERROR: skills_guard: ${g.reason}`;
+      const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, rel);
+      const exists = await fs.promises
+        .stat(full)
+        .then((s) => s.isFile())
+        .catch(() => false);
+      if (exists && !overwrite) return 'ERROR: File exists (overwrite=false)';
+      if (!exists && !createIfMissing) return 'ERROR: File does not exist (createIfMissing=false)';
+      const before = exists ? await fs.promises.readFile(full, 'utf8').catch(() => '') : '';
+      await atomicWriteUtf8File(full, content);
+      const opId = randomUUID();
+      await writeOpRecord(
+        ctx.workspaceRoot,
+        {
+          version: 1,
+          id: opId,
+          ts: Date.now(),
+          kind: 'write_file',
+          relativePath: rel,
+          details: { skillAux: true, existed: exists },
+          rollback: { available: true },
+        },
+        { 'before.txt': before, 'after.txt': content }
+      );
+      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true, path: rel, opId, existed: exists }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_skill_delete',
+        description:
+          'Delete an entire skill directory `.clawflow/skills/<skill_name>/` (recursive). Requires confirm=true.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            skill_name: { type: 'string', description: 'Direct child folder name under .clawflow/skills' },
+            confirm: { type: 'boolean', description: 'Must be true' },
+          },
+          required: ['skill_name', 'confirm'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      if (!Boolean(args?.confirm)) {
+        return confirmRequiredMessage('workspace_skill_delete');
+      }
+      const checked = assertValidSkillFolderName(String(args?.skill_name ?? ''));
+      if (!checked.ok) return `ERROR: ${checked.reason}`;
+      const skillRootRel = `.clawflow/skills/${checked.name}`;
+      const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, skillRootRel);
+      const skillsBase = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, '.clawflow/skills');
+      const relFromBase = path.relative(skillsBase, full);
+      const segs = relFromBase.split(/[/\\]/).filter(Boolean);
+      if (segs.length !== 1 || segs[0] !== checked.name) {
+        return 'ERROR: skill_name must be a direct child folder of .clawflow/skills';
+      }
+      const st = await fs.promises.stat(full).catch(() => null);
+      if (!st?.isDirectory()) return `ERROR: skill folder not found: ${skillRootRel}`;
+      await fs.promises.rm(full, { recursive: true, force: true });
+      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true, deleted: skillRootRel }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_memory_rebuild_index',
+        description:
+          'Rebuild Hermes FTS index from `.clawflow/skills/**` (SKILL.md + references/*.md|*.txt). Use after bulk edits or if search looks stale.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, ctx) => {
+      const res = await rebuildHermesSkillFtsIndex(ctx.workspaceRoot);
+      if (!res.ok) return `ERROR: ${res.error}`;
+      return `OK rebuilt skill/memory FTS index (rows upserted this pass: ${res.indexed}, pruned: ${res.pruned})`;
     }
   );
 

@@ -103,7 +103,7 @@
     "tool_embedded_browser": "Open page in app",
     "tool_todos": "Todos & scheduling (model-writable)",
     "tool_subagents": "Sub-agent slots (metadata)",
-    "tool_skills": "OpenClaw skills list (CLI)",
+    "tool_skills": "Workspace skills (Hermes): list/view + create/patch/aux/delete under .clawflow/skills",
     "tool_knowledge_base": "Knowledge base query (stub)"
   },
   "titlebar": {
@@ -283,7 +283,7 @@
       "hubCountTodos": "{{count}} items",
       "hubCountSubAgents": "{{count}} agents",
       "hubCountSkills": "{{count}} installed",
-      "skillsBranchHint": "Autonomous evolving Skills (planned)",
+      "skillsBranchHint": "Browse Hermes skills under .clawflow/skills (read-only)",
       "skillsBranchBadge": "Planned",
       "hubCountKb": "{{count}} docs",
       "todosHint": "Time- or interval-based to-dos that post into this workspace conversation.",
@@ -448,9 +448,18 @@
     "resizeInputHeightHint": "Drag up to enlarge the input area, down to shrink. Double-click to reset."
   },
   "skills": {
-    "hermesTitle": "Skills (autonomous evolution, planned)",
-    "hermesSub": "The OpenClaw skill marketplace has been removed. Hermes-style autonomous Skills will be managed inside the app (discovery, versioning, enablement) instead of an external CLI market.",
-    "hermesHint": "Workspace `.tool/skills.md` is a product placeholder; the model no longer has an `openclaw_skills_list` tool."
+    "hermesTitle": "Workspace skills (Hermes)",
+    "hermesSub": "Read-only browser for `.clawflow/skills` (SKILL.md + references). Enable the **skills** capability in workspace tools so the model can list/view (`tools.skills` in manifest).",
+    "hermesHint": "Write/evolution pipeline comes later; today this is read-only UI plus read-only model tools.",
+    "browserTitle": "Discovered skills",
+    "browserNoWorkspace": "Select a workspace in the sidebar first.",
+    "browserEmpty": "No skills yet. Add `.clawflow/skills/<name>/SKILL.md` (optional `references/*.md|*.txt`).",
+    "browserRefresh": "Refresh",
+    "browserRefreshing": "Refreshing…",
+    "browserReveal": "Reveal in file manager",
+    "browserLoading": "Loading…",
+    "browserPickFile": "Pick a file tab above to view content.",
+    "browserSelectSkill": "Select a skill from the list on the left."
   },
   "connectors": {
     "title": "Connectors",

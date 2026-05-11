@@ -11,7 +11,8 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "jest"
+    "test": "jest",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3"
   },
   "keywords": [],
   "author": {
@@ -22,6 +23,7 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.0",
     "antd": "^5.22.0",
+    "better-sqlite3": "^11.10.0",
     "electron-squirrel-startup": "^1.0.1",
     "highlight.js": "^11.10.0",
     "i18next": "^26.0.10",
@@ -50,8 +52,10 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-webpack": "^7.11.1",
     "@electron/fuses": "^1.8.0",
+    "@electron/rebuild": "^3.7.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/i18next": "^13.0.0",
     "@types/markdown-to-jsx": "^6.0.3",
     "@types/node": "^25.6.0",

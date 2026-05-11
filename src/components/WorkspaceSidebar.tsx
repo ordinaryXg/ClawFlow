@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
 import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
 import { useSubAgentStore } from '../store/modules/subAgentStore';
+import { useWorkspaceSkillsStore } from '../store/modules/workspaceSkillsStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
@@ -63,6 +64,11 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     void loadSubAgents();
   }, [loadSubAgents, activeWorkspacePath]);
 
+  const loadWorkspaceSkills = useWorkspaceSkillsStore((s) => s.load);
+  useEffect(() => {
+    void loadWorkspaceSkills();
+  }, [loadWorkspaceSkills, activeWorkspacePath]);
+
   useEffect(() => {
     const off1 = window.electronAPI?.onTodoTriggersUpdated?.((p) => {
       if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadTodoTriggers();
@@ -110,6 +116,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     [todoTriggersList]
   );
   const subAgentsHubCount = useSubAgentStore((s) => s.slots.length);
+  const skillsHubCount = useWorkspaceSkillsStore((s) => s.list.length);
   /** 知识库条目：能力接入前占位为 0 */
   const kbHubCount = 0;
 
@@ -395,7 +402,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                                     {t('chat.workspaceHub.branchSkills')}
                                   </span>
                                   <span className="cf-sideTree__hubTrailingCount cf-sub">
-                                    {t('chat.workspaceHub.skillsBranchBadge')}
+                                    {t('chat.workspaceHub.hubCountSkills', { count: skillsHubCount })}
                                   </span>
                                 </button>
                                 <span className="cf-sideTree__hubChevSpacer" aria-hidden />

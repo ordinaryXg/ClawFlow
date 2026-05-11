@@ -103,7 +103,7 @@
     "tool_embedded_browser": "应用内打开网页",
     "tool_todos": "待办与调度（模型可写）",
     "tool_subagents": "子 Agent 槽位（元数据）",
-    "tool_skills": "OpenClaw 技能清单（CLI）",
+    "tool_skills": "工作区技能（Hermes）：只读列举/查看 + 创建/补丁/辅助文件/删除（.clawflow/skills）",
     "tool_knowledge_base": "知识库查询（占位）"
   },
   "titlebar": {
@@ -283,7 +283,7 @@
       "hubCountTodos": "{{count}} 项",
       "hubCountSubAgents": "{{count}} 个",
       "hubCountSkills": "{{count}} 个",
-      "skillsBranchHint": "自主进化型 Skills（规划中）",
+      "skillsBranchHint": "浏览 .clawflow/skills 下的 Hermes 技能（只读）",
       "skillsBranchBadge": "规划中",
       "hubCountKb": "{{count}} 条",
       "todosHint": "计划时间或间隔触发的待办，写入当前工作区会话。",
@@ -448,9 +448,18 @@
     "resizeInputHeightHint": "向上拖放大输入区，向下拖缩小；双击恢复默认高度。"
   },
   "skills": {
-    "hermesTitle": "Skills（自主进化，规划中）",
-    "hermesSub": "OpenClaw 技能市场已移除。后续将在此接入类似 Hermes 的自主进化型 Skills：由应用内管线管理发现、版本与启用策略，而非外部 CLI 市场。",
-    "hermesHint": "工作区 `.tool/skills.md` 已更新为产品说明占位；模型侧不再提供 `openclaw_skills_list` 工具。"
+    "hermesTitle": "工作区技能（Hermes）",
+    "hermesSub": "在此只读查看 `.clawflow/skills` 中的 SKILL.md 与 references。若要在对话中让模型列举/查看，请在「工作区工具」中启用 skills（manifest：`tools.skills`）。",
+    "hermesHint": "写入与进化管线将在后续版本接入；当前为只读浏览与模型只读工具。",
+    "browserTitle": "已发现技能",
+    "browserNoWorkspace": "请先在侧栏选择工作区。",
+    "browserEmpty": "当前没有技能目录。可在 `.clawflow/skills/<名称>/SKILL.md` 创建技能，并可选 `references/` 下的 .md / .txt。",
+    "browserRefresh": "刷新",
+    "browserRefreshing": "刷新中…",
+    "browserReveal": "在资源管理器中显示",
+    "browserLoading": "加载中…",
+    "browserPickFile": "选择上方文件标签以查看内容。",
+    "browserSelectSkill": "请从左侧列表选择一个技能。"
   },
   "connectors": {
     "title": "Connectors",

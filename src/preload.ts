@@ -169,6 +169,33 @@ export interface IElectronAPI {
     userPreview: string;
     assistantExcerpt: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  memoryFtsSearch: (params: {
+    query: string;
+    limit?: number;
+    skillName?: string;
+  }) => Promise<
+    | {
+        ok: true;
+        hits: Array<{
+          id: number;
+          source_kind: string;
+          source_path: string;
+          skill_name: string | null;
+          title: string | null;
+          snippet: string;
+          rank: number;
+        }>;
+      }
+    | { ok: false; error: string }
+  >;
+  memoryFtsRebuild: () => Promise<
+    { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
+  >;
+  workspaceSkillsList: () => Promise<
+    | { ok: true; skills: Array<{ skillRootRel: string; name: string; skillMdRel: string; referenceFiles: Array<{ relPath: string }> }> }
+    | { ok: false; error: string; skills: [] }
+  >;
+  workspaceSkillsReadFile: (relativePath: string) => Promise<{ ok: true; content: string } | { ok: false; error: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
@@ -359,6 +386,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceGetChangeLog: (limit?: number) => ipcRenderer.invoke('workspace:getChangeLog', limit),
   workspaceAppendChangeLog: (payload: { conversationId: string; userPreview: string; assistantExcerpt: string }) =>
     ipcRenderer.invoke('workspace:appendChangeLog', payload),
+  memoryFtsSearch: (params: { query: string; limit?: number; skillName?: string }) =>
+    ipcRenderer.invoke('memoryFts:search', params),
+  memoryFtsRebuild: () => ipcRenderer.invoke('memoryFts:rebuild'),
+  workspaceSkillsList: () => ipcRenderer.invoke('workspaceSkills:list'),
+  workspaceSkillsReadFile: (relativePath: string) => ipcRenderer.invoke('workspaceSkills:readFile', relativePath),
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => {
     const handler = (_event: unknown, payload: unknown) => {
       if (payload && typeof payload === 'object' && typeof (payload as any).path === 'string') {
