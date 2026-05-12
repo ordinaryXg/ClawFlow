@@ -4,6 +4,8 @@
  */
 
 import { randomUUID } from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,6 +38,8 @@ import {
   buildWorkspaceToolSubagentsMd,
   buildWorkspaceToolTodosMd,
 } from './shared/workspace-tool-template-md';
+
+const execFileAsync = promisify(execFile);
 
 export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
@@ -528,16 +532,91 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
   }
 }
 
+/** 工作区根下 `.agent`、`.subagent` 均已存在为目录时，视为已有 ClawFlow 布局：跳过目录迁移与角色/记忆/默认技能等「新建」引导，仅补齐必要子目录与工具清单（若用户传入 tools）。 */
+export async function workspaceHasExistingAgentAndSubagent(workspaceRoot: string): Promise<boolean> {
+  const root = path.resolve(String(workspaceRoot ?? '').trim());
+  if (!root) return false;
+  const agent = path.join(root, WORKSPACE_AGENT_DIR);
+  const subagent = path.join(root, '.subagent');
+  const isDir = async (p: string) => {
+    try {
+      const st = await fs.promises.stat(p);
+      return st.isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  return (await isDir(agent)) && (await isDir(subagent));
+}
+
+function readOriginUrlFromDotGitConfig(workspaceRoot: string): string | null {
+  const cfg = path.join(path.resolve(workspaceRoot), '.git', 'config');
+  try {
+    if (!fs.existsSync(cfg)) return null;
+    const st = fs.statSync(cfg);
+    if (!st.isFile()) return null;
+    const text = fs.readFileSync(cfg, 'utf8');
+    const lines = text.split(/\r?\n/);
+    let inOrigin = false;
+    for (const line of lines) {
+      if (/^\s*\[remote\s+"origin"\]\s*$/i.test(line)) {
+        inOrigin = true;
+        continue;
+      }
+      if (/^\s*\[/.test(line)) inOrigin = false;
+      if (inOrigin) {
+        const m = line.match(/^\s*url\s*=\s*(.+)\s*$/i);
+        if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * 若存在 `.git`（普通仓或 worktree 的 gitdir 链接），尝试读取 `remote.origin.url`，写入 workspace 元数据以识别 Git 工作区。
+ */
+export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Promise<string | null> {
+  const root = path.resolve(String(workspaceRoot ?? '').trim());
+  if (!root) return null;
+  try {
+    await fs.promises.access(path.join(root, '.git'));
+  } catch {
+    return null;
+  }
+  try {
+    const { stdout } = await execFileAsync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: root,
+      windowsHide: true,
+      maxBuffer: 512 * 1024,
+      encoding: 'utf8',
+    });
+    const u = String(stdout ?? '')
+      .split(/\r?\n/)[0]
+      .trim();
+    if (u) return u;
+  } catch {
+    /* fall through */
+  }
+  return readOriginUrlFromDotGitConfig(root);
+}
+
 /**
  * 创建当前工作区 `.agent/.clawflow/`、`.subagent/`（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
  * 同时在**工作区 `.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
+ * 若已同时存在 `.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
   opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
-  migrateLegacyWorkspaceAgentBundleSync(root);
+  const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
+  if (!preserveExistingLayout) {
+    migrateLegacyWorkspaceAgentBundleSync(root);
+  }
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
   const ocDir = globalOpenclawStateDir();
@@ -549,14 +628,16 @@ export async function ensureWorkspaceInitialized(
   } catch {
     /* ignore */
   }
-  try {
-    const { created } = await ensureWorkspaceMainMemoryTemplates(root);
-    if (created.length) {
-      console.log('[workspace-service] main .memory templates created:', created.join(', '));
+  if (!preserveExistingLayout) {
+    try {
+      const { created } = await ensureWorkspaceMainMemoryTemplates(root);
+      if (created.length) {
+        console.log('[workspace-service] main .memory templates created:', created.join(', '));
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
   }
   await ensureSubagentWorkspaceTree(root);
 
@@ -564,43 +645,45 @@ export async function ensureWorkspaceInitialized(
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
 
-  try {
-    const { created } = await ensureWorkspaceAgentRoleTemplates(root);
-    if (created.length) {
-      console.log('[workspace-service] agent role templates created:', created.join(', '));
+  if (!preserveExistingLayout) {
+    try {
+      const { created } = await ensureWorkspaceAgentRoleTemplates(root);
+      if (created.length) {
+        console.log('[workspace-service] agent role templates created:', created.join(', '));
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
-  }
 
-  // 子 Agent 的角色模板，缺失才补写到 `.subagent/.subroleAgent/`
-  try {
-    const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
-    if (created.length) {
-      console.log('[workspace-service] sub-agent role templates created:', created.join(', '));
+    // 子 Agent 的角色模板，缺失才补写到 `.subagent/.subroleAgent/`
+    try {
+      const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
+      if (created.length) {
+        console.log('[workspace-service] sub-agent role templates created:', created.join(', '));
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
-  }
 
-  // Hermes：`.agent/.skills` 下尚无任何技能时，补写默认示例 `default/SKILL.md`
-  try {
-    const { created } = await ensureWorkspaceDefaultHermesSkill(root);
-    if (created.length) {
-      console.log('[workspace-service] default Hermes skill created:', created.join(', '));
+    // Hermes：`.agent/.skills` 下尚无任何技能时，补写默认示例 `default/SKILL.md`
+    try {
+      const { created } = await ensureWorkspaceDefaultHermesSkill(root);
+      if (created.length) {
+        console.log('[workspace-service] default Hermes skill created:', created.join(', '));
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] ensureWorkspaceDefaultHermesSkill failed:', msg);
     }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceDefaultHermesSkill failed:', msg);
-  }
 
-  try {
-    await ensureSkillAgentSlotForWorkspace(root);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureSkillAgentSlotForWorkspace failed:', msg);
+    try {
+      await ensureSkillAgentSlotForWorkspace(root);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] ensureSkillAgentSlotForWorkspace failed:', msg);
+    }
   }
 
   const now = Date.now();
@@ -631,8 +714,15 @@ export async function ensureWorkspaceInitialized(
     };
   }
   meta.lastOpened = now;
-  if (opts?.gitRemoteUrl != null && String(opts.gitRemoteUrl).trim()) {
-    meta.gitRemoteUrl = String(opts.gitRemoteUrl).trim();
+  const optGit = opts?.gitRemoteUrl != null && String(opts.gitRemoteUrl).trim() ? String(opts.gitRemoteUrl).trim() : '';
+  if (optGit) {
+    meta.gitRemoteUrl = optGit;
+  } else {
+    const cur = (meta.gitRemoteUrl ?? '').trim();
+    if (!cur) {
+      const detected = await readGitOriginRemoteBestEffort(root);
+      if (detected) meta.gitRemoteUrl = detected;
+    }
   }
   await fs.promises.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
   return meta;
