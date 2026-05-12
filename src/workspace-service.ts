@@ -1,6 +1,6 @@
 /**
  * Workspace 目录与注册表（主进程）。
- * 每个 workspace 根目录下包含 `.clawflow/`（主会话与调度等）、`.subclawflow/`（各子 Agent 槽位工作缓存）及 `.agent/`。
+ * 每个 workspace 根下：**`.agent/`**（主 Agent、工具、技能、`.memory/`、主会话数据 **`.clawflow/`**）；**`.subagent/`**（子 Agent 缓存 `.subclawflow/`、记忆 `.submemory/`、角色模板 `.subroleAgent/`）。
  */
 
 import { randomUUID } from 'crypto';
@@ -14,6 +14,7 @@ import {
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
   workspaceAgentDotMemoryDirAbs,
+  workspaceSubagentRolesDirAbs,
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
 import { ensureSkillAgentSlotForWorkspace } from './skill-agent-bootstrap';
@@ -37,21 +38,30 @@ import {
 
 export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
 
-export const CLAWFLOW_DIR = '.clawflow';
+/** 工作区内主会话与调度等元数据（位于 `.agent/` 下） */
+export const CLAWFLOW_DIR = '.agent/.clawflow';
 
-/** 子 Agent 工作区缓存根（与主 `.clawflow/` 分离，按槽位分子目录） */
-export const SUBCLAWFLOW_DIR = '.subclawflow';
+/** 子 Agent 根目录（工作区根下） */
+export const SUBAGENT_ROOT_DIR = '.subagent';
+
+/** 子 Agent 工作区缓存根（`.subagent/.subclawflow/`，按槽位分子目录） */
+export const SUBCLAWFLOW_DIR = '.subagent/.subclawflow';
+
+/** 子 Agent 记忆根（`.subagent/.submemory/`，按槽位分子目录） */
+export const SUBMEMORY_DIR = '.subagent/.submemory';
 
 /**
  * 仅从工作区根删除 ClawFlow 管理的目录，不删除用户项目文件。
- * 含 `.clawflow/`、`.subclawflow/`、`.agent/` 及历史遗留根下 `.roleAgent` / `.tool`；各目录不存在时忽略。
+ * 含 `.agent/`（内含 `.clawflow/`）、`.subagent/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`；各目录不存在时忽略。
  */
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
   const dirs = [
-    path.join(root, CLAWFLOW_DIR),
-    path.join(root, SUBCLAWFLOW_DIR),
     path.join(root, WORKSPACE_AGENT_DIR),
+    path.join(root, SUBAGENT_ROOT_DIR),
+    path.join(root, '.clawflow'),
+    path.join(root, '.subclawflow'),
+    path.join(root, '.submemory'),
     path.join(root, '.roleAgent'),
     path.join(root, '.tool'),
   ];
@@ -202,7 +212,11 @@ export function isSameWorkspacePath(a: string, b: string): boolean {
 }
 
 export function clawflowDir(workspaceRoot: string): string {
-  return path.join(workspaceRoot, CLAWFLOW_DIR);
+  return path.join(path.resolve(workspaceRoot), CLAWFLOW_DIR);
+}
+
+export function subagentRootDir(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), SUBAGENT_ROOT_DIR);
 }
 
 export function subclawflowDir(workspaceRoot: string): string {
@@ -211,7 +225,7 @@ export function subclawflowDir(workspaceRoot: string): string {
 
 /**
  * 单个子 Agent 槽位在工作区下的缓存根目录（绝对路径）。
- * 与主会话元数据 `.clawflow/` 分离；中间产物、草稿、本子 Agent 专属落盘可放此处对应子目录。
+ * 与主会话元数据 `.agent/.clawflow/` 分离；中间产物、草稿、本子 Agent 专属落盘可放此处对应子目录。
  */
 export function subclawflowSlotDirAbs(workspaceRoot: string, slotId: string): string {
   const id = String(slotId ?? '').trim();
@@ -219,17 +233,65 @@ export function subclawflowSlotDirAbs(workspaceRoot: string, slotId: string): st
   return path.join(subclawflowDir(workspaceRoot), id);
 }
 
+export function submemoryDir(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), SUBMEMORY_DIR);
+}
+
+/** 单个子 Agent 槽位在工作区下的记忆根目录（绝对路径）；与主 `.agent/.memory/` 分离。 */
+export function submemorySlotDirAbs(workspaceRoot: string, slotId: string): string {
+  const id = String(slotId ?? '').trim();
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) return submemoryDir(workspaceRoot);
+  return path.join(submemoryDir(workspaceRoot), id);
+}
+
+/** 确保 `.subagent/`、`.subclawflow/`、`.submemory/`、`.subroleAgent/` 根目录及固定名册各槽位子目录存在（失败打日志，便于排查） */
+export async function ensureSubagentWorkspaceTree(workspaceRoot: string): Promise<void> {
+  const root = path.resolve(String(workspaceRoot ?? '').trim());
+  if (!root) return;
+  try {
+    await fs.promises.mkdir(subagentRootDir(root), { recursive: true });
+    await fs.promises.mkdir(workspaceSubagentRolesDirAbs(root), { recursive: true });
+    await fs.promises.mkdir(subclawflowDir(root), { recursive: true });
+    await fs.promises.mkdir(submemoryDir(root), { recursive: true });
+    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+      await fs.promises.mkdir(subclawflowSlotDirAbs(root, sid), { recursive: true });
+      await fs.promises.mkdir(submemorySlotDirAbs(root, sid), { recursive: true });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureSubagentWorkspaceTree failed:', msg);
+  }
+}
+
 /** 确保 `.subclawflow/` 及固定名册各槽位子目录存在 */
 export async function ensureSubclawflowWorkspaceCaches(workspaceRoot: string): Promise<void> {
   const root = path.resolve(String(workspaceRoot || '').trim());
   if (!root) return;
   try {
+    await fs.promises.mkdir(subagentRootDir(root), { recursive: true });
     await fs.promises.mkdir(subclawflowDir(root), { recursive: true });
     for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
       await fs.promises.mkdir(subclawflowSlotDirAbs(root, sid), { recursive: true });
     }
-  } catch {
-    /* ignore */
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureSubclawflowWorkspaceCaches failed:', msg);
+  }
+}
+
+/** 确保 `.submemory/` 及固定名册各槽位子目录存在（子 Agent 专用记忆，与主会话隔离） */
+export async function ensureSubmemoryWorkspaceCaches(workspaceRoot: string): Promise<void> {
+  const root = path.resolve(String(workspaceRoot || '').trim());
+  if (!root) return;
+  try {
+    await fs.promises.mkdir(subagentRootDir(root), { recursive: true });
+    await fs.promises.mkdir(submemoryDir(root), { recursive: true });
+    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+      await fs.promises.mkdir(submemorySlotDirAbs(root, sid), { recursive: true });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureSubmemoryWorkspaceCaches failed:', msg);
   }
 }
 
@@ -303,7 +365,7 @@ function countAuthProfiles(filePath: string): number {
 }
 
 /**
- * 将历史上保存在「各工作区/.clawflow/openclaw」下的鉴权合并到全局目录（仅当全局尚无 profile 时执行）。
+ * 将历史上保存在「各工作区 `.agent/.clawflow/openclaw`」（或旧版根目录 `.clawflow/openclaw`）下的鉴权合并到全局目录（仅当全局尚无 profile 时执行）。
  * 在创建任意 OpenClaw 引擎之前调用一次即可。
  */
 export function migrateWorkspaceOpenclawToGlobalOnce(): void {
@@ -322,12 +384,15 @@ export function migrateWorkspaceOpenclawToGlobalOnce(): void {
   let mergedVersion = 1;
 
   for (const ws of uniq) {
-    const srcAuth = authProfilesPathUnderOpenclawState(openclawStateDir(ws));
-    if (!fs.existsSync(srcAuth)) continue;
-    const payload = readAuthProfilesPayload(srcAuth);
-    if (!payload || Object.keys(payload.profiles).length === 0) continue;
-    Object.assign(mergedProfiles, payload.profiles);
-    mergedVersion = payload.version;
+    const srcRoots = [openclawStateDir(ws), path.join(path.resolve(ws), '.clawflow', 'openclaw')];
+    for (const srcRoot of srcRoots) {
+      const srcAuth = authProfilesPathUnderOpenclawState(srcRoot);
+      if (!fs.existsSync(srcAuth)) continue;
+      const payload = readAuthProfilesPayload(srcAuth);
+      if (!payload || Object.keys(payload.profiles).length === 0) continue;
+      Object.assign(mergedProfiles, payload.profiles);
+      mergedVersion = payload.version;
+    }
   }
 
   if (Object.keys(mergedProfiles).length > 0) {
@@ -344,30 +409,41 @@ function migrateOpenclawJsonIfMissing(destRoot: string, workspaceCandidates?: st
   if (fs.existsSync(destCfg)) return;
   const candidates = workspaceCandidates ?? registeredWorkspaceRootCandidates();
   for (const ws of candidates) {
-    const srcCfg = openclawConfigPath(ws);
-    if (!fs.existsSync(srcCfg)) continue;
-    try {
-      fs.copyFileSync(srcCfg, destCfg);
-    } catch (e) {
-      console.warn('[workspace-service] migrate openclaw.json failed:', e);
+    const tryPaths = [openclawConfigPath(ws), path.join(path.resolve(ws), '.clawflow', 'openclaw', 'openclaw.json')];
+    for (const srcCfg of tryPaths) {
+      if (!fs.existsSync(srcCfg)) continue;
+      try {
+        fs.copyFileSync(srcCfg, destCfg);
+      } catch (e) {
+        console.warn('[workspace-service] migrate openclaw.json failed:', e);
+      }
+      return;
     }
-    return;
   }
 }
 
 /**
- * 删除各工作区根下历史遗留的 `.clawflow/openclaw`（模型鉴权已迁至应用全局目录）。
+ * 删除各工作区下历史遗留的 per-workspace `openclaw` 目录（模型鉴权已迁至应用全局目录）。
+ * 覆盖 `.agent/.clawflow/openclaw` 与旧版根目录 `.clawflow/openclaw`。
  * 不会删除与用户数据全局目录相同的路径。
  */
 export function removeLegacyWorkspaceOpenclawDirs(): void {
   const globalRoot = path.resolve(globalOpenclawStateDir());
   for (const ws of registeredWorkspaceRootCandidates()) {
-    const legacy = path.resolve(path.join(clawflowDir(ws), 'openclaw'));
-    if (legacy === globalRoot || !fs.existsSync(legacy)) continue;
-    try {
-      fs.rmSync(legacy, { recursive: true, force: true });
-    } catch (e) {
-      console.warn('[workspace-service] remove legacy workspace openclaw failed:', legacy, e);
+    const legacies = [
+      path.resolve(path.join(clawflowDir(ws), 'openclaw')),
+      path.resolve(path.join(ws, '.clawflow', 'openclaw')),
+    ];
+    const seen = new Set<string>();
+    for (const legacy of legacies) {
+      if (seen.has(legacy)) continue;
+      seen.add(legacy);
+      if (legacy === globalRoot || !fs.existsSync(legacy)) continue;
+      try {
+        fs.rmSync(legacy, { recursive: true, force: true });
+      } catch (e) {
+        console.warn('[workspace-service] remove legacy workspace openclaw failed:', legacy, e);
+      }
     }
   }
 }
@@ -450,7 +526,7 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
 }
 
 /**
- * 创建当前工作区 `.clawflow/`、`.subclawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 创建当前工作区 `.agent/.clawflow/`、`.subagent/`（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
  * 同时在**工作区 `.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  */
 export async function ensureWorkspaceInitialized(
@@ -470,11 +546,7 @@ export async function ensureWorkspaceInitialized(
   } catch {
     /* ignore */
   }
-  try {
-    await ensureSubclawflowWorkspaceCaches(root);
-  } catch {
-    /* ignore */
-  }
+  await ensureSubagentWorkspaceTree(root);
 
   migrateLegacyConversationsOnce(root);
 
@@ -490,7 +562,7 @@ export async function ensureWorkspaceInitialized(
     console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
   }
 
-  // 子 Agent 的角色模板（program/creative/data/assistant），缺失才补写到 `.agent/.subagent-roles/`
+  // 子 Agent 的角色模板，缺失才补写到 `.subagent/.subroleAgent/`
   try {
     const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
     if (created.length) {
@@ -630,7 +702,7 @@ export type RemoveWorkspaceUserResult =
   | { ok: false; error: string };
 
 /**
- * 从最近列表移除；非「默认工作区」时删除工作区下的 `.clawflow`、`.subclawflow`、`.agent` 及遗留根目录 `.roleAgent`、`.tool`，不删除用户其余文件。
+ * 从最近列表移除；非「默认工作区」时删除工作区下的 `.agent`、`.subagent` 及遗留根目录 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`，不删除用户其余文件。
  */
 export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
   const abs = path.resolve(workspacePath);

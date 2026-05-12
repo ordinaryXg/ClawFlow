@@ -12,7 +12,7 @@ export function normalizeWorkspaceRel(rel: string): string {
     .replace(/^\/+/, '');
 }
 
-/** 规范化后用于技能工具：历史 `.clawflow/skills`、`.agent/skills` → `.agent/.skills` */
+/** 规范化后用于技能工具：历史 `.clawflow/skills`、`.agent/.clawflow/skills`、`.agent/skills` → `.agent/.skills` */
 export function normalizeSkillWorkspaceRel(rel: string): string {
   return normalizeHermesSkillWorkspaceRel(normalizeWorkspaceRel(rel));
 }

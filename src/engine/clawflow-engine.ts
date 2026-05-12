@@ -573,29 +573,34 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         }
 
         const { displayContent, reasoningCombined } = mergeCompletionReasoning(res.content, res.reasoning_content);
-        if (reasoningCombined) {
+        const dispTrim = displayContent.trim();
+        const reasonTrim = reasoningCombined.trim();
+        // DeepSeek-R1 / reasoner：可能仅有 reasoning_content 而 content 仍为空；若不把 reasoning 计入 reply，会误判为空并落入 stub。
+        if (reasonTrim && dispTrim) {
           reasoningSteps.push(reasoningCombined);
         }
 
         const toolCalls = res.tool_calls ?? null;
+        const contentForLoop = dispTrim || reasonTrim;
+        const reasoningForLoop = reasonTrim && dispTrim ? reasoningCombined : undefined;
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: displayContent,
-          ...(reasoningCombined ? { reasoning_content: reasoningCombined } : {}),
+          content: contentForLoop,
+          ...(reasoningForLoop ? { reasoning_content: reasoningForLoop } : {}),
           ...(toolCalls ? { tool_calls: toolCalls as any } : {}),
         };
         loopMessages.push(assistantMsg);
 
         if (!toolCalls || toolCalls.length === 0) {
-          reply = displayContent || '';
+          reply = dispTrim || reasonTrim;
           break;
         }
 
         // Persist this assistant turn (tool_calls + reasoning) so replay/history stays complete.
         try {
           const storedAssistant = this.toStoredAssistantMessage({
-            content: displayContent,
-            reasoning_content: reasoningCombined || undefined,
+            content: contentForLoop,
+            reasoning_content: reasoningForLoop || undefined,
             tool_calls: toolCalls as any,
             mode,
             modelIdHint: modelId,

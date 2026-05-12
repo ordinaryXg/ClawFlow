@@ -16,6 +16,11 @@ import SkillsHubPanel from '../../components/workspace-hub/SkillsHubPanel';
 import KnowledgeBaseHubPanel from '../../components/workspace-hub/KnowledgeBaseHubPanel';
 import { useWorkspaceHubStore } from '../../store/modules/workspaceHubStore';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
+import {
+  computeContextSaturation,
+  estimateMessagesContextTokens,
+  resolveContextTokenLimit,
+} from '../../utils/context-saturation';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -218,6 +223,10 @@ const ChatPage: FC = () => {
     [modelRows, t]
   );
 
+  const contextSaturation = useMemo(() => computeContextSaturation(messages, modelId), [messages, modelId]);
+  const contextUsedApprox = useMemo(() => estimateMessagesContextTokens(messages), [messages]);
+  const contextLimitApprox = useMemo(() => resolveContextTokenLimit(modelId), [modelId]);
+
   const showApiKeyBar = modelRows.length > 0 && !modelRows.some((m) => m.available);
 
   const activeConversation = useMemo(
@@ -395,6 +404,9 @@ const ChatPage: FC = () => {
             onInteractionModeChange={setInteractionMode}
             intent={chatIntent}
             onIntentChange={(v) => updateSettings({ chatIntent: v })}
+            contextSaturation={contextSaturation}
+            contextUsedApprox={contextUsedApprox}
+            contextLimitApprox={contextLimitApprox}
             showStarterPrompts={
               messages.length === 0 && streamingActivity === null && !isLoading && !toolApprovalForActive
             }

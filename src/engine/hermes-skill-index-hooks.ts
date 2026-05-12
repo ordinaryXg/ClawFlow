@@ -13,6 +13,8 @@ export function isWorkspaceRelativeUnderHermesSkillTree(rel: string): boolean {
     n.startsWith('.agent/.skills/') ||
     n === '.agent/skills' ||
     n.startsWith('.agent/skills/') ||
+    n === '.agent/.clawflow/skills' ||
+    n.startsWith('.agent/.clawflow/skills/') ||
     n === '.clawflow/skills' ||
     n.startsWith('.clawflow/skills/')
   );

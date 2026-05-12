@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ChatInteractionMode } from '../../store/modules/chatStore';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import { CfSelectWithHints } from '../CfSelectWithHints';
+import ContextUsageRing from './ContextUsageRing';
 import './chat.css';
 
 const CHAT_MODES: ChatInteractionMode[] = ['plan', 'multitask', 'auto'];
@@ -61,7 +62,10 @@ interface Props {
   onInteractionModeChange: (mode: ChatInteractionMode) => void;
   intent: 'fast' | 'strong' | 'cheap';
   onIntentChange: (intent: 'fast' | 'strong' | 'cheap') => void;
-  /** 当前会话尚无消息时，在输入框上方展示快捷提示条 */
+  /** 0–1，当前会话相对模型上下文上限的粗略饱和度 */
+  contextSaturation?: number;
+  contextUsedApprox?: number;
+  contextLimitApprox?: number;
   showStarterPrompts?: boolean;
 }
 
@@ -76,6 +80,9 @@ const ChatInput: FC<Props> = ({
   intent,
   onIntentChange,
   showStarterPrompts,
+  contextSaturation = 0,
+  contextUsedApprox,
+  contextLimitApprox,
 }) => {
   const { t } = useTranslation();
   const shellVariant = useShellLayoutVariant();
@@ -210,12 +217,12 @@ const ChatInput: FC<Props> = ({
               popupMatchSelectWidth={false}
             />
           </div>
-          <div className="cf-chatInput__fieldGroup cf-chatInput__fieldGroup--grow" title={t('chat.model')}>
+          <div className="cf-chatInput__fieldGroup cf-chatInput__fieldGroup--modelMeter" title={t('chat.model')}>
             <span className="cf-chatInput__fieldIco" aria-hidden>
               <IconModel />
             </span>
             <CfSelectWithHints
-              className={stickyCompactRow ? 'cf-selectHint--compact' : 'cf-selectHint--wide'}
+              className={stickyCompactRow ? 'cf-selectHint--compact cf-selectHint--chatModel' : 'cf-selectHint--chatModel'}
               popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
               value={modelId ?? ''}
               onChange={(v) => onModelChange?.(v ? v : null)}
@@ -224,6 +231,11 @@ const ChatInput: FC<Props> = ({
               aria-label={t('chat.model')}
               hintIconAriaBase={t('common.selectOptionHintAria')}
               popupMatchSelectWidth={false}
+            />
+            <ContextUsageRing
+              ratio={contextSaturation}
+              usedTokensApprox={contextUsedApprox}
+              limitTokensApprox={contextLimitApprox}
             />
           </div>
         </div>

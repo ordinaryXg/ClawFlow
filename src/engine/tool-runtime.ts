@@ -28,6 +28,7 @@ import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
 import { runSubAgentOnce } from '../sub-agent-runner';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../workspace-skills-read';
+import { readDisabledSkillRootsSync } from '../workspace-skills-ui-state';
 import { atomicWriteUtf8File } from './atomic-write';
 import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
 import {
@@ -39,6 +40,7 @@ import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillW
 import { WORKSPACE_AGENT_SKILLS_REL } from '../workspace-agent-layout';
 import { SKILL_AGENT_SLOT_ID } from '../shared/skill-agent-constants';
 import { ensureSubAgentRosterForWorkspace } from '../sub-agent-roster-bootstrap';
+import { clawflowDir, CLAWFLOW_DIR } from '../workspace-service';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -247,7 +249,7 @@ type OpMeta =
     };
 
 async function writeOpRecord(workspaceRoot: string, meta: OpMeta, files?: Record<string, string | Buffer>): Promise<void> {
-  const dir = path.join(workspaceRoot, '.clawflow', 'ops', meta.id);
+  const dir = path.join(clawflowDir(workspaceRoot), 'ops', meta.id);
   await fs.promises.mkdir(dir, { recursive: true });
   await fs.promises.writeFile(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
   if (files) {
@@ -261,7 +263,7 @@ async function writeOpRecord(workspaceRoot: string, meta: OpMeta, files?: Record
 }
 
 async function readOpMeta(workspaceRoot: string, opId: string): Promise<OpMeta> {
-  const p = path.join(workspaceRoot, '.clawflow', 'ops', opId, 'meta.json');
+  const p = path.join(clawflowDir(workspaceRoot), 'ops', opId, 'meta.json');
   const raw = await fs.promises.readFile(p, 'utf8');
   const parsed = JSON.parse(raw);
   return parsed as OpMeta;
@@ -396,7 +398,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'delegate_to_subagent',
         description:
-          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .agent/.tool/manifest.json. Reserved Skill Agent slot (`cf-skill-agent`) cannot be used here. Fixed delegate slots: `cf-sub-program`, `cf-sub-creative`, `cf-sub-data`, `cf-sub-assistant`.',
+          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .agent/.tool/manifest.json. Slot-local notes live under .subagent/.submemory/<slotId>/ (separate from .agent/.memory/ and root MEMORY.md). Reserved Skill Agent slot (`cf-skill-agent`) cannot be used here. Fixed delegate slots: `cf-sub-program`, `cf-sub-creative`, `cf-sub-data`, `cf-sub-assistant`.',
         strict: true,
         parameters: {
           type: 'object',
@@ -592,7 +594,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'web_scrape',
         description:
-          'HTTP(S) GET a public page, convert HTML to plain text, save full text under workspace .clawflow/scrapes, and return a JSON receipt with excerpt for the chat. Best for static/document pages; heavy client-side rendering may yield incomplete text.',
+          'HTTP(S) GET a public page, convert HTML to plain text, save full text under workspace .agent/.clawflow/scrapes, and return a JSON receipt with excerpt for the chat. Best for static/document pages; heavy client-side rendering may yield incomplete text.',
         strict: true,
         parameters: {
           type: 'object',
@@ -601,7 +603,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
             max_chars: {
               type: 'number',
               description:
-                'Optional cap on excerpt length in tool JSON (default ~24000; full plain text still saved under .clawflow/scrapes).',
+                'Optional cap on excerpt length in tool JSON (default ~24000; full plain text still saved under .agent/.clawflow/scrapes).',
               minimum: 2000,
               maximum: 100000,
             },
@@ -951,7 +953,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       };
 
       const opId = randomUUID();
-      const opDir = path.join(ctx.workspaceRoot, '.clawflow', 'ops', opId);
+      const opDir = path.join(clawflowDir(ctx.workspaceRoot), 'ops', opId);
       await fs.promises.mkdir(opDir, { recursive: true });
 
       const fileArtifacts: Record<string, string | Buffer> = {
@@ -978,7 +980,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
           if (!st?.isFile()) throw new Error(`Not a file: ${rel}`);
           // ensure final real path does not escape workspace (symlink/hardlink)
           await assertResolvedPathStillInsideRoot({ rootPath: ctx.workspaceRoot, resolvedPath: full });
-          const trashRel = path.join('.clawflow', 'ops', opId, 'trash', rel);
+          const trashRel = path.posix.join(CLAWFLOW_DIR, 'ops', opId, 'trash', rel);
           const trashFull = workspaceExplorer.resolvePathInsideWorkspace(ctx.workspaceRoot, trashRel);
           await fs.promises.mkdir(path.dirname(trashFull), { recursive: true });
           await fs.promises.rename(full, trashFull);
@@ -998,7 +1000,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
           await fs.promises.mkdir(path.dirname(moveFull), { recursive: true });
           await fs.promises.writeFile(moveFull, after, 'utf8');
           // delete original by moving to trash for rollback
-          const trashRel = path.join('.clawflow', 'ops', opId, 'trash', rel);
+          const trashRel = path.posix.join(CLAWFLOW_DIR, 'ops', opId, 'trash', rel);
           const trashFull = workspaceExplorer.resolvePathInsideWorkspace(ctx.workspaceRoot, trashRel);
           await fs.promises.mkdir(path.dirname(trashFull), { recursive: true });
           await fs.promises.rename(full, trashFull);
@@ -1154,7 +1156,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_delete_path',
-        description: 'Delete a file under workspace (moves to .clawflow/ops trash for rollback)',
+        description: 'Delete a file under workspace (moves to .agent/.clawflow/ops trash for rollback)',
         strict: true,
         parameters: {
           type: 'object',
@@ -1175,7 +1177,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const st = await fs.promises.stat(full).catch(() => null);
       if (!st?.isFile()) return 'ERROR: Not a file';
       const opId = randomUUID();
-      const trashRel = path.join('.clawflow', 'ops', opId, 'trash', rel);
+      const trashRel = path.posix.join(CLAWFLOW_DIR, 'ops', opId, 'trash', rel);
       const trashFull = workspaceExplorer.resolvePathInsideWorkspace(ctx.workspaceRoot, trashRel);
       await fs.promises.mkdir(path.dirname(trashFull), { recursive: true });
       await fs.promises.rename(full, trashFull);
@@ -1230,7 +1232,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const meta = await readOpMeta(ctx.workspaceRoot, opId);
       if (!meta?.rollback?.available) return `ERROR: rollback not available for op ${opId}`;
       if (meta.kind === 'write_file' || meta.kind === 'apply_patch') {
-        const beforePath = path.join(ctx.workspaceRoot, '.clawflow', 'ops', opId, 'before.txt');
+        const beforePath = path.join(clawflowDir(ctx.workspaceRoot), 'ops', opId, 'before.txt');
         const before = await fs.promises.readFile(beforePath, 'utf8');
         const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, meta.relativePath);
         await fs.promises.mkdir(path.dirname(full), { recursive: true });
@@ -1478,7 +1480,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_todo_list',
-        description: 'List scheduled todo triggers for this workspace (persistent under .clawflow)',
+        description: 'List scheduled todo triggers for this workspace (persistent under .agent/.clawflow)',
         strict: true,
         parameters: {
           type: 'object',
@@ -1845,7 +1847,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (_args, ctx) => {
-      const skills = listWorkspaceHermesSkills(ctx.workspaceRoot);
+      const disabled = readDisabledSkillRootsSync(ctx.workspaceRoot);
+      const norm = (r: string) => r.replace(/\\/g, '/').replace(/^\/+/, '');
+      const skills = listWorkspaceHermesSkills(ctx.workspaceRoot).filter((s) => !disabled.has(norm(s.skillRootRel)));
       return JSON.stringify({ ok: true, count: skills.length, skills }, null, 2);
     }
   );

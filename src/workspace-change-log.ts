@@ -1,5 +1,5 @@
 /**
- * 工作空间内「对话相关变更」记录（类似简化的 git log，存于 .clawflow/change-history.json）。
+ * 工作空间内「对话相关变更」记录（类似简化的 git log，存于 .agent/.clawflow/change-history.json）。
  */
 
 import { randomUUID } from 'crypto';

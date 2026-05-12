@@ -192,10 +192,21 @@ export interface IElectronAPI {
     { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
   >;
   workspaceSkillsList: () => Promise<
-    | { ok: true; skills: Array<{ skillRootRel: string; name: string; skillMdRel: string; referenceFiles: Array<{ relPath: string }> }> }
+    | {
+        ok: true;
+        skills: Array<{
+          skillRootRel: string;
+          name: string;
+          skillMdRel: string;
+          referenceFiles: Array<{ relPath: string }>;
+          enabled?: boolean;
+        }>;
+      }
     | { ok: false; error: string; skills: [] }
   >;
   workspaceSkillsReadFile: (relativePath: string) => Promise<{ ok: true; content: string } | { ok: false; error: string }>;
+  workspaceSkillsSetEnabled: (params: { skillRootRel: string; enabled: boolean }) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  workspaceSkillsDeleteSkill: (skillRootRel: string) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
@@ -213,7 +224,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
-  subAgentsList: () => Promise<{ slots: unknown[] }>;
+  subAgentsList: () => Promise<{ slots: unknown[]; runSnapshots?: Record<string, unknown> }>;
   subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
   subAgentsRun: (params: { slotId: string; taskText: string; conversationId: string; modelId?: string }) => Promise<
     | { ok: true; runId: string }
@@ -391,6 +402,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   memoryFtsRebuild: () => ipcRenderer.invoke('memoryFts:rebuild'),
   workspaceSkillsList: () => ipcRenderer.invoke('workspaceSkills:list'),
   workspaceSkillsReadFile: (relativePath: string) => ipcRenderer.invoke('workspaceSkills:readFile', relativePath),
+  workspaceSkillsSetEnabled: (params: { skillRootRel: string; enabled: boolean }) =>
+    ipcRenderer.invoke('workspaceSkills:setEnabled', params),
+  workspaceSkillsDeleteSkill: (skillRootRel: string) => ipcRenderer.invoke('workspaceSkills:deleteSkill', { skillRootRel }),
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => {
     const handler = (_event: unknown, payload: unknown) => {
       if (payload && typeof payload === 'object' && typeof (payload as any).path === 'string') {

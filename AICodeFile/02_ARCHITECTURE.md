@@ -3,7 +3,7 @@
 ## 0. TL;DR（3 分钟抓住主线）
 
 - **三层**：Main（系统/引擎/调度/FS）→ Preload（安全桥）→ Renderer（React UI）
-- **工作区是边界**：`${WORKSPACE_ROOT}/.clawflow`（数据）与 `${WORKSPACE_ROOT}/.tool`（能力开关与说明）
+- **工作区是边界**：`${WORKSPACE_ROOT}/.agent/.clawflow`（主会话与元数据）与 `${WORKSPACE_ROOT}/.agent/.tool`（能力开关与说明）；子 Agent 区域在 `${WORKSPACE_ROOT}/.subagent/`
 - **工具（tools）是治理对象**：发送模型前按 `.tool/manifest.json` 过滤可见 schema；执行时再次校验拒绝禁用工具
 - **阶段 3 新增主线**：待办（调度）与子 Agent 槽位（slots）形成“写盘 → 广播 → UI 刷新”闭环
 
@@ -11,16 +11,18 @@
 
 ### 1.1 工作区内（Workspace Root）
 
-- `${WORKSPACE_ROOT}/.tool/manifest.json`：工具能力开关（v2）
+- `${WORKSPACE_ROOT}/.agent/.tool/manifest.json`：工具能力开关（v2）
   - 代码证据：`src/workspace-service.ts` `ensureWorkspaceToolBundle()` / `readWorkspaceToolManifest()`
-- `${WORKSPACE_ROOT}/.tool/*.md`：能力说明（缺失才补写）
+- `${WORKSPACE_ROOT}/.agent/.tool/*.md`：能力说明（缺失才补写）
   - 代码证据：`src/shared/workspace-tool-template-md.ts` + `ensureWorkspaceToolBundle()`
-- `${WORKSPACE_ROOT}/.clawflow/todo-triggers.v1.json`：待办调度数据
+- `${WORKSPACE_ROOT}/.agent/.clawflow/todo-triggers.v1.json`：待办调度数据
   - 代码证据：`src/todo-triggers-service.ts`
-- `${WORKSPACE_ROOT}/.clawflow/sub-agents.v1.json`：子 Agent 槽位数据（元数据）
+- `${WORKSPACE_ROOT}/.agent/.clawflow/sub-agents.v1.json`：子 Agent 槽位数据（元数据）
   - 代码证据：`src/sub-agent-service.ts`
-- `${WORKSPACE_ROOT}/.clawflow/scrapes/*.md`：网页爬取工件（全文）
+- `${WORKSPACE_ROOT}/.agent/.clawflow/scrapes/*.md`：网页爬取工件（全文）
   - 代码证据：`src/scrape-runner.ts`
+- `${WORKSPACE_ROOT}/.subagent/.subclawflow/`、`.subagent/.submemory/`、`.subagent/.subroleAgent/`：子 Agent 工作缓存、独立记忆、角色模板落盘
+  - 代码证据：`src/workspace-service.ts`、`src/workspace-agent-layout.ts`
 
 ## 2. 进程分层与职责
 
@@ -68,7 +70,7 @@
 
 ### 4.1 待办（模型工具 / IPC / 调度 / UI）
 
-- 数据：`todo-triggers.v1.json`（`src/todo-triggers-service.ts`）
+- 数据：`todo-triggers.v1.json`（位于 `.agent/.clawflow/`；`src/todo-triggers-service.ts`）
 - IPC：`todoTriggers:list/saveAll/setAiReceipt`（`src/index.ts`）
 - 调度：`rescheduleTodoTriggersForWorkspace()`（`src/todo-triggers-scheduler.ts`）
 - 广播刷新：`todo-triggers:updated`（`src/todo-triggers-broadcast.ts` + `src/preload.ts` 订阅）
@@ -76,7 +78,7 @@
 
 ### 4.2 子 Agent 槽位（slots）
 
-- 数据：`sub-agents.v1.json`（`src/sub-agent-service.ts`）
+- 数据：`sub-agents.v1.json`（位于 `.agent/.clawflow/`；`src/sub-agent-service.ts`）
 - IPC：`subAgents:list/saveAll`（`src/index.ts`）
 - 广播刷新：`subAgents:updated`（`src/sub-agent-broadcast.ts` + `src/preload.ts` 订阅）
 - 模型工具：`workspace_subagent_*`（`src/engine/tool-runtime.ts`）

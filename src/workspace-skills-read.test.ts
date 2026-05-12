@@ -26,7 +26,7 @@ describe('workspace-skills-read', () => {
   });
 
   it('rejects paths outside skills tree', () => {
-    const bad = readWorkspaceSkillTextFile(dir, '.clawflow/workspace.json');
+    const bad = readWorkspaceSkillTextFile(dir, '.agent/.clawflow/workspace.json');
     expect(bad.ok).toBe(false);
   });
 

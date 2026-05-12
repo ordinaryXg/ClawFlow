@@ -5,6 +5,9 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  moduleNameMapper: {
+    '^electron$': '<rootDir>/test/mocks/electron.cjs',
+  },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

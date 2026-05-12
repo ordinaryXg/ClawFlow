@@ -13,9 +13,9 @@ export function scrapeJobsStorePath(workspaceRoot: string): string {
   return path.join(workspaceService.clawflowDir(workspaceRoot), 'scrape-jobs.v1.json');
 }
 
-/** 相对工作区根，POSIX 风格，供 resolvePathInsideWorkspace 使用 */
+/** 相对工作区根路径，POSIX 风格，供 resolvePathInsideWorkspace 使用 */
 export function scrapeArtifactRelPath(jobId: string): string {
-  return path.posix.join('.clawflow', 'scrapes', `${jobId}.md`);
+  return path.posix.join(workspaceService.CLAWFLOW_DIR, 'scrapes', `${jobId}.md`);
 }
 
 export async function ensureScrapeArtifactsDir(workspaceRoot: string): Promise<string> {

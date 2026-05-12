@@ -1,4 +1,4 @@
-/** 子 Agent 槽位：与工作区 `.clawflow/sub-agents.v1.json` 及渲染进程 store 对齐 */
+/** 子 Agent 槽位：与工作区 `.agent/.clawflow/sub-agents.v1.json` 及渲染进程 store 对齐 */
 
 export type SubAgentRunStatus = 'stopped' | 'starting' | 'running' | 'error';
 
@@ -21,4 +21,15 @@ export type SubAgentSlot = {
    * 供 UI 区分「系统监控中」与「技能能力未开启」。
    */
   skillToolsEnabled?: boolean;
+};
+
+/** 子 Agent 最近一次手动运行（或异常中断）的快照，来自 `.agent/.clawflow/sub-agent-runs.v1.json` */
+export type SubAgentRunSnapshotStatus = 'idle' | 'running' | 'completed' | 'error' | 'interrupted';
+
+export type SubAgentRunSnapshot = {
+  status: SubAgentRunSnapshotStatus;
+  taskText: string;
+  conversationId: string;
+  logTail: string;
+  updatedAt: number;
 };

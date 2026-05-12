@@ -59,7 +59,7 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 **`.agent/.roleAgent/`**（�
 - **何时委派**：需要把**一大块**工作从主会话拆出、异步跑完再回收结果时；或需要与主角色**不同侧重**（程序 / 创意 / 数据 / 助理）时。
 - **如何委派**：仅使用工具 **`delegate_to_subagent`**，且 **`slotId` 只能是**（固定名册）  
   **`cf-sub-program`** | **`cf-sub-creative`** | **`cf-sub-data`** | **`cf-sub-assistant`**  
-  详见 `.agent/.tool/subagents.md`。槽位元数据在 `.clawflow/sub-agents.v1.json`；各槽位**工作缓存**在 **`.subclawflow/<slotId>/`**（与主 `.clawflow/` 分离）。**不要**把 **`cf-skill-agent`**（Skill Agent）当作委派目标——它为 Hermes 技能进化保留，由系统在启用 `tools.skills` 时调度，**不参与**主 Agent 的 `delegate_to_subagent`。
+  详见 `.agent/.tool/subagents.md`。槽位元数据在 `.agent/.clawflow/sub-agents.v1.json`；各槽位**工作缓存**在 **`.subagent/.subclawflow/<slotId>/`**；各槽位**独立记忆**在 **`.subagent/.submemory/<slotId>/`**（与主 `.agent/.memory/`、根目录 `MEMORY.md` 分离，子 Agent 不应写入主记忆路径）。**不要**把 **`cf-skill-agent`**（Skill Agent）当作委派目标——它为 Hermes 技能进化保留，由系统在启用 `tools.skills` 时调度，**不参与**主 Agent 的 `delegate_to_subagent`。
 - **与「待办」的分工**：子 Agent 负责**理解、规划、执行与汇报**；待办负责**定时/周期触发与状态钉点**（见下）。需要「列清单、到点提醒」时用待办；需要「像同事一样干完一块活」时用子 Agent。
 
 ### 待办与调度（`tools.todos`）

@@ -12,6 +12,7 @@ import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/worksp
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
 import { countTodoTriggersForWorkspaceHub } from '../shared/todo-triggers';
+import { skillsForHermesDiscoveryUi } from '../shared/workspace-skills-discovery-filter';
 
 type Props = {
   sidebarWidthPx: number;
@@ -116,7 +117,8 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     [todoTriggersList]
   );
   const subAgentsHubCount = useSubAgentStore((s) => s.slots.length);
-  const skillsHubCount = useWorkspaceSkillsStore((s) => s.list.length);
+  const skillsListRaw = useWorkspaceSkillsStore((s) => s.list);
+  const skillsHubCount = useMemo(() => skillsForHermesDiscoveryUi(skillsListRaw).length, [skillsListRaw]);
   /** 知识库条目：能力接入前占位为 0 */
   const kbHubCount = 0;
 

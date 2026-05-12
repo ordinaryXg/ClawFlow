@@ -1,5 +1,5 @@
 /**
- * 主对话轮次计数（用于每 N 轮触发 Skill 进化审核）。存于 `.clawflow/skill-evolution-state.v1.json`。
+ * 主对话轮次计数（用于每 N 轮触发 Skill 进化审核）。存于 `.agent/.clawflow/skill-evolution-state.v1.json`。
  */
 
 import * as fs from 'fs';

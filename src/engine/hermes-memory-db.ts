@@ -1,5 +1,5 @@
 /**
- * Hermes 工作区记忆库：`.clawflow/hermes-memory.db` + FTS5。
+ * Hermes 工作区记忆库：`.agent/.clawflow/hermes-memory.db` + FTS5。
  * 仅 Main 进程使用；webpack 将 better-sqlite3 标为 external。
  * 使用 Electron 运行时前请执行 `npm run rebuild:native`，使原生模块与当前 Electron 版本匹配（Jest 使用 Node 预编译二进制，勿在仅跑测试后忘记重编译）。
  */
@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
 import { workspaceSkillsDirAbs } from '../workspace-agent-layout';
+import { clawflowDir } from '../workspace-service';
 
 const requireSqlite = createRequire(__filename);
 
@@ -43,7 +44,7 @@ export function getHermesMemoryLoadError(): string | undefined {
 const dbCache = new Map<string, BetterSqliteDb>();
 
 export function getHermesMemoryDbPath(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), '.clawflow', 'hermes-memory.db');
+  return path.join(clawflowDir(workspaceRoot), 'hermes-memory.db');
 }
 
 export function invalidateHermesMemoryDbCache(resolvedRoot?: string): void {
@@ -88,7 +89,7 @@ export function getOrOpenHermesMemoryDb(workspaceRoot: string): BetterSqliteDb |
       dbCache.delete(key);
     }
   }
-  const dir = path.join(key, '.clawflow');
+  const dir = clawflowDir(key);
   fs.mkdirSync(dir, { recursive: true });
   const dbPath = path.join(dir, 'hermes-memory.db');
   const db = new Ctor(dbPath);
@@ -152,7 +153,7 @@ function toPosixRel(workspaceRoot: string, absPath: string): string {
 }
 
 function inferSkillNameFromIndexedPath(relPosix: string): string | null {
-  for (const prefix of ['.agent/.skills/', '.agent/skills/', '.clawflow/skills/'] as const) {
+  for (const prefix of ['.agent/.skills/', '.agent/skills/', '.agent/.clawflow/skills/', '.clawflow/skills/'] as const) {
     if (!relPosix.startsWith(prefix)) continue;
     const rest = relPosix.slice(prefix.length);
     if (!rest) return null;
@@ -292,7 +293,7 @@ export type HermesMemorySyncResult =
   | { ok: false; error: string };
 
 /**
- * 将 `.agent/.skills/**` 下 SKILL.md 与 references 内文本同步进 memory_docs（增量按 mtime；可全量重建）。兼容索引中仍存的 `.agent/skills/`、`.clawflow/skills/` 路径元数据。
+ * 将 `.agent/.skills/**` 下 SKILL.md 与 references 内文本同步进 memory_docs（增量按 mtime；可全量重建）。兼容索引中仍存的 `.agent/skills/`、`.clawflow/skills/`、`.agent/.clawflow/skills/` 路径元数据。
  */
 export function syncSkillTextSourcesToMemoryDb(
   workspaceRoot: string,

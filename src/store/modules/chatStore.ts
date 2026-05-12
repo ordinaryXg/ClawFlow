@@ -443,7 +443,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   streamingActivity: null,
   streamingThinking: null,
   error: null,
-  interactionMode: 'plan',
+  interactionMode: 'multitask',
   toolApprovalPending: null,
 
   setInteractionMode: (mode) => set({ interactionMode: mode }),

@@ -1,6 +1,7 @@
 /**
- * 工作区「Agent 配置」统一根目录：`.agent/` 下集中 **`.skills`**、**`.subagent-roles`**、主 Agent 角色、工具清单、以及片段笔记目录 **`.memory/`**（点目录）。
- * `.clawflow/` 仍保留会话与 workspace 元数据等；**`.subclawflow/`**（工作区根下）为各子 Agent 槽位工作缓存，与本目录分离。
+ * 工作区布局（主进程约定，POSIX 风格相对路径）：
+ * - **`.agent/`**：主 Agent 角色、工具清单、技能、`.memory/`、以及主会话元数据目录 **`.clawflow/`**（实际路径为 **`.agent/.clawflow/`**：会话 JSON、待办、爬取、Hermes DB 等）。
+ * - **`.subagent/`**：子 Agent 专用区——**`.subclawflow/`**（槽位工作缓存）、**`.submemory/`**（槽位记忆）、**`.subroleAgent/`**（各槽位角色模板），与主 `.agent/.memory/` 分离。
  */
 
 import * as fs from 'fs';
@@ -12,7 +13,8 @@ export const WORKSPACE_AGENT_DIR = '.agent';
 export const WORKSPACE_AGENT_TOOL_REL = '.agent/.tool';
 export const WORKSPACE_ROLE_AGENT_DIR = '.agent/.roleAgent';
 export const WORKSPACE_AGENT_SKILLS_REL = '.agent/.skills';
-export const WORKSPACE_SUBAGENT_ROLE_DIR = '.agent/.subagent-roles';
+/** 子 Agent 角色模板根（在 `.subagent/` 下，与主 `.agent/` 分离） */
+export const WORKSPACE_SUBAGENT_ROLE_DIR = '.subagent/.subroleAgent';
 
 /** 片段/当日笔记等落盘目录（点目录，位于 `.agent/` 下，与角色、技能并列） */
 export const WORKSPACE_AGENT_DOT_MEMORY_REL = '.agent/.memory';
@@ -34,14 +36,14 @@ export function workspaceSkillsDirAbs(workspaceRoot: string): string {
 }
 
 export function workspaceSubagentRolesDirAbs(workspaceRoot: string): string {
-  return path.join(workspaceAgentRootAbs(workspaceRoot), '.subagent-roles');
+  return path.join(path.resolve(workspaceRoot), '.subagent', '.subroleAgent');
 }
 
 export function workspaceAgentDotMemoryDirAbs(workspaceRoot: string): string {
   return path.join(workspaceAgentRootAbs(workspaceRoot), '.memory');
 }
 
-/** 将历史路径 `.clawflow/skills`、旧版 `.agent/skills` 规范为 `.agent/.skills`（模型或旧数据可能仍传旧前缀）。 */
+/** 将历史路径 `.clawflow/skills`、`.agent/.clawflow/skills`、旧版 `.agent/skills` 规范为 `.agent/.skills`（模型或旧数据可能仍传旧前缀）。 */
 export function normalizeHermesSkillWorkspaceRel(rel: string): string {
   const n = String(rel ?? '')
     .trim()
@@ -50,6 +52,9 @@ export function normalizeHermesSkillWorkspaceRel(rel: string): string {
   if (n === '.clawflow/skills' || n.startsWith('.clawflow/skills/')) {
     return `.agent/.skills${n.slice('.clawflow/skills'.length)}`;
   }
+  if (n === '.agent/.clawflow/skills' || n.startsWith('.agent/.clawflow/skills/')) {
+    return `.agent/.skills${n.slice('.agent/.clawflow/skills'.length)}`;
+  }
   if (n === '.agent/skills' || n.startsWith('.agent/skills/')) {
     return `.agent/.skills${n.slice('.agent/skills'.length)}`;
   }
@@ -57,17 +62,25 @@ export function normalizeHermesSkillWorkspaceRel(rel: string): string {
 }
 
 /**
- * 将旧版根目录 `.tool` / `.roleAgent` 及 `.clawflow/{skills,subagent-roles}` 迁入 `.agent/`，
- * 并将旧版无点目录 `skills` / `subagent-roles` 迁为 **`.skills`** / **`.subagent-roles`**；仅当目标尚不存在时执行。
+ * 将历史布局迁入当前约定：
+ * - 根目录 `.clawflow/` → `.agent/.clawflow/`
+ * - 根目录 `.subclawflow/`、`.submemory/` → `.subagent/.subclawflow/`、`.subagent/.submemory/`
+ * - `.agent/.subagent-roles/` → `.subagent/.subroleAgent/`
+ * - 以及旧版 `.tool` / `.roleAgent`、无点 `skills` 等；仅当目标尚不存在时 `rename`。
  */
 export function migrateLegacyWorkspaceAgentBundleSync(workspaceRoot: string): void {
   const root = path.resolve(workspaceRoot);
   const agent = workspaceAgentRootAbs(root);
+  const subagent = path.join(root, '.subagent');
   try {
     fs.mkdirSync(agent, { recursive: true });
   } catch (e) {
     console.warn('[workspace-agent-layout] mkdir .agent failed:', e);
-    return;
+  }
+  try {
+    fs.mkdirSync(subagent, { recursive: true });
+  } catch (e) {
+    console.warn('[workspace-agent-layout] mkdir .subagent failed:', e);
   }
 
   const tryMove = (from: string, to: string) => {
@@ -82,8 +95,25 @@ export function migrateLegacyWorkspaceAgentBundleSync(workspaceRoot: string): vo
 
   tryMove(path.join(root, '.tool'), path.join(agent, '.tool'));
   tryMove(path.join(root, '.roleAgent'), path.join(agent, '.roleAgent'));
+
   tryMove(path.join(root, '.clawflow', 'skills'), path.join(agent, '.skills'));
   tryMove(path.join(root, '.clawflow', 'subagent-roles'), path.join(agent, '.subagent-roles'));
+
+  tryMove(path.join(root, '.clawflow'), path.join(agent, '.clawflow'));
+
+  tryMove(path.join(agent, '.clawflow', 'skills'), path.join(agent, '.skills'));
+
   tryMove(path.join(agent, 'skills'), path.join(agent, '.skills'));
   tryMove(path.join(agent, 'subagent-roles'), path.join(agent, '.subagent-roles'));
+
+  try {
+    fs.mkdirSync(subagent, { recursive: true });
+  } catch {
+    /* 目标在 .subagent 下，rename 前确保父目录存在 */
+  }
+
+  tryMove(path.join(agent, '.subagent-roles'), path.join(subagent, '.subroleAgent'));
+
+  tryMove(path.join(root, '.subclawflow'), path.join(subagent, '.subclawflow'));
+  tryMove(path.join(root, '.submemory'), path.join(subagent, '.submemory'));
 }

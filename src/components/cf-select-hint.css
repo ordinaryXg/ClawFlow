@@ -59,6 +59,11 @@
 .cf-selectHint--compact {
   min-width: 7.25rem;
 }
+.cf-selectHint--chatModel {
+  min-width: 5.5rem;
+  max-width: 168px;
+  flex: 1;
+}
 .cf-selectHint--wide {
   min-width: 11rem;
   flex: 1;

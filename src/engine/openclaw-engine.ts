@@ -26,7 +26,7 @@ export interface OpenClawEngineConfig {
   gatewayStartTimeout?: number;
   /** 是否启用详细日志（默认：false） */
   verbose?: boolean;
-  /** 工作空间根目录（其下包含 `.clawflow/`） */
+  /** 工作空间根目录（其下包含 `.agent/`、`.subagent/` 等） */
   workspaceRoot?: string;
 }
 

@@ -29,8 +29,10 @@
 
 | 目录 | 作用 |
 |------|------|
-| **`.clawflow/`** | 主会话、待办调度、子 Agent 名册元数据（如 `sub-agents.v1.json`）、爬取记录等 |
-| **`.subclawflow/<槽位 id>/`** | 各子 Agent **工作缓存**（与主会话 `.clawflow/` 分离；每固定槽位一子目录） |
+| **`.agent/.clawflow/`** | 主会话、待办调度、子 Agent 名册元数据（如 `sub-agents.v1.json`）、爬取与 Hermes DB 等 |
+| **`.subagent/.subclawflow/<槽位 id>/`** | 各子 Agent **工作缓存**（与主 `.agent/.clawflow/` 分离；每固定槽位一子目录） |
+| **`.subagent/.submemory/<槽位 id>/`** | 各子 Agent **独立记忆**（与主 `.agent/.memory/` 分离） |
+| **`.subagent/.subroleAgent/<模板 id>/`** | 各子 Agent **角色模板**（可覆盖） |
 
 ---
 

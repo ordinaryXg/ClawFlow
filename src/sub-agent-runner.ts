@@ -4,10 +4,11 @@ import type { WebContents } from 'electron';
 import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from './engine/clawflow-engine';
 import { buildSubAgentRoleSystemContent } from './engine/subagent-role-context';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
+import { writeRunSnapshot } from './sub-agent-run-snapshot';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
 import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
 import { isReservedSubAgentSlotId } from './shared/sub-agent-roster-constants';
-import { subclawflowSlotDirAbs } from './workspace-service';
+import { subclawflowSlotDirAbs, submemorySlotDirAbs } from './workspace-service';
 
 export type SubAgentRunRequest = {
   workspaceRoot: string;
@@ -50,6 +51,12 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     return { ok: false, runId, error: 'slot_already_running' };
   }
   runningBySlot.set(key, runId);
+  let logTail = '';
+  const flushLog = (chunk: string) => {
+    if (!chunk) return;
+    logTail += chunk;
+    if (logTail.length > 64000) logTail = logTail.slice(-64000);
+  };
 
   const setStatus = async (status: 'starting' | 'running' | 'stopped' | 'error') => {
     try {
@@ -69,6 +76,7 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     await setStatus('starting');
     try {
       await fs.promises.mkdir(subclawflowSlotDirAbs(ws, slotId), { recursive: true });
+      await fs.promises.mkdir(submemorySlotDirAbs(ws, slotId), { recursive: true });
     } catch {
       /* ignore */
     }
@@ -80,6 +88,14 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
 
     await setStatus('running');
 
+    await writeRunSnapshot(ws, slotId, {
+      status: 'running',
+      taskText,
+      conversationId,
+      logTail: '',
+      updatedAt: Date.now(),
+    });
+
     const roleAgent = await buildSubAgentRoleSystemContent(ws, roleTemplateId);
     const systemPrefix = [
       roleAgent,
@@ -89,7 +105,10 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
       `子 Agent ID：${slotId}`,
       `子 Agent 名称：${label}`,
       `子 Agent 角色模板：${roleTemplateId}`,
-      `本子 Agent 工作缓存目录（相对工作区根，与主会话 .clawflow/ 分离）：.subclawflow/${slotId}/`,
+      `本子 Agent 工作缓存目录（相对工作区根，与主会话 .agent/.clawflow/ 分离）：.subagent/.subclawflow/${slotId}/`,
+      `本子 Agent 记忆目录（与主 .agent/.memory/、根目录 MEMORY.md 分离）：.subagent/.submemory/${slotId}/`,
+      `  - 片段/当日笔记建议路径：.subagent/.submemory/${slotId}/YYYY-MM-DD.md`,
+      `  - 本子槽位长期备忘（可选）：.subagent/.submemory/${slotId}/MEMORY.md`,
       behavior ? `子 Agent 行为摘要：\n${behavior}` : '子 Agent 行为摘要：（空）',
       '---',
       '',
@@ -111,7 +130,12 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
       mode: 'multitask',
       ...(req.modelId ? { modelId: req.modelId } : {}),
       workspaceRoot: ws,
-      onDelta: req.onDelta ? (text) => req.onDelta?.({ runId, slotId, text }) : undefined,
+      onDelta: req.onDelta
+        ? (text) => {
+            flushLog(text);
+            req.onDelta?.({ runId, slotId, text });
+          }
+        : (t) => flushLog(t),
       assistantMessageChannel: 'assistant_tool_summary',
       assistantMessageMeta: {
         subAgent: {
@@ -128,6 +152,13 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     });
 
     await setStatus(slotId === SKILL_AGENT_SLOT_ID ? 'running' : 'stopped');
+    await writeRunSnapshot(ws, slotId, {
+      status: 'completed',
+      taskText,
+      conversationId,
+      logTail,
+      updatedAt: Date.now(),
+    });
     if (req.oneOff && !isReservedSubAgentSlotId(slotId)) {
       try {
         const latest = await readSubAgentSlots(ws);
@@ -141,6 +172,23 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
     return { ok: true, runId, message: out.message ?? '' };
   } catch (e: unknown) {
     await setStatus('error');
+    try {
+      const ws = String(req.workspaceRoot || '').trim();
+      const slotId = String(req.slotId || '').trim();
+      const taskText = String(req.taskText || '').trim();
+      const conversationId = String(req.conversationId || '').trim();
+      if (ws && slotId) {
+        await writeRunSnapshot(ws, slotId, {
+          status: 'error',
+          taskText,
+          conversationId,
+          logTail,
+          updatedAt: Date.now(),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, runId, error: msg };
   } finally {

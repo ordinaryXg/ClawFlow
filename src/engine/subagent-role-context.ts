@@ -4,7 +4,7 @@ import type { SubAgentRoleTemplateId } from '../shared/sub-agent-types';
 import { workspaceSubagentRolesDirAbs } from '../workspace-agent-layout';
 
 /**
- * 子 Agent system 模板：优先读工作区可覆盖版本 `.agent/.subagent-roles/<id>/`；
+ * 子 Agent system 模板：优先读工作区可覆盖版本 `.subagent/.subroleAgent/<id>/`；
  * 缺失时回退为旧版单文件同目录下 `<id>.md`（兼容历史）。
  */
 export async function buildSubAgentRoleSystemContent(
@@ -14,7 +14,7 @@ export async function buildSubAgentRoleSystemContent(
   const root = path.resolve(workspaceRoot);
   const baseDir = workspaceSubagentRolesDirAbs(root);
   const dir = path.join(baseDir, roleTemplateId);
-  const files = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md'] as const;
+  const files = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'] as const;
   try {
     const parts: string[] = [];
     for (const name of files) {

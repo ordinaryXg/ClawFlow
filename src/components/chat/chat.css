@@ -483,6 +483,23 @@
   flex:1;
   min-width:140px;
 }
+.cf-chatInput__fieldGroup--modelMeter {
+  flex: 0 1 220px;
+  min-width: 0;
+  max-width: 248px;
+}
+.cf-chatInput__fieldGroup--modelMeter .cf-selectHint--chatModel {
+  flex: 1;
+  min-width: 0;
+}
+.cf-contextRing {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  opacity: 0.95;
+}
 .cf-chatInput__fieldIco{
   width:30px;
   height:30px;
@@ -795,6 +812,11 @@
   box-sizing: border-box;
 }
 .cf-chatInput--stickyFoot .cf-chatInput__fieldGroup--grow {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+}
+.cf-chatInput--stickyFoot .cf-chatInput__fieldGroup--modelMeter {
   flex: 1 1 0;
   min-width: 0;
   max-width: none;

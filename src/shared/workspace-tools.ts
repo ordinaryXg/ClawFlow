@@ -37,7 +37,8 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   embedded_browser: true,
   todos: true,
   subagents: true,
-  skills: false,
+  /** 新建工作区 / 未在 manifest 中显式写入时默认开启 Hermes 工作区技能 */
+  skills: true,
   knowledge_base: false,
 };
 

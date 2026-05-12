@@ -48,7 +48,7 @@ export const STANDARD_SUB_AGENT_ROSTER: readonly SubAgentRosterDef[] = [
 
 const STANDARD_ID_SET = new Set<string>(STANDARD_SUB_AGENT_SLOT_IDS);
 
-/** 用于 `.subclawflow/<slotId>/` 等工作区缓存子目录（与 `.clawflow/` 主会话元数据分离） */
+/** 用于 `.subagent/.subclawflow/<slotId>/` 等工作区缓存子目录（与 `.agent/.clawflow/` 主会话元数据分离） */
 export const ALL_SUBAGENT_SLOT_IDS_ORDERED: readonly string[] = [
   ...STANDARD_SUB_AGENT_SLOT_IDS,
   SKILL_AGENT_SLOT_ID,

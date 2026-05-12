@@ -1,11 +1,15 @@
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { Switch, Button } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
 import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import { useWorkspaceSkillsStore } from '../../store/modules/workspaceSkillsStore';
 import type { WorkspaceSkillListItem } from '../../shared/workspace-skills-types';
+import { skillsForHermesDiscoveryUi } from '../../shared/workspace-skills-discovery-filter';
+import { DEFAULT_SKILL_TEMPLATE_MARKDOWN } from './default-skill-template-content';
 import './hermes-skills-browser.css';
 
 type Layout = 'hub' | 'page';
@@ -58,6 +62,7 @@ const HermesSkillsBrowser: FC<Props> = ({ workspacePath, layout }) => {
   const [preview, setPreview] = useState<{ state: 'idle' } | { state: 'loading' } | { state: 'text'; text: string } | { state: 'err'; msg: string }>({
     state: 'idle',
   });
+  const [busySkill, setBusySkill] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspacePath?.trim()) {
@@ -69,23 +74,25 @@ const HermesSkillsBrowser: FC<Props> = ({ workspacePath, layout }) => {
     void load();
   }, [workspacePath, load]);
 
+  const displayList = useMemo(() => skillsForHermesDiscoveryUi(list), [list]);
+
   const selectedSkill: WorkspaceSkillListItem | null = useMemo(() => {
     if (!selectedRoot) return null;
-    return list.find((s) => s.skillRootRel === selectedRoot) ?? null;
-  }, [list, selectedRoot]);
+    return displayList.find((s) => s.skillRootRel === selectedRoot) ?? null;
+  }, [displayList, selectedRoot]);
 
   useEffect(() => {
-    if (!list.length) {
+    if (!displayList.length) {
       setSelectedRoot(null);
       setActiveFileRel(null);
       return;
     }
-    if (!selectedRoot || !list.some((s) => s.skillRootRel === selectedRoot)) {
-      const first = list[0];
+    if (!selectedRoot || !displayList.some((s) => s.skillRootRel === selectedRoot)) {
+      const first = displayList[0];
       setSelectedRoot(first.skillRootRel);
       setActiveFileRel(first.skillMdRel);
     }
-  }, [list, selectedRoot]);
+  }, [displayList, selectedRoot]);
 
   useEffect(() => {
     if (!selectedSkill) {
@@ -143,6 +150,52 @@ const HermesSkillsBrowser: FC<Props> = ({ workspacePath, layout }) => {
     void window.electronAPI?.workspaceRevealInExplorer?.(selectedSkill.skillMdRel);
   }, [selectedSkill]);
 
+  const toggleEnabled = useCallback(
+    async (skill: WorkspaceSkillListItem, next: boolean) => {
+      const rel = skill.skillRootRel;
+      setBusySkill(rel);
+      try {
+        const res = await window.electronAPI?.workspaceSkillsSetEnabled?.({ skillRootRel: rel, enabled: next });
+        if (res && typeof res === 'object' && 'ok' in res && res.ok === false) {
+          (window as unknown as { __cf_toast?: { error?: (a: string, b: string) => void } }).__cf_toast?.error?.(
+            t('skills.toggleFailedTitle'),
+            String((res as { error?: string }).error ?? '')
+          );
+          return;
+        }
+        await load();
+      } finally {
+        setBusySkill(null);
+      }
+    },
+    [load, t]
+  );
+
+  const deleteSkill = useCallback(
+    async (skill: WorkspaceSkillListItem) => {
+      if (!window.confirm(t('skills.deleteConfirm', { name: skill.name }))) return;
+      setBusySkill(skill.skillRootRel);
+      try {
+        const res = await window.electronAPI?.workspaceSkillsDeleteSkill?.(skill.skillRootRel);
+        if (res && typeof res === 'object' && 'ok' in res && res.ok === false) {
+          (window as unknown as { __cf_toast?: { error?: (a: string, b: string) => void } }).__cf_toast?.error?.(
+            t('skills.deleteFailedTitle'),
+            String((res as { error?: string }).error ?? '')
+          );
+          return;
+        }
+        if (selectedRoot === skill.skillRootRel) {
+          setSelectedRoot(null);
+          setActiveFileRel(null);
+        }
+        await load();
+      } finally {
+        setBusySkill(null);
+      }
+    },
+    [load, selectedRoot, t]
+  );
+
   const hubClass = layout === 'page' ? 'cf-hermesSkills cf-hermesSkills--page' : 'cf-hermesSkills';
 
   if (!workspacePath?.trim()) {
@@ -152,6 +205,8 @@ const HermesSkillsBrowser: FC<Props> = ({ workspacePath, layout }) => {
       </div>
     );
   }
+
+  const showEmptyTemplate = !displayList.length && !loading;
 
   return (
     <div className={hubClass}>
@@ -174,62 +229,108 @@ const HermesSkillsBrowser: FC<Props> = ({ workspacePath, layout }) => {
         </div>
       </div>
       {loadError ? <div className="cf-hermesSkills__err">{loadError}</div> : null}
-      <div className="cf-hermesSkills__split">
-        <div className="cf-hermesSkills__listCol">
-          <div className="cf-hermesSkills__listScroll">
-            {!list.length && !loading ? (
+
+      {showEmptyTemplate ? (
+        <div className="cf-hermesSkills__split">
+          <div className="cf-hermesSkills__listCol">
+            <div className="cf-hermesSkills__listScroll">
               <div className="cf-hermesSkills__empty">{t('skills.browserEmpty')}</div>
+            </div>
+          </div>
+          <div className="cf-hermesSkills__detail">
+            <div className="cf-hermesSkills__templateBanner">{t('skills.defaultTemplateBanner')}</div>
+            <div className="cf-hermesSkills__preview cf-hermesSkills__templateBody">
+              <Markdown options={mdOptions}>{DEFAULT_SKILL_TEMPLATE_MARKDOWN}</Markdown>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="cf-hermesSkills__split">
+          <div className="cf-hermesSkills__listCol">
+            <div className="cf-hermesSkills__listScroll">
+              {displayList.map((s) => {
+                const enabled = s.enabled !== false;
+                const active = selectedRoot === s.skillRootRel;
+                const busy = busySkill === s.skillRootRel;
+                return (
+                  <div
+                    key={s.skillRootRel}
+                    className={`cf-hermesSkills__skillRow${active ? ' cf-hermesSkills__skillRow--active' : ''}${!enabled ? ' cf-hermesSkills__skillRow--disabled' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="cf-hermesSkills__skillMain"
+                      onClick={() => {
+                        setSelectedRoot(s.skillRootRel);
+                        setActiveFileRel(s.skillMdRel);
+                      }}
+                    >
+                      <span className="cf-hermesSkills__skillName">{s.name}</span>
+                      <span className="cf-hermesSkills__skillPath">{s.skillRootRel}</span>
+                    </button>
+                    <div className="cf-hermesSkills__skillActions">
+                      <div className="cf-hermesSkills__skillToggle">
+                        <Switch
+                          size="small"
+                          checked={enabled}
+                          disabled={busy}
+                          checkedChildren={t('skills.switchOn')}
+                          unCheckedChildren={t('skills.switchOff')}
+                          onChange={(v) => void toggleEnabled(s, v)}
+                          aria-label={enabled ? t('skills.switchAriaEnabled') : t('skills.switchAriaDisabled')}
+                        />
+                      </div>
+                      <Button
+                        type="primary"
+                        danger
+                        size="small"
+                        className="cf-hermesSkills__delBtn"
+                        icon={<DeleteOutlined aria-hidden />}
+                        disabled={busy}
+                        onClick={() => void deleteSkill(s)}
+                      >
+                        {t('skills.actionDelete')}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="cf-hermesSkills__detail">
+            {selectedSkill ? (
+              <>
+                <div className="cf-hermesSkills__fileBar">
+                  {fileTabs.map((tab) => (
+                    <button
+                      key={tab.rel}
+                      type="button"
+                      className={`cf-hermesSkills__fileChip${activeFileRel === tab.rel ? ' cf-hermesSkills__fileChip--active' : ''}`}
+                      onClick={() => setActiveFileRel(tab.rel)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="cf-hermesSkills__preview">
+                  {preview.state === 'loading' ? <div className="cf-sub">{t('skills.browserLoading')}</div> : null}
+                  {preview.state === 'err' ? <div className="cf-hermesSkills__err">{preview.msg}</div> : null}
+                  {preview.state === 'text' ? (
+                    isMarkdownPath(activeFileRel ?? '') ? (
+                      <Markdown options={mdOptions}>{preview.text}</Markdown>
+                    ) : (
+                      <pre className="cf-hermesSkills__pre">{preview.text}</pre>
+                    )
+                  ) : null}
+                  {preview.state === 'idle' ? <div className="cf-sub">{t('skills.browserPickFile')}</div> : null}
+                </div>
+              </>
             ) : (
-              list.map((s) => (
-                <button
-                  key={s.skillRootRel}
-                  type="button"
-                  className={`cf-hermesSkills__skillBtn${selectedRoot === s.skillRootRel ? ' cf-hermesSkills__skillBtn--active' : ''}`}
-                  onClick={() => {
-                    setSelectedRoot(s.skillRootRel);
-                    setActiveFileRel(s.skillMdRel);
-                  }}
-                >
-                  <span className="cf-hermesSkills__skillName">{s.name}</span>
-                  <span className="cf-hermesSkills__skillPath">{s.skillRootRel}</span>
-                </button>
-              ))
+              <div className="cf-hermesSkills__empty">{t('skills.browserSelectSkill')}</div>
             )}
           </div>
         </div>
-        <div className="cf-hermesSkills__detail">
-          {selectedSkill ? (
-            <>
-              <div className="cf-hermesSkills__fileBar">
-                {fileTabs.map((tab) => (
-                  <button
-                    key={tab.rel}
-                    type="button"
-                    className={`cf-hermesSkills__fileChip${activeFileRel === tab.rel ? ' cf-hermesSkills__fileChip--active' : ''}`}
-                    onClick={() => setActiveFileRel(tab.rel)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div className="cf-hermesSkills__preview">
-                {preview.state === 'loading' ? <div className="cf-sub">{t('skills.browserLoading')}</div> : null}
-                {preview.state === 'err' ? <div className="cf-hermesSkills__err">{preview.msg}</div> : null}
-                {preview.state === 'text' ? (
-                  isMarkdownPath(activeFileRel ?? '') ? (
-                    <Markdown options={mdOptions}>{preview.text}</Markdown>
-                  ) : (
-                    <pre className="cf-hermesSkills__pre">{preview.text}</pre>
-                  )
-                ) : null}
-                {preview.state === 'idle' ? <div className="cf-sub">{t('skills.browserPickFile')}</div> : null}
-              </div>
-            </>
-          ) : (
-            <div className="cf-hermesSkills__empty">{t('skills.browserSelectSkill')}</div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 };

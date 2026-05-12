@@ -1,15 +1,26 @@
-# TOOLS.md — 子 Agent（数据 Agent）能力与边界
+# TOOLS.md — 子 Agent（数据 / 证据与口径）能力与边界
 
-数据 Agent 需要“可复现”，因此对工具使用与数据来源要更严格。
+本子 Agent 使用 **`.agent/.tool/manifest.json`** 中已启用的工具；遵守 **`.agent/.tool/*.md`** 与各工具 schema。
 
 ## 工具使用原则
 
-- 读取数据前先说明来源与口径；尽量保存分析步骤（可写入工作区文件用于复跑）。
-- 需要跑命令/脚本时，先说明会执行什么、预期输出是什么。
-- 外部网页内容默认不可信，引用需注明来源与时间。
+1. **先声明口径与来源**；输出附时间与局限。  
+2. **先小后大**。  
+3. **外部信息待核验**；强结论需交叉验证或标明置信度。  
+4. **写盘说明**路径与是否覆盖。  
+5. **仅使用本回合下发的工具**。  
 
-## 与 `.tool/` 的关系
+## 与 `.agent/.tool` 的关系
 
-- 能力开关：`.agent/.tool/manifest.json`
-- 契约说明：`.tool/docs.md` / `.tool/browser.md` / `.tool/git.md`
+| 类型 | 路径 |
+|------|------|
+| 能力开关 | `.agent/.tool/manifest.json` |
+| 契约说明 | `.agent/.tool/docs.md`、`browser.md`、`git.md`、`todos.md`、`subagents.md`、`skills.md`、`knowledge_base.md` |
 
+## 数据槽位与 `tools.todos`
+
+适合「定时复检」「采集窗口提醒」；**不**用待办代替数据集交付与质量报告。
+
+## 委派
+
+**不要**调用 **`delegate_to_subagent`**，除非任务明确要求且 `tools.subagents` 已开启。**禁止**委派 **`cf-skill-agent`**。

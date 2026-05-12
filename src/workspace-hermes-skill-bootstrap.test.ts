@@ -6,12 +6,15 @@ import { listWorkspaceHermesSkills } from './workspace-skills-read';
 
 describe('workspace-hermes-skill-bootstrap', () => {
   let dir: string;
+  let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-hermes-boot-'));
   });
 
   afterEach(() => {
+    warnSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -21,16 +24,16 @@ describe('workspace-hermes-skill-bootstrap', () => {
     expect(r1.created[0]).toBe(WORKSPACE_DEFAULT_HERMES_SKILL_MD);
     const list = listWorkspaceHermesSkills(dir);
     expect(list.some((s) => s.name === 'default')).toBe(true);
-    const md = fs.readFileSync(path.join(dir, '.agent', 'skills', 'default', 'SKILL.md'), 'utf8');
+    const md = fs.readFileSync(path.join(dir, '.agent', '.skills', 'default', 'SKILL.md'), 'utf8');
     expect(md).toContain('default');
   });
 
   it('does not duplicate when skills already exist', async () => {
-    fs.mkdirSync(path.join(dir, '.agent', 'skills', 'alpha'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.agent', 'skills', 'alpha', 'SKILL.md'), '# A\n', 'utf8');
+    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'SKILL.md'), '# A\n', 'utf8');
     const r = await ensureWorkspaceDefaultHermesSkill(dir);
     expect(r.created.length).toBe(0);
-    expect(fs.existsSync(path.join(dir, '.agent', 'skills', 'default', 'SKILL.md'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, '.agent', '.skills', 'default', 'SKILL.md'))).toBe(false);
   });
 
   it('second call is no-op after default exists', async () => {

@@ -42,7 +42,7 @@ export function htmlToPlainText(html: string): string {
 export type WebScrapeToolArgs = { url: string; max_chars?: number };
 
 /**
- * 供 `web_scrape` 工具调用：拉取 HTML → 纯文本，写入 `.clawflow/scrapes`，追加任务记录，返回 JSON 字符串（对话回执）。
+ * 供 `web_scrape` 工具调用：拉取 HTML → 纯文本，写入 `.agent/.clawflow/scrapes`，追加任务记录，返回 JSON 字符串（对话回执）。
  */
 export async function runWebScrapeForTool(
   args: WebScrapeToolArgs,
@@ -157,7 +157,7 @@ export async function runWebScrapeForTool(
         truncated,
         excerpt,
         artifactRelPath: artifactRel,
-        note: 'Full plain text saved under workspace .clawflow/scrapes; right tab lists recent runs.',
+        note: 'Full plain text saved under workspace .agent/.clawflow/scrapes; right tab lists recent runs.',
       },
       null,
       2

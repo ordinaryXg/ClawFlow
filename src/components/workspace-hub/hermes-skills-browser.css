@@ -89,6 +89,76 @@
   background: rgba(80, 140, 255, 0.12);
 }
 
+.cf-hermesSkills__skillRow {
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.06);
+}
+:root[data-theme='light'] .cf-hermesSkills__skillRow {
+  background: rgba(0, 0, 0, 0.04);
+}
+.cf-hermesSkills__skillRow--active {
+  border-color: var(--border);
+  background: rgba(80, 140, 255, 0.12);
+}
+.cf-hermesSkills__skillRow--disabled {
+  opacity: 0.55;
+}
+.cf-hermesSkills__skillMain {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+.cf-hermesSkills__skillMain:hover {
+  background: rgba(120, 120, 160, 0.08);
+}
+.cf-hermesSkills__skillActions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding: 8px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='light'] .cf-hermesSkills__skillActions {
+  border-top-color: rgba(0, 0, 0, 0.06);
+}
+.cf-hermesSkills__skillToggle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.cf-hermesSkills__skillToggle .ant-switch {
+  min-width: 52px;
+}
+.cf-hermesSkills__delBtn.ant-btn {
+  flex-shrink: 0;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.cf-hermesSkills__templateBanner {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  background: rgba(80, 140, 255, 0.08);
+}
+.cf-hermesSkills__templateBody {
+  border-top: none;
+}
+
 .cf-hermesSkills__skillName {
   font-weight: 700;
   display: block;

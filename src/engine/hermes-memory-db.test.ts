@@ -6,7 +6,9 @@ import { invalidateHermesMemoryDbCache, searchHermesMemory, syncSkillTextSources
 function canLoadSqlite(): boolean {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('better-sqlite3');
+    const BetterSqlite = require('better-sqlite3');
+    const db = new BetterSqlite(':memory:');
+    db.close();
     return true;
   } catch {
     return false;
@@ -20,15 +22,15 @@ run('hermes-memory-db FTS5', () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-hermes-'));
-    fs.mkdirSync(path.join(dir, '.clawflow', 'skills', 'demo-skill'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'demo-skill'), { recursive: true });
     fs.writeFileSync(
-      path.join(dir, '.clawflow', 'skills', 'demo-skill', 'SKILL.md'),
+      path.join(dir, '.agent', '.skills', 'demo-skill', 'SKILL.md'),
       '# Demo\n\nHello Hermes FTS banana search test.\n',
       'utf8'
     );
-    fs.mkdirSync(path.join(dir, '.clawflow', 'skills', 'demo-skill', 'references'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'demo-skill', 'references'), { recursive: true });
     fs.writeFileSync(
-      path.join(dir, '.clawflow', 'skills', 'demo-skill', 'references', 'note.txt'),
+      path.join(dir, '.agent', '.skills', 'demo-skill', 'references', 'note.txt'),
       'Banana pudding recipe notes.',
       'utf8'
     );

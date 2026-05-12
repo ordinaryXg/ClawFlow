@@ -2,7 +2,6 @@ import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Input, Select } from 'antd';
 import { useSubAgentStore } from '../../store/modules/subAgentStore';
-import { useChatStore } from '../../store/modules/chatStore';
 import './WorkspaceHubPanels.css';
 import ToolApprovalBar from '../chat/ToolApprovalBar';
 import type { ToolApprovalPendingState } from '../../store/modules/chatStore';
@@ -16,11 +15,29 @@ const ROLE_LABELS: Record<Exclude<SubAgentRoleTemplateId, 'skills'>, string> = {
   assistant: '助理 Agent（推进/拆解/闭环）',
 };
 
+function excerptConversationMessages(
+  messages: Array<{ role?: string; content?: string }> | undefined,
+  max = 8
+): string {
+  const arr = Array.isArray(messages) ? messages : [];
+  const tail = arr.slice(-max);
+  if (!tail.length) return '';
+  return tail
+    .map((m) => {
+      const role = String(m?.role ?? '?');
+      const c = String(m?.content ?? '');
+      const one = c.replace(/\s+/g, ' ').trim();
+      const clip = one.length > 280 ? `${one.slice(0, 280)}…` : one;
+      return `[${role}] ${clip}`;
+    })
+    .join('\n\n');
+}
+
 const SubAgentsHubPanel: FC = () => {
   const { t } = useTranslation();
   const slots = useSubAgentStore((s) => s.slots);
+  const runSnapshots = useSubAgentStore((s) => s.runSnapshots);
   const load = useSubAgentStore((s) => s.load);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
 
   const badges = useMemo(
     () =>
@@ -40,12 +57,13 @@ const SubAgentsHubPanel: FC = () => {
   const [editRoleTemplateId, setEditRoleTemplateId] = useState<SubAgentRoleTemplateId>('assistant');
   const [saving, setSaving] = useState(false);
 
-  const [runOpen, setRunOpen] = useState(false);
-  const [runSlotId, setRunSlotId] = useState<string>('');
-  const [runTaskText, setRunTaskText] = useState<string>('');
-  const [running, setRunning] = useState(false);
   const [runLogBySlot, setRunLogBySlot] = useState<Record<string, string>>({});
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalPendingState | null>(null);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailSlotId, setDetailSlotId] = useState<string>('');
+  const [detailConvExcerpt, setDetailConvExcerpt] = useState<string>('');
+  const [detailConvTitle, setDetailConvTitle] = useState<string>('');
 
   useEffect(() => {
     void load();
@@ -58,7 +76,6 @@ const SubAgentsHubPanel: FC = () => {
       setRunLogBySlot((m) => ({ ...m, [p.slotId]: (m[p.slotId] ?? '') + p.text }));
     });
     const offFinal = window.electronAPI?.onSubAgentsRunFinal?.((p) => {
-      setRunning(false);
       if (p.ok && p.message && p.slotId) {
         setRunLogBySlot((m) => ({ ...m, [p.slotId]: (m[p.slotId] ?? '') + `\n\n[final]\n${p.message}` }));
       } else if (!p.ok && p.error && p.slotId) {
@@ -83,6 +100,43 @@ const SubAgentsHubPanel: FC = () => {
       offApproval?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!detailOpen || !detailSlotId) return;
+    const snap = runSnapshots[detailSlotId];
+    const cid = String(snap?.conversationId ?? '').trim();
+    if (!cid) {
+      setDetailConvExcerpt('');
+      setDetailConvTitle('');
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await window.electronAPI?.engineGetConversations?.();
+        const rawList = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : [];
+        const conv = rawList.find((c: { id?: string }) => String(c?.id ?? '') === cid);
+        if (cancelled) return;
+        if (conv && typeof conv === 'object') {
+          setDetailConvTitle(String((conv as { title?: string }).title ?? cid));
+          setDetailConvExcerpt(
+            excerptConversationMessages((conv as { messages?: Array<{ role?: string; content?: string }> }).messages)
+          );
+        } else {
+          setDetailConvTitle(cid);
+          setDetailConvExcerpt(t('chat.workspaceHub.subAgentsDetailsConvMissing'));
+        }
+      } catch {
+        if (!cancelled) {
+          setDetailConvTitle(cid);
+          setDetailConvExcerpt(t('chat.workspaceHub.subAgentsDetailsConvErr'));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detailOpen, detailSlotId, runSnapshots, t]);
 
   const roleSelectOptions: { value: SubAgentRoleTemplateId; label: string }[] = useMemo(() => {
     if (editId === SKILL_AGENT_SLOT_ID) {
@@ -120,36 +174,15 @@ const SubAgentsHubPanel: FC = () => {
     }
   };
 
-  const openRun = (id: string) => {
-    setRunSlotId(id);
-    setRunTaskText('');
-    setRunOpen(true);
+  const openDetails = (slotId: string) => {
+    setDetailSlotId(slotId);
+    setDetailOpen(true);
   };
 
-  const doRun = async () => {
-    const cid = String(activeConversationId ?? '').trim();
-    if (!cid) return;
-    const text = runTaskText.trim();
-    if (!text) return;
-    setRunning(true);
-    setRunLogBySlot((m) => ({ ...m, [runSlotId]: '' }));
-    try {
-      const res = await window.electronAPI?.subAgentsRun?.({ slotId: runSlotId, taskText: text, conversationId: cid });
-      if (res && typeof res === 'object' && 'ok' in res && res.ok === false) {
-        const err = typeof (res as any).error === 'string' ? (res as any).error : 'run_failed';
-        if (err === 'slot_already_running') {
-          (window as any).__cf_toast?.warning?.('子 Agent 正在运行中', '同一个 slot 同时只能运行 1 个任务。');
-        } else {
-          (window as any).__cf_toast?.error?.('子 Agent 运行失败', err);
-        }
-        setRunning(false);
-        return;
-      }
-      setRunOpen(false);
-    } catch {
-      setRunning(false);
-    }
-  };
+  const detailSlot = useMemo(() => slots.find((s) => s.id === detailSlotId) ?? null, [slots, detailSlotId]);
+  const detailSnap = runSnapshots[detailSlotId];
+  const liveLog = runLogBySlot[detailSlotId] ?? '';
+  const mergedLog = liveLog.trim() ? liveLog : detailSnap?.logTail ?? '';
 
   return (
     <div className="cf-hubPage">
@@ -203,23 +236,10 @@ const SubAgentsHubPanel: FC = () => {
                 <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => openEdit(a)}>
                   {t('common.edit')}
                 </button>
-                <button
-                  type="button"
-                  className="cf-btn cf-btnGhost cf-btnSmall"
-                  onClick={() => openRun(a.id)}
-                  disabled={
-                    running || a.status === 'running' || a.status === 'starting' || a.id === SKILL_AGENT_SLOT_ID
-                  }
-                  title={a.id === SKILL_AGENT_SLOT_ID ? t('chat.workspaceHub.subAgentsSkillRunDisabled') : undefined}
-                >
-                  {t('chat.workspaceHub.subAgentsRunAction')}
+                <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => openDetails(a.id)}>
+                  {t('chat.workspaceHub.subAgentsDetailsAction')}
                 </button>
               </div>
-              {runLogBySlot[a.id] ? (
-                <pre className="cf-hubCard__body" style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 12 }}>
-                  {runLogBySlot[a.id]}
-                </pre>
-              ) : null}
             </div>
           ))
         )}
@@ -237,12 +257,7 @@ const SubAgentsHubPanel: FC = () => {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
-          <Select
-            value={editRoleTemplateId}
-            style={{ width: '100%' }}
-            disabled
-            options={roleSelectOptions}
-          />
+          <Select value={editRoleTemplateId} style={{ width: '100%' }} disabled options={roleSelectOptions} />
           <Input.TextArea
             value={editBehavior}
             onChange={(e) => setEditBehavior(e.target.value)}
@@ -253,24 +268,80 @@ const SubAgentsHubPanel: FC = () => {
       </Modal>
 
       <Modal
-        open={runOpen}
-        title={t('chat.workspaceHub.subAgentsRunTitle')}
-        okText={t('chat.workspaceHub.subAgentsRunAction')}
-        cancelText={t('common.cancel')}
-        confirmLoading={running}
-        onCancel={() => setRunOpen(false)}
-        onOk={() => void doRun()}
+        open={detailOpen}
+        title={t('chat.workspaceHub.subAgentsDetailsTitle')}
+        footer={null}
+        onCancel={() => setDetailOpen(false)}
         destroyOnHidden
-        width={920}
-        styles={{ body: { paddingTop: 12 } }}
+        width={880}
+        styles={{ body: { paddingTop: 12, maxHeight: '72vh', overflow: 'auto' } }}
       >
-        <Input.TextArea
-          value={runTaskText}
-          onChange={(e) => setRunTaskText(e.target.value)}
-          placeholder={t('chat.workspaceHub.subAgentsRunPlaceholder')}
-          autoSize={{ minRows: 16, maxRows: 32 }}
-          style={{ fontSize: 14, lineHeight: 1.55 }}
-        />
+        {detailSlot ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                {t('chat.workspaceHub.subAgentsDetailsSlot')}
+              </div>
+              <div style={{ fontSize: 13 }}>
+                <strong>{detailSlot.label || detailSlot.id}</strong>
+                <span className="cf-sub" style={{ marginLeft: 8, fontSize: 12 }}>
+                  ({detailSlot.id})
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                {t('chat.workspaceHub.subAgentsDetailsStatus')}
+              </div>
+              <div style={{ fontSize: 13 }}>{t(`chat.workspaceHub.subAgentStatus.${detailSlot.status}`)}</div>
+            </div>
+            {detailSnap?.taskText ? (
+              <div>
+                <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                  {t('chat.workspaceHub.subAgentsDetailsLastTask')}
+                </div>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.5 }}>{detailSnap.taskText}</pre>
+              </div>
+            ) : (
+              <div className="cf-sub" style={{ fontSize: 12 }}>
+                {t('chat.workspaceHub.subAgentsDetailsNoTask')}
+              </div>
+            )}
+            {detailSnap ? (
+              <div>
+                <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                  {t('chat.workspaceHub.subAgentsDetailsRunState')}
+                </div>
+                <div style={{ fontSize: 13 }}>{t(`chat.workspaceHub.subAgentsPersistStatus.${detailSnap.status}`)}</div>
+                {detailSnap.status === 'interrupted' ? (
+                  <p className="cf-sub" style={{ fontSize: 12, marginTop: 6 }}>
+                    {t('chat.workspaceHub.subAgentsDetailsInterruptedHint')}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <div>
+              <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                {t('chat.workspaceHub.subAgentsDetailsConv')}
+              </div>
+              <div style={{ fontSize: 12, marginBottom: 6 }}>
+                <span className="cf-sub">{t('chat.workspaceHub.subAgentsDetailsConvTitle')}：</span>
+                {detailConvTitle || '—'}
+              </div>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.45, maxHeight: 220, overflow: 'auto' }}>
+                {detailConvExcerpt || t('chat.workspaceHub.subAgentsDetailsConvEmpty')}
+              </pre>
+            </div>
+            <div>
+              <div className="cf-sub" style={{ fontSize: 11, marginBottom: 4 }}>
+                {t('chat.workspaceHub.subAgentsDetailsLog')}
+              </div>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.45, maxHeight: 280, overflow: 'auto' }}>
+                {mergedLog.trim() ? mergedLog : t('chat.workspaceHub.subAgentsDetailsLogEmpty')}
+              </pre>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

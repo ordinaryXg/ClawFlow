@@ -9,4 +9,6 @@ export type WorkspaceSkillListItem = {
   skillMdRel: string;
   /** `references/` 下可预览的 .md / .txt */
   referenceFiles: Array<{ relPath: string }>;
+  /** UI 启用（缺省 true）；禁用时模型侧 `workspace_skill_list` 会隐藏该项 */
+  enabled?: boolean;
 };
