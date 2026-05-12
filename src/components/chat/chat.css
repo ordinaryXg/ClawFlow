@@ -306,6 +306,20 @@
   text-overflow: ellipsis;
 }
 
+.cf-toolMsg__oneLine--hint {
+  font-style: italic;
+  opacity: 0.92;
+}
+
+.cf-toolMsg__outputPlaceholder {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .cf-toolMsg__body {
   margin-top: 10px;
   display: flex;

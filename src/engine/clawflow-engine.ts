@@ -328,10 +328,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   private fireSkillEvolutionHookIfNeeded(
     effRoot: string,
     conversationId: string,
-    assistantMessageMeta?: Record<string, unknown>
+    assistantMessageMeta?: Record<string, unknown>,
+    assistantMessageChannel?: string
   ): void {
     const meta0 = assistantMessageMeta;
     if (meta0 && typeof meta0 === 'object' && 'subAgent' in meta0) return;
+    if (assistantMessageChannel === 'assistant_tool_summary') return;
     if (conversationId === SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID) return;
     void maybeScheduleSkillEvolutionAfterMainTurn({
       workspaceRoot: effRoot,
@@ -842,7 +844,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       channel: params.assistantMessageChannel,
       meta: params.assistantMessageMeta,
     });
-    this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
+    this.fireSkillEvolutionHookIfNeeded(
+      effRoot,
+      params.conversationId,
+      params.assistantMessageMeta,
+      params.assistantMessageChannel
+    );
     return { message: reply };
   }
 
@@ -903,7 +910,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         channel: params.assistantMessageChannel,
         meta: params.assistantMessageMeta,
       });
-      this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
+      this.fireSkillEvolutionHookIfNeeded(
+        effRoot,
+        params.conversationId,
+        params.assistantMessageMeta,
+        params.assistantMessageChannel
+      );
       return reply;
     }
 
@@ -940,7 +952,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         channel: params.assistantMessageChannel,
         meta: params.assistantMessageMeta,
       });
-      this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
+      this.fireSkillEvolutionHookIfNeeded(
+        effRoot,
+        params.conversationId,
+        params.assistantMessageMeta,
+        params.assistantMessageChannel
+      );
       return reply;
     }
 
@@ -956,7 +973,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       channel: params.assistantMessageChannel,
       meta: params.assistantMessageMeta,
     });
-    this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
+    this.fireSkillEvolutionHookIfNeeded(
+      effRoot,
+      params.conversationId,
+      params.assistantMessageMeta,
+      params.assistantMessageChannel
+    );
     return replyPersist;
   }
 }

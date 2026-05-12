@@ -86,6 +86,19 @@ export interface IElectronAPI {
   quitApp: () => Promise<void>;
   appRelaunch: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
+  intelligenceGetProfile: () => Promise<
+    | {
+        ok: true;
+        xp: number;
+        level: number;
+        progress01: number;
+        xpIntoLevel: number;
+        xpForNext: number;
+        totalUserManualRounds: number;
+        lastEvolutionAtMs?: number;
+      }
+    | { ok: false; error: string }
+  >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceSetActive: (
     folderPath: string,
@@ -363,6 +376,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.invoke('app:quit'),
   appRelaunch: () => ipcRenderer.invoke('app:relaunch'),
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
+  intelligenceGetProfile: () => ipcRenderer.invoke('intelligence:getProfile'),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
   workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),

@@ -1,0 +1,113 @@
+/* 左下角：智能档案 + 视图切换，同一行固定于视口 */
+.cf-bottomShellFabs {
+  position: fixed;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  z-index: 1500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cf-bottomShellFabs .cf-viewModeFab {
+  position: static;
+  left: auto;
+  bottom: auto;
+}
+
+.cf-intelligenceFab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cf-intelligenceFab:hover {
+  border-color: rgba(30, 91, 69, 0.45);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.28);
+}
+
+.cf-intelligenceFab:focus-visible {
+  outline: 2px solid rgba(88, 166, 255, 0.65);
+  outline-offset: 2px;
+}
+
+.cf-intelligenceFab--stickyBar {
+  min-width: 0;
+  width: auto;
+  height: auto;
+  padding: 5px 8px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cf-intelligenceFab__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.cf-intelligenceFab__lv {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+.cf-intelligencePopover {
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.cf-intelligencePopover__title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.cf-intelligencePopover__row {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.88;
+  margin-bottom: 4px;
+}
+
+.cf-intelligencePopover__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.22);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.cf-intelligencePopover__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.55), rgba(46, 160, 67, 0.65));
+}
+
+@media (max-width: 980px) {
+  .cf-bottomShellFabs {
+    left: 12px;
+    bottom: 12px;
+    gap: 8px;
+  }
+
+  .cf-intelligenceFab {
+    min-width: 38px;
+    height: 38px;
+    padding: 0 8px;
+  }
+}

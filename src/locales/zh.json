@@ -10,6 +10,17 @@
       "shortLabel": "视图",
       "switchToStandard": "切换为标准布局",
       "switchToAlternate": "切换为便签式布局（桌面）"
+    },
+    "intelligence": {
+      "title": "智能档案",
+      "level": "等级 {{level}} / 100",
+      "xp": "智能经验 {{xp}}",
+      "nextXp": "距下一级约 {{n}} 点经验",
+      "maxLevel": "已达最高等级",
+      "rounds": "累计手动问答 {{n}} 轮",
+      "loadError": "无法读取智能档案",
+      "noWorkspace": "请先打开工作区",
+      "loading": "加载中…"
     }
   },
   "sticky": {
@@ -396,7 +407,10 @@
       "argsTitle": "参数摘要",
       "outputTitle": "输出",
       "debugMeta": "调试信息（meta）",
-      "callId": "调用 ID"
+      "callId": "调用 ID",
+      "readFileRunning": "正在读取文件…",
+      "readFileDoneCollapsed": "读取完成 · 展开查看输出",
+      "readFileErrorCollapsed": "读取失败 · 展开查看详情"
     },
     "workspaceLockedHint": "对话开始后将锁定工作空间；请新建会话后再切换。",
     "starterChipsAria": "快捷示例，点击填入输入框",

@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import { useShellViewStore } from '../../store/modules/shellViewStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../../utils/workspace-path';
 import ViewModeFab from '../ViewModeFab';
+import IntelligenceProfileButton from '../IntelligenceProfileButton';
 import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../workspace/WorkspaceCreateModal';
 import StickyFileStrip from './StickyFileStrip';
@@ -544,6 +545,7 @@ const StickyNoteShell: FC = () => {
             <span className="cf-stickyMain__sortPill" title={t('sticky.sortPlaceholder')}>
               {t('sticky.sortDefault')}
             </span>
+            <IntelligenceProfileButton variant="stickyBar" />
             <ViewModeFab variant="stickyBar" />
           </div>
         </header>

@@ -333,7 +333,11 @@ export class ToolRuntime {
         const out = await entry.handler(args, ctx);
         const content = typeof out === 'string' ? out : JSON.stringify(out);
         results.push({ tool_call_id: call.id, content });
-        const summary = truncateForToolLog(content, 320);
+        const n = String(name ?? '');
+        /** 读文件类：不在流式对话区注入正文摘要，避免大段内容刷屏；完整输出仅在工具卡片展开区展示 */
+        const omitStreamBody =
+          n === 'workspace_read_file' || n === 'workspace_read_file_preview';
+        const summary = omitStreamBody ? '' : truncateForToolLog(content, 320);
         ctx.onDelta?.(`[tool:done] ${name}${summary ? `\n${summary}\n` : '\n'}`);
         const isAsyncReceipt =
           String(name ?? '') === 'delegate_to_subagent' && /"state"\s*:\s*"running"/i.test(String(content ?? ''));

@@ -86,6 +86,19 @@ export interface IElectronAPI {
   quitApp: () => Promise<void>;
   appRelaunch: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
+  intelligenceGetProfile: () => Promise<
+    | {
+        ok: true;
+        xp: number;
+        level: number;
+        progress01: number;
+        xpIntoLevel: number;
+        xpForNext: number;
+        totalUserManualRounds: number;
+        lastEvolutionAtMs?: number;
+      }
+    | { ok: false; error: string }
+  >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceGetDefaultPath: () => Promise<string>;
   workspaceRemove: (

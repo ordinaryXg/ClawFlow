@@ -11,7 +11,7 @@ import ToastHost from './common/ToastHost';
 import Titlebar from './Titlebar';
 import ChatRightTabs from './chat/ChatRightTabs';
 import WorkspaceSidebar from './WorkspaceSidebar';
-import ViewModeFab from './ViewModeFab';
+import BottomShellFabs from './BottomShellFabs';
 import StickyNoteShell from './sticky/StickyNoteShell';
 import { ShellLayoutProvider } from '../context/ShellLayoutContext';
 import { useShellViewStore } from '../store/modules/shellViewStore';
@@ -190,7 +190,7 @@ const Layout: FC = () => {
         </div>
       </div>
 
-      {!useStickyDesktopLayout ? <ViewModeFab /> : null}
+      {!useStickyDesktopLayout ? <BottomShellFabs /> : null}
       <ToastHost />
     </>
   );

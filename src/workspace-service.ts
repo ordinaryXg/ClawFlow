@@ -10,6 +10,7 @@ import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { ensureWorkspaceSubAgentRoleTemplates } from './workspace-subagent-role-bootstrap';
 import { ensureWorkspaceDefaultHermesSkill } from './workspace-hermes-skill-bootstrap';
+import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import {
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
@@ -547,6 +548,15 @@ export async function ensureWorkspaceInitialized(
     await fs.promises.mkdir(workspaceAgentDotMemoryDirAbs(root), { recursive: true });
   } catch {
     /* ignore */
+  }
+  try {
+    const { created } = await ensureWorkspaceMainMemoryTemplates(root);
+    if (created.length) {
+      console.log('[workspace-service] main .memory templates created:', created.join(', '));
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
   }
   await ensureSubagentWorkspaceTree(root);
 

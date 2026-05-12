@@ -10,6 +10,17 @@
       "shortLabel": "View",
       "switchToStandard": "Switch to standard layout",
       "switchToAlternate": "Switch to sticky-note layout (desktop)"
+    },
+    "intelligence": {
+      "title": "Intelligence profile",
+      "level": "Level {{level}} / 100",
+      "xp": "Intelligence XP {{xp}}",
+      "nextXp": "About {{n}} XP to next level",
+      "maxLevel": "Maximum level reached",
+      "rounds": "{{n}} manual Q&A rounds recorded",
+      "loadError": "Could not load intelligence profile",
+      "noWorkspace": "Open a workspace first",
+      "loading": "Loading…"
     }
   },
   "sticky": {
@@ -396,7 +407,10 @@
       "argsTitle": "Arguments",
       "outputTitle": "Output",
       "debugMeta": "Debug (meta)",
-      "callId": "Call ID"
+      "callId": "Call ID",
+      "readFileRunning": "Reading file…",
+      "readFileDoneCollapsed": "Done · expand to view output",
+      "readFileErrorCollapsed": "Failed · expand for details"
     },
     "workspaceLockedHint": "Workspace is locked after the conversation starts. Create a new session to switch.",
     "starterChipsAria": "Quick examples—click to fill the input",

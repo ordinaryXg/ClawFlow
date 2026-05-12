@@ -79,12 +79,30 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
   }, [statusKey, t]);
 
   const argsPreview = coerceString(meta?.argumentsPreview);
-  const summary = useMemo(() => summarize(message.content, 160), [message.content]);
+  const toolName = coerceString(meta?.toolName);
+  const isReadFileTool =
+    toolName === 'workspace_read_file' || toolName === 'workspace_read_file_preview';
+
+  const summary = useMemo(() => {
+    if (isReadFileTool) return '';
+    return summarize(message.content, 160);
+  }, [message.content, isReadFileTool]);
+
+  const readFileCollapsedHint = useMemo(() => {
+    if (!isReadFileTool) return null;
+    if (statusKey === 'running') return t('chat.toolMessage.readFileRunning');
+    if (statusKey === 'error') return t('chat.toolMessage.readFileErrorCollapsed');
+    if (statusKey === 'result') return t('chat.toolMessage.readFileDoneCollapsed');
+    return null;
+  }, [isReadFileTool, statusKey, t]);
 
   const loadingIcon = useMemo(() => {
     if (statusKey !== 'running') return null;
-    const toolName = coerceString(meta?.toolName);
-    if (toolName === 'delegate_to_subagent' || isSubAgentKind(kind)) {
+    const tn = coerceString(meta?.toolName);
+    if (tn === 'delegate_to_subagent' || isSubAgentKind(kind)) {
+      return <LoadingOutlined className="cf-toolMsg__loading" spin />;
+    }
+    if (tn === 'workspace_read_file' || tn === 'workspace_read_file_preview') {
       return <LoadingOutlined className="cf-toolMsg__loading" spin />;
     }
     return null;
@@ -130,7 +148,11 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
               {statusLabel}
             </span>
           ) : null}
-          {summary ? <span className="cf-toolMsg__oneLine">{summary}</span> : null}
+          {readFileCollapsedHint ? (
+            <span className="cf-toolMsg__oneLine cf-toolMsg__oneLine--hint">{readFileCollapsedHint}</span>
+          ) : summary ? (
+            <span className="cf-toolMsg__oneLine">{summary}</span>
+          ) : null}
         </summary>
         <div className="cf-toolMsg__body">
           {message.toolCallId ? (
@@ -147,7 +169,11 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
           ) : null}
           <div className="cf-toolMsg__section">
             <div className="cf-toolMsg__sectionTitle">{t('chat.toolMessage.outputTitle')}</div>
-            <pre className="cf-toolMsg__pre">{String(message.content ?? '')}</pre>
+            {isReadFileTool && statusKey === 'running' ? (
+              <div className="cf-toolMsg__outputPlaceholder">{t('chat.toolMessage.readFileRunning')}</div>
+            ) : (
+              <pre className="cf-toolMsg__pre">{String(message.content ?? '')}</pre>
+            )}
           </div>
           {metaJson ? (
             <details className="cf-toolMsg__metaFold">
