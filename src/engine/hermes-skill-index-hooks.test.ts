@@ -5,9 +5,12 @@ import {
 
 describe('hermes-skill-index-hooks', () => {
   it('detects skill tree prefix', () => {
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow/skills')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.skills')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.skills/foo/SKILL.md')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent\\.skills\\foo\\SKILL.md')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/skills')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/skills/foo/SKILL.md')).toBe(true);
     expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow/skills/foo/SKILL.md')).toBe(true);
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow\\skills\\foo\\SKILL.md')).toBe(true);
     expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow/other')).toBe(false);
   });
 
@@ -15,7 +18,7 @@ describe('hermes-skill-index-hooks', () => {
     expect(
       patchSummaryTouchesHermesSkillTree({
         added: ['src/x.ts'],
-        modified: ['.clawflow/skills/a/SKILL.md'],
+        modified: ['.agent/.skills/a/SKILL.md'],
         deleted: [],
       })
     ).toBe(true);

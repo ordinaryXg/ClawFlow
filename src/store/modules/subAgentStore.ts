@@ -8,7 +8,22 @@ function coerceSlots(raw: unknown): SubAgentSlot[] {
     const o = x as Record<string, unknown>;
     if (typeof o.id !== 'string' || typeof o.label !== 'string' || typeof o.behavior !== 'string') return false;
     const st = o.status;
-    return st === 'stopped' || st === 'starting' || st === 'running' || st === 'error';
+    if (!(st === 'stopped' || st === 'starting' || st === 'running' || st === 'error')) return false;
+    const r = o.roleTemplateId;
+    if (
+      r !== undefined &&
+      r !== 'program' &&
+      r !== 'creative' &&
+      r !== 'data' &&
+      r !== 'assistant' &&
+      r !== 'skills'
+    )
+      return false;
+    const d = o.delegatable;
+    if (d !== undefined && d !== true && d !== false) return false;
+    const ste = o.skillToolsEnabled;
+    if (ste !== undefined && ste !== true && ste !== false) return false;
+    return true;
   }) as SubAgentSlot[];
 }
 

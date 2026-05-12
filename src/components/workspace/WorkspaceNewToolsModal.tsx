@@ -13,7 +13,7 @@ export type WorkspaceToolsModalMode = 'create' | 'edit';
 type Props = {
   open: boolean;
   folderPath: string | null;
-  /** create：新建工作区默认全选；edit：从 `.tool/manifest.json` 读取 */
+  /** create：新建工作区默认全选；edit：从 `.agent/.tool/manifest.json` 读取 */
   mode?: WorkspaceToolsModalMode;
   onCancel: () => void;
   onConfirm: (tools: WorkspaceToolSelection) => void;

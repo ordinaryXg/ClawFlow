@@ -35,7 +35,10 @@ import {
   isWorkspaceRelativeUnderHermesSkillTree,
   patchSummaryTouchesHermesSkillTree,
 } from './hermes-skill-index-hooks';
-import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeWorkspaceRel } from './workspace-skill-paths';
+import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillWorkspaceRel, normalizeWorkspaceRel } from './workspace-skill-paths';
+import { WORKSPACE_AGENT_SKILLS_REL } from '../workspace-agent-layout';
+import { SKILL_AGENT_SLOT_ID } from '../shared/skill-agent-constants';
+import { ensureSubAgentRosterForWorkspace } from '../sub-agent-roster-bootstrap';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -59,7 +62,7 @@ export type ToolExecutionContext = {
   abortSignal?: AbortSignal;
   /** 在主窗口内嵌浏览器（右侧 webview）中打开 URL；由 IPC 注入，无则仅能走系统浏览器 */
   openEmbeddedBrowser?: (url: string) => void;
-  /** 与 `.tool/manifest.json` 对齐；未传则不在此层校验（引擎应始终传入） */
+  /** 与 `.agent/.tool/manifest.json` 对齐；未传则不在此层校验（引擎应始终传入） */
   workspaceToolSelection?: Record<WorkspaceToolId, boolean>;
 };
 
@@ -296,7 +299,7 @@ export class ToolRuntime {
       if (ctx.workspaceToolSelection && !toolNameAllowedByWorkspaceManifest(name, ctx.workspaceToolSelection)) {
         results.push({
           tool_call_id: call.id,
-          content: `Workspace capability disabled for tool "${name}". Enable it in workspace settings (writes .tool/manifest.json).`,
+          content: `Workspace capability disabled for tool "${name}". Enable it in workspace settings (writes .agent/.tool/manifest.json).`,
         });
         continue;
       }
@@ -393,12 +396,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'delegate_to_subagent',
         description:
-          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .tool/manifest.json.',
+          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .agent/.tool/manifest.json. Reserved Skill Agent slot (`cf-skill-agent`) cannot be used here. Fixed delegate slots: `cf-sub-program`, `cf-sub-creative`, `cf-sub-data`, `cf-sub-assistant`.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            slotId: { type: 'string', description: 'Sub-agent slot id' },
+            slotId: { type: 'string', description: 'cf-sub-program | cf-sub-creative | cf-sub-data | cf-sub-assistant' },
             taskText: { type: 'string', description: 'Task to execute' },
             conversationId: { type: 'string', description: 'Target conversation id (current workspace singleton)' },
             modelId: { type: 'string', description: 'Optional model id' },
@@ -414,6 +417,14 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const conversationId = String(args?.conversationId ?? '').trim();
       const modelId = typeof args?.modelId === 'string' && args.modelId.trim() ? args.modelId.trim() : undefined;
       if (!slotId || !taskText || !conversationId) return 'ERROR: missing required fields';
+
+      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
+      const slots0 = await readSubAgentSlots(ctx.workspaceRoot);
+      const slotMeta = slots0.find((s) => s.id === slotId);
+      if (!slotMeta) return 'ERROR: slotId not found';
+      if (slotMeta.delegatable === false) {
+        return 'ERROR: this slot is reserved for the Skill Agent and cannot be delegated from the main agent';
+      }
 
       // 一次性子 Agent：不阻塞当前会话；先返回运行回执，再异步写入最终结果 tool 消息
       const runId = randomUUID();
@@ -1667,6 +1678,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (_args, ctx) => {
+      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
       const slots = await readSubAgentSlots(ctx.workspaceRoot);
       return truncateForToolLog(JSON.stringify(slots, null, 2), 12_000);
     }
@@ -1678,12 +1690,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_subagent_upsert',
         description:
-          'Create or update a sub-agent slot. Pass empty id to allocate a new id; status defaults to stopped.',
+          'Update label/behavior for a fixed sub-agent slot only. Roster ids: cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant; cf-skill-agent when workspace tools.skills is enabled. Empty id is not allowed; new slots cannot be created.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            id: { type: 'string', description: 'Slot id; empty string creates a new slot' },
+            id: { type: 'string', description: 'Fixed roster slot id (required)' },
             label: { type: 'string', description: 'Short label' },
             behavior: { type: 'string', description: 'Role / behavior summary' },
           },
@@ -1693,22 +1705,34 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (args, ctx) => {
+      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
       const rawId = String(args?.id ?? '').trim();
       const label = String(args?.label ?? '').trim();
       const behavior = String(args?.behavior ?? '');
+      if (!rawId) {
+        return 'ERROR: slot id is required; fixed roster: cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant (and cf-skill-agent when tools.skills is enabled)';
+      }
       if (!label) return 'ERROR: missing label';
-      const id = rawId || randomUUID();
       const slots = await readSubAgentSlots(ctx.workspaceRoot);
-      const idx = slots.findIndex((s) => s.id === id);
+      const idx = slots.findIndex((s) => s.id === rawId);
+      if (idx < 0) {
+        return `ERROR: unknown slot id "${rawId}". Only the fixed roster exists; arbitrary create is disabled.`;
+      }
       const next = [...slots];
-      if (idx >= 0) {
-        next[idx] = { ...next[idx], label, behavior };
+      if (next[idx].id === SKILL_AGENT_SLOT_ID) {
+        next[idx] = {
+          ...next[idx],
+          label,
+          behavior,
+          roleTemplateId: 'skills',
+          delegatable: false,
+        };
       } else {
-        next.push({ id, label, behavior, status: 'stopped' });
+        next[idx] = { ...next[idx], label, behavior };
       }
       await writeSubAgentSlots(ctx.workspaceRoot, next);
       broadcastSubAgentsUpdated(ctx.workspaceRoot);
-      return `OK upsert subAgent id=${id}`;
+      return `OK upsert subAgent id=${rawId}`;
     }
   );
 
@@ -1717,7 +1741,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_subagent_remove',
-        description: 'Remove a sub-agent slot by id',
+        description: 'Removing sub-agent slots is disabled; roster is fixed per workspace.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1727,15 +1751,10 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
       },
     },
-    async (args, ctx) => {
+    async (args, _ctx) => {
       const id = String(args?.id ?? '').trim();
       if (!id) return 'ERROR: missing id';
-      const slots = await readSubAgentSlots(ctx.workspaceRoot);
-      const next = slots.filter((s) => s.id !== id);
-      if (next.length === slots.length) return `ERROR: not found: ${id}`;
-      await writeSubAgentSlots(ctx.workspaceRoot, next);
-      broadcastSubAgentsUpdated(ctx.workspaceRoot);
-      return `OK removed subAgent ${id}`;
+      return 'ERROR: sub-agent slot removal is disabled; roster is fixed (cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant; cf-skill-agent when tools.skills is enabled)';
     }
   );
 
@@ -1763,7 +1782,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
       if (!res.ok) return `ERROR: ${res.error}`;
       if (!res.hits.length) {
-        return 'No matches in workspace memory/skills FTS index. Add `.clawflow/skills/**/SKILL.md` or references, or enable knowledge_base and rebuild if needed.';
+        return 'No matches in workspace memory/skills FTS index. Add `.agent/.skills/**/SKILL.md` or references, or enable knowledge_base and rebuild if needed.';
       }
       return res.hits
         .map(
@@ -1780,7 +1799,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_memory_search',
         description:
-          'Full-text search over Hermes memory index (skills + references under .clawflow/skills). Returns JSON hits with snippets and bm25 rank.',
+          'Full-text search over Hermes memory index (skills + references under .agent/.skills). Returns JSON hits with snippets and bm25 rank.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1815,7 +1834,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_list',
         description:
-          'List Hermes-style skills under `.clawflow/skills/**` (directories containing SKILL.md). Read-only; returns JSON with skill roots and reference file paths.',
+          'List Hermes-style skills under `.agent/.skills/**` (directories containing SKILL.md). Read-only; returns JSON with skill roots and reference file paths.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1837,12 +1856,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_view',
         description:
-          'Read a text file under `.clawflow/skills` (SKILL.md or references/*.md|*.txt). Pass workspace-relative POSIX path.',
+          'Read a text file under `.agent/.skills` (SKILL.md or references/*.md|*.txt). Pass workspace-relative POSIX path.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Relative path from workspace root, e.g. .clawflow/skills/my-skill/SKILL.md' },
+            path: { type: 'string', description: 'Relative path from workspace root, e.g. .agent/.skills/my-skill/SKILL.md' },
           },
           required: ['path'],
           additionalProperties: false,
@@ -1864,12 +1883,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_create',
         description:
-          'Create a new Hermes skill folder with `.clawflow/skills/<skill_name>/SKILL.md`. Fails if SKILL.md already exists.',
+          'Create a new Hermes skill folder with `.agent/.skills/<skill_name>/SKILL.md`. Fails if SKILL.md already exists.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            skill_name: { type: 'string', description: 'Directory name under .clawflow/skills (ASCII letters, digits, ._-)' },
+            skill_name: { type: 'string', description: 'Directory name under .agent/.skills (ASCII letters, digits, ._-)' },
             initial_markdown: { type: 'string', description: 'Optional SKILL.md body; default stub heading' },
           },
           required: ['skill_name'],
@@ -1887,7 +1906,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
           : `# ${checked.name}\n\nDescribe what this skill does.\n`;
       const gg = guardHermesSkillTextContent(initial);
       if (!gg.ok) return `ERROR: skills_guard: ${gg.reason}`;
-      const rel = `.clawflow/skills/${checked.name}/SKILL.md`;
+      const rel = `${WORKSPACE_AGENT_SKILLS_REL}/${checked.name}/SKILL.md`;
       const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, rel);
       const exists = await fs.promises
         .stat(full)
@@ -1920,12 +1939,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_patch',
         description:
-          'Replace exact text in a skill document (SKILL.md or references/*.md|*.txt under .clawflow/skills). Subject to skills_guard on the full file after substitution.',
+          'Replace exact text in a skill document (SKILL.md or references/*.md|*.txt under .agent/.skills). Subject to skills_guard on the full file after substitution.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            relativePath: { type: 'string', description: 'Workspace-relative path, must be under .clawflow/skills' },
+            relativePath: { type: 'string', description: 'Workspace-relative path, must be under .agent/.skills' },
             oldText: { type: 'string', description: 'Exact old text' },
             newText: { type: 'string', description: 'Replacement text' },
             replaceAll: { type: 'boolean', description: 'Replace all occurrences' },
@@ -1936,9 +1955,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (args, ctx) => {
-      const rel = normalizeWorkspaceRel(String(args?.relativePath ?? ''));
+      const rel = normalizeSkillWorkspaceRel(String(args?.relativePath ?? ''));
       if (!isSkillIndexedDocumentRel(rel)) {
-        return 'ERROR: relativePath must be SKILL.md or references/*.md|*.txt under .clawflow/skills';
+        return 'ERROR: relativePath must be SKILL.md or references/*.md|*.txt under .agent/.skills';
       }
       const oldText = String(args?.oldText ?? '');
       const newText = String(args?.newText ?? '');
@@ -1994,12 +2013,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_write_aux',
         description:
-          'Create or overwrite an auxiliary file under `.clawflow/skills/<name>/references/` (.md or .txt only). Use workspace_skill_patch for SKILL.md.',
+          'Create or overwrite an auxiliary file under `.agent/.skills/<name>/references/` (.md or .txt only). Use workspace_skill_patch for SKILL.md.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            relativePath: { type: 'string', description: 'e.g. .clawflow/skills/my-skill/references/notes.md' },
+            relativePath: { type: 'string', description: 'e.g. .agent/.skills/my-skill/references/notes.md' },
             content: { type: 'string', description: 'Full file content (utf-8)' },
             createIfMissing: { type: 'boolean', description: 'Allow create when file missing' },
             overwrite: { type: 'boolean', description: 'Allow overwrite when file exists' },
@@ -2010,9 +2029,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (args, ctx) => {
-      const rel = normalizeWorkspaceRel(String(args?.relativePath ?? ''));
+      const rel = normalizeSkillWorkspaceRel(String(args?.relativePath ?? ''));
       if (!isSkillReferencesOnlyDocRel(rel)) {
-        return 'ERROR: only .clawflow/skills/<name>/references/*.md|*.txt allowed';
+        return 'ERROR: only .agent/.skills/<name>/references/*.md|*.txt allowed';
       }
       const content = String(args?.content ?? '');
       const createIfMissing = Boolean(args?.createIfMissing);
@@ -2053,12 +2072,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_skill_delete',
         description:
-          'Delete an entire skill directory `.clawflow/skills/<skill_name>/` (recursive). Requires confirm=true.',
+          'Delete an entire skill directory `.agent/.skills/<skill_name>/` (recursive). Requires confirm=true.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            skill_name: { type: 'string', description: 'Direct child folder name under .clawflow/skills' },
+            skill_name: { type: 'string', description: 'Direct child folder name under .agent/.skills' },
             confirm: { type: 'boolean', description: 'Must be true' },
           },
           required: ['skill_name', 'confirm'],
@@ -2072,13 +2091,13 @@ export function createDefaultToolRuntime(): ToolRuntime {
       }
       const checked = assertValidSkillFolderName(String(args?.skill_name ?? ''));
       if (!checked.ok) return `ERROR: ${checked.reason}`;
-      const skillRootRel = `.clawflow/skills/${checked.name}`;
+      const skillRootRel = `${WORKSPACE_AGENT_SKILLS_REL}/${checked.name}`;
       const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, skillRootRel);
-      const skillsBase = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, '.clawflow/skills');
+      const skillsBase = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, WORKSPACE_AGENT_SKILLS_REL);
       const relFromBase = path.relative(skillsBase, full);
       const segs = relFromBase.split(/[/\\]/).filter(Boolean);
       if (segs.length !== 1 || segs[0] !== checked.name) {
-        return 'ERROR: skill_name must be a direct child folder of .clawflow/skills';
+        return 'ERROR: skill_name must be a direct child folder of .agent/.skills';
       }
       const st = await fs.promises.stat(full).catch(() => null);
       if (!st?.isDirectory()) return `ERROR: skill folder not found: ${skillRootRel}`;
@@ -2094,7 +2113,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_memory_rebuild_index',
         description:
-          'Rebuild Hermes FTS index from `.clawflow/skills/**` (SKILL.md + references/*.md|*.txt). Use after bulk edits or if search looks stale.',
+          'Rebuild Hermes FTS index from `.agent/.skills/**` (SKILL.md + references/*.md|*.txt). Use after bulk edits or if search looks stale.',
         strict: true,
         parameters: {
           type: 'object',

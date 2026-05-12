@@ -33,6 +33,8 @@ import {
   type ResolvedClawFlowWebSearch,
 } from './web-search';
 import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import { maybeScheduleSkillEvolutionAfterMainTurn } from '../skill-evolution-scheduler';
+import { SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID } from '../shared/skill-agent-constants';
 
 export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-search';
 
@@ -271,7 +273,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       tail.push({ role: 'user', content: ut });
     }
 
-    // 每次请求固定携带 `.roleAgent/` 下 Markdown，作为 system（不写入会话持久化）
+    // 每次请求固定携带 `.agent/.roleAgent/` 下 Markdown，作为 system（不写入会话持久化）
     return [{ role: 'system', content: roleSystem }, ...tail];
   }
 
@@ -315,6 +317,21 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       await store.writeAll(convs);
     }
     this.emit('engine:message', params.conversationId, assistantMsg);
+  }
+
+  /** 主会话 assistant 落盘后：按轮次调度 Skill Agent（子 Agent / 审计会话不计入）。 */
+  private fireSkillEvolutionHookIfNeeded(
+    effRoot: string,
+    conversationId: string,
+    assistantMessageMeta?: Record<string, unknown>
+  ): void {
+    const meta0 = assistantMessageMeta;
+    if (meta0 && typeof meta0 === 'object' && 'subAgent' in meta0) return;
+    if (conversationId === SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID) return;
+    void maybeScheduleSkillEvolutionAfterMainTurn({
+      workspaceRoot: effRoot,
+      mainConversationId: conversationId,
+    }).catch(() => undefined);
   }
 
   private async appendMessages(conversationId: string, msgs: StoredMessage[], store: SessionStore): Promise<void> {
@@ -805,6 +822,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       channel: params.assistantMessageChannel,
       meta: params.assistantMessageMeta,
     });
+    this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
     return { message: reply };
   }
 
@@ -865,6 +883,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         channel: params.assistantMessageChannel,
         meta: params.assistantMessageMeta,
       });
+      this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
       return reply;
     }
 
@@ -901,6 +920,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         channel: params.assistantMessageChannel,
         meta: params.assistantMessageMeta,
       });
+      this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
       return reply;
     }
 
@@ -916,6 +936,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       channel: params.assistantMessageChannel,
       meta: params.assistantMessageMeta,
     });
+    this.fireSkillEvolutionHookIfNeeded(effRoot, params.conversationId, params.assistantMessageMeta);
     return replyPersist;
   }
 }

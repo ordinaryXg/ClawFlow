@@ -1,6 +1,6 @@
 # TOOLS.md — 子 Agent（程序 Agent）能力与边界
 
-本子 Agent 会使用工作区 `.tool/manifest.json` 中启用的工具。你必须遵守每个工具的参数契约与副作用边界。
+本子 Agent 会使用工作区 `.agent/.tool/manifest.json` 中启用的工具。你必须遵守每个工具的参数契约与副作用边界。
 
 ## 工具使用原则
 
@@ -10,6 +10,6 @@
 
 ## 与 `.tool/` 的关系
 
-- 能力开关：`.tool/manifest.json`
+- 能力开关：`.agent/.tool/manifest.json`
 - 契约说明：`.tool/docs.md` / `.tool/git.md` / `.tool/browser.md`
 

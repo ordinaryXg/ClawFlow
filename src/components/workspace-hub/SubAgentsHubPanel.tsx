@@ -6,7 +6,15 @@ import { useChatStore } from '../../store/modules/chatStore';
 import './WorkspaceHubPanels.css';
 import ToolApprovalBar from '../chat/ToolApprovalBar';
 import type { ToolApprovalPendingState } from '../../store/modules/chatStore';
-import type { SubAgentSlot } from '../../shared/sub-agent-types';
+import type { SubAgentRoleTemplateId, SubAgentSlot } from '../../shared/sub-agent-types';
+import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+
+const ROLE_LABELS: Record<Exclude<SubAgentRoleTemplateId, 'skills'>, string> = {
+  program: '程序 Agent（可运行/可验证交付）',
+  creative: '创意 Agent（方案/文案/脚本）',
+  data: '数据 Agent（可复现分析/结论）',
+  assistant: '助理 Agent（推进/拆解/闭环）',
+};
 
 const SubAgentsHubPanel: FC = () => {
   const { t } = useTranslation();
@@ -29,7 +37,7 @@ const SubAgentsHubPanel: FC = () => {
   const [editId, setEditId] = useState<string>('');
   const [editLabel, setEditLabel] = useState<string>('');
   const [editBehavior, setEditBehavior] = useState<string>('');
-  const [editRoleTemplateId, setEditRoleTemplateId] = useState<'program' | 'creative' | 'data' | 'assistant'>('assistant');
+  const [editRoleTemplateId, setEditRoleTemplateId] = useState<SubAgentRoleTemplateId>('assistant');
   const [saving, setSaving] = useState(false);
 
   const [runOpen, setRunOpen] = useState(false);
@@ -63,7 +71,6 @@ const SubAgentsHubPanel: FC = () => {
         conversationId: p.conversationId ?? '',
         approvalId: p.approvalId ?? '',
         tools: p.tools ?? [],
-        // 子 Agent 工具审批：先按中风险处理（20s 默认执行），后续可在 sub-agent-runner 里也做风险分级
         riskLevel: 'medium',
         timeoutMs: 20_000,
         defaultApproved: true,
@@ -77,49 +84,40 @@ const SubAgentsHubPanel: FC = () => {
     };
   }, []);
 
-  const openCreate = () => {
-    setEditId('');
-    setEditLabel('');
-    setEditBehavior('');
-    setEditRoleTemplateId('assistant');
-    setEditOpen(true);
-  };
+  const roleSelectOptions: { value: SubAgentRoleTemplateId; label: string }[] = useMemo(() => {
+    if (editId === SKILL_AGENT_SLOT_ID) {
+      return [{ value: 'skills' as const, label: 'Skill Agent（技能进化，系统槽位）' }];
+    }
+    const rt = editRoleTemplateId;
+    if (rt === 'skills') return [{ value: 'assistant' as const, label: ROLE_LABELS.assistant }];
+    return [{ value: rt, label: ROLE_LABELS[rt] }];
+  }, [editId, editRoleTemplateId]);
 
   const openEdit = (a: SubAgentSlot) => {
     setEditId(a.id);
     setEditLabel(a.label ?? '');
     setEditBehavior(a.behavior ?? '');
-    setEditRoleTemplateId((a as any).roleTemplateId ?? 'assistant');
+    const rt = a.roleTemplateId;
+    setEditRoleTemplateId(
+      rt === 'skills' || rt === 'program' || rt === 'creative' || rt === 'data' || rt === 'assistant' ? rt : 'assistant'
+    );
     setEditOpen(true);
   };
 
   const saveSlot = async () => {
+    const cur = slots.find((x) => x.id === editId);
+    if (!cur) return;
     setSaving(true);
     try {
       const label = editLabel.trim();
       if (!label) return;
-      const next: SubAgentSlot[] = (() => {
-        const base = [...slots];
-        if (!editId) {
-          base.push({ id: crypto.randomUUID(), label, behavior: editBehavior, roleTemplateId: editRoleTemplateId, status: 'stopped' } as any);
-          return base;
-        }
-        const idx = base.findIndex((x) => x.id === editId);
-        if (idx >= 0) base[idx] = { ...base[idx], label, behavior: editBehavior, roleTemplateId: editRoleTemplateId } as any;
-        return base;
-      })();
+      const next = slots.map((s) => (s.id === editId ? { ...s, label, behavior: editBehavior } : s));
       await window.electronAPI?.subAgentsSaveAll?.(next as unknown[]);
       await load();
       setEditOpen(false);
     } finally {
       setSaving(false);
     }
-  };
-
-  const removeSlot = async (id: string) => {
-    const next = slots.filter((s) => s.id !== id);
-    await window.electronAPI?.subAgentsSaveAll?.(next as unknown[]);
-    await load();
   };
 
   const openRun = (id: string) => {
@@ -158,9 +156,6 @@ const SubAgentsHubPanel: FC = () => {
       <div className="cf-hubPage__toolbar">
         <div className="cf-hubPage__titleRow">
           <h2 className="cf-hubPage__title">{t('chat.workspaceHub.subAgentsTitle')}</h2>
-          <button type="button" className="cf-btn cf-btnPrimary cf-btnSmall" onClick={openCreate}>
-            新建
-          </button>
         </div>
         <p className="cf-sub" style={{ margin: '8px 0 0', fontSize: 12 }}>
           {t('chat.workspaceHub.subAgentsHint')}
@@ -186,9 +181,24 @@ const SubAgentsHubPanel: FC = () => {
             <div key={a.id} className="cf-hubCard">
               <div className="cf-hubCard__head">
                 <span className="cf-hubCard__name">{a.label || a.id}</span>
+                {a.id === SKILL_AGENT_SLOT_ID ? (
+                  <span
+                    className={`cf-hubBadge ${a.skillToolsEnabled === false ? 'cf-hubBadge--stopped' : 'cf-hubBadge--running'}`}
+                    style={{ marginRight: 6 }}
+                  >
+                    {t('chat.workspaceHub.subAgentsSkillBadge')}
+                  </span>
+                ) : null}
                 <span className={`cf-hubBadge ${badges[a.status]}`}>{t(`chat.workspaceHub.subAgentStatus.${a.status}`)}</span>
               </div>
               <div className="cf-hubCard__body">{a.behavior || t('chat.workspaceHub.subAgentNoBehavior')}</div>
+              <div className="cf-hubCard__body cf-sub" style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                {a.id === SKILL_AGENT_SLOT_ID
+                  ? a.skillToolsEnabled === false
+                    ? t('chat.workspaceHub.subAgentsSkillCaptionToolsOff')
+                    : t('chat.workspaceHub.subAgentsSkillCaption')
+                  : t('chat.workspaceHub.subAgentsDelegateCaption')}
+              </div>
               <div className="cf-hubCard__body" style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => openEdit(a)}>
                   {t('common.edit')}
@@ -197,12 +207,12 @@ const SubAgentsHubPanel: FC = () => {
                   type="button"
                   className="cf-btn cf-btnGhost cf-btnSmall"
                   onClick={() => openRun(a.id)}
-                  disabled={running || a.status === 'running' || a.status === 'starting'}
+                  disabled={
+                    running || a.status === 'running' || a.status === 'starting' || a.id === SKILL_AGENT_SLOT_ID
+                  }
+                  title={a.id === SKILL_AGENT_SLOT_ID ? t('chat.workspaceHub.subAgentsSkillRunDisabled') : undefined}
                 >
-                  运行
-                </button>
-                <button type="button" className="cf-btn cf-btnDanger cf-btnSmall" onClick={() => void removeSlot(a.id)} disabled={running}>
-                  {t('common.delete')}
+                  {t('chat.workspaceHub.subAgentsRunAction')}
                 </button>
               </div>
               {runLogBySlot[a.id] ? (
@@ -217,7 +227,7 @@ const SubAgentsHubPanel: FC = () => {
 
       <Modal
         open={editOpen}
-        title={editId ? '编辑子 Agent' : '新建子 Agent'}
+        title={t('chat.workspaceHub.subAgentsEditTitle')}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
         confirmLoading={saving}
@@ -229,14 +239,9 @@ const SubAgentsHubPanel: FC = () => {
           <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} placeholder="Label" />
           <Select
             value={editRoleTemplateId}
-            onChange={(v) => setEditRoleTemplateId(v)}
             style={{ width: '100%' }}
-            options={[
-              { value: 'program', label: '程序 Agent（可运行/可验证交付）' },
-              { value: 'creative', label: '创意 Agent（方案/文案/脚本）' },
-              { value: 'data', label: '数据 Agent（可复现分析/结论）' },
-              { value: 'assistant', label: '助理 Agent（推进/拆解/闭环）' },
-            ]}
+            disabled
+            options={roleSelectOptions}
           />
           <Input.TextArea
             value={editBehavior}
@@ -249,19 +254,22 @@ const SubAgentsHubPanel: FC = () => {
 
       <Modal
         open={runOpen}
-        title="运行子 Agent"
-        okText="运行"
+        title={t('chat.workspaceHub.subAgentsRunTitle')}
+        okText={t('chat.workspaceHub.subAgentsRunAction')}
         cancelText={t('common.cancel')}
         confirmLoading={running}
         onCancel={() => setRunOpen(false)}
         onOk={() => void doRun()}
         destroyOnHidden
+        width={920}
+        styles={{ body: { paddingTop: 12 } }}
       >
         <Input.TextArea
           value={runTaskText}
           onChange={(e) => setRunTaskText(e.target.value)}
-          placeholder="输入要委派给子 Agent 的任务…"
-          autoSize={{ minRows: 4, maxRows: 12 }}
+          placeholder={t('chat.workspaceHub.subAgentsRunPlaceholder')}
+          autoSize={{ minRows: 16, maxRows: 32 }}
+          style={{ fontSize: 14, lineHeight: 1.55 }}
         />
       </Modal>
     </div>

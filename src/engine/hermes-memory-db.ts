@@ -7,11 +7,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
-import type Database from 'better-sqlite3';
+import { workspaceSkillsDirAbs } from '../workspace-agent-layout';
 
 const requireSqlite = createRequire(__filename);
 
-type BetterSqliteCtor = typeof import('better-sqlite3').default;
+/** CJS `export =`：类型上无 `.default`，运行时仍兼容 `default` 包装 */
+type BetterSqliteCtor = typeof import('better-sqlite3');
+type BetterSqliteDb = InstanceType<BetterSqliteCtor>;
 
 let ctorCache: BetterSqliteCtor | null | undefined;
 let ctorLoadError: string | undefined;
@@ -38,7 +40,7 @@ export function getHermesMemoryLoadError(): string | undefined {
   return ctorLoadError;
 }
 
-const dbCache = new Map<string, Database>();
+const dbCache = new Map<string, BetterSqliteDb>();
 
 export function getHermesMemoryDbPath(workspaceRoot: string): string {
   return path.join(path.resolve(workspaceRoot), '.clawflow', 'hermes-memory.db');
@@ -68,7 +70,7 @@ export function invalidateHermesMemoryDbCache(resolvedRoot?: string): void {
   dbCache.clear();
 }
 
-export function getOrOpenHermesMemoryDb(workspaceRoot: string): Database | null {
+export function getOrOpenHermesMemoryDb(workspaceRoot: string): BetterSqliteDb | null {
   const Ctor = getBetterSqliteCtor();
   if (!Ctor) return null;
   const key = path.resolve(workspaceRoot);
@@ -96,7 +98,7 @@ export function getOrOpenHermesMemoryDb(workspaceRoot: string): Database | null 
   return db;
 }
 
-export function ensureHermesMemorySchema(db: Database): void {
+export function ensureHermesMemorySchema(db: BetterSqliteDb): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS memory_docs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,18 +152,20 @@ function toPosixRel(workspaceRoot: string, absPath: string): string {
 }
 
 function inferSkillNameFromIndexedPath(relPosix: string): string | null {
-  const prefix = '.clawflow/skills/';
-  if (!relPosix.startsWith(prefix)) return null;
-  const rest = relPosix.slice(prefix.length);
-  if (!rest) return null;
-  const parts = rest.split('/');
-  const base = parts[parts.length - 1];
-  if (base === 'SKILL.md' && parts.length >= 2) {
-    return parts[parts.length - 2] ?? null;
-  }
-  const refIdx = parts.indexOf('references');
-  if (refIdx >= 1) {
-    return parts[refIdx - 1] ?? null;
+  for (const prefix of ['.agent/.skills/', '.agent/skills/', '.clawflow/skills/'] as const) {
+    if (!relPosix.startsWith(prefix)) continue;
+    const rest = relPosix.slice(prefix.length);
+    if (!rest) return null;
+    const parts = rest.split('/');
+    const base = parts[parts.length - 1];
+    if (base === 'SKILL.md' && parts.length >= 2) {
+      return parts[parts.length - 2] ?? null;
+    }
+    const refIdx = parts.indexOf('references');
+    if (refIdx >= 1) {
+      return parts[refIdx - 1] ?? null;
+    }
+    return null;
   }
   return null;
 }
@@ -171,7 +175,7 @@ const TEXT_EXT = new Set(['.md', '.txt']);
 function collectSkillIndexTargetsSync(
   workspaceRoot: string
 ): Array<{ abs: string; relPosix: string; source_kind: 'skill_md' | 'skill_aux' }> {
-  const skillsRoot = path.join(workspaceRoot, '.clawflow', 'skills');
+  const skillsRoot = workspaceSkillsDirAbs(workspaceRoot);
   const out: Array<{ abs: string; relPosix: string; source_kind: 'skill_md' | 'skill_aux' }> = [];
   function walk(dir: string): void {
     let entries: fs.Dirent[];
@@ -288,11 +292,11 @@ export type HermesMemorySyncResult =
   | { ok: false; error: string };
 
 /**
- * 将 `.clawflow/skills/**` 下 SKILL.md 与 references 内文本同步进 memory_docs（增量按 mtime；可全量重建）。
+ * 将 `.agent/.skills/**` 下 SKILL.md 与 references 内文本同步进 memory_docs（增量按 mtime；可全量重建）。兼容索引中仍存的 `.agent/skills/`、`.clawflow/skills/` 路径元数据。
  */
 export function syncSkillTextSourcesToMemoryDb(
   workspaceRoot: string,
-  opts?: { fullRebuild?: boolean; db?: Database | null }
+  opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
 ): HermesMemorySyncResult {
   const db = opts?.db ?? getOrOpenHermesMemoryDb(workspaceRoot);
   if (!db) {

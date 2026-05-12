@@ -19,5 +19,5 @@ _在首次对话中填写，写成你自己的版本。_
 
 说明：
 
-- 在 ClawFlow 中本文件路径为 `.roleAgent/IDENTITY.md`。
+- 在 ClawFlow 中本文件路径为 `.agent/.roleAgent/IDENTITY.md`。
 - 头像优先使用工作区相对路径，例如 `avatars/agent.png`。

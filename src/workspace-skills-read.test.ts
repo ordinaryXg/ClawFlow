@@ -8,10 +8,10 @@ describe('workspace-skills-read', () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-ws-skills-'));
-    fs.mkdirSync(path.join(dir, '.clawflow', 'skills', 'alpha'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.clawflow', 'skills', 'alpha', 'SKILL.md'), '# Alpha\n', 'utf8');
-    fs.mkdirSync(path.join(dir, '.clawflow', 'skills', 'alpha', 'references'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.clawflow', 'skills', 'alpha', 'references', 'r.txt'), 'hello', 'utf8');
+    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'SKILL.md'), '# Alpha\n', 'utf8');
+    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha', 'references'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'references', 'r.txt'), 'hello', 'utf8');
   });
 
   afterEach(() => {
@@ -31,7 +31,19 @@ describe('workspace-skills-read', () => {
   });
 
   it('reads SKILL.md under skills', () => {
+    const r = readWorkspaceSkillTextFile(dir, '.agent/.skills/alpha/SKILL.md');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.content).toContain('Alpha');
+  });
+
+  it('accepts legacy .clawflow/skills path for read after normalize', () => {
     const r = readWorkspaceSkillTextFile(dir, '.clawflow/skills/alpha/SKILL.md');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.content).toContain('Alpha');
+  });
+
+  it('accepts legacy .agent/skills path for read after normalize', () => {
+    const r = readWorkspaceSkillTextFile(dir, '.agent/skills/alpha/SKILL.md');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.content).toContain('Alpha');
   });

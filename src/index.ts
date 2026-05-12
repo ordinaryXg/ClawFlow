@@ -21,6 +21,8 @@ import { broadcastTodoTriggersUpdated } from './todo-triggers-broadcast';
 import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './sub-agent-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
 import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './sub-agent-runner';
+import { mergeSubAgentSlotsAfterEditorSave, ensureSubAgentRosterForWorkspace } from './sub-agent-roster-bootstrap';
+import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
 import { readScrapeJobs } from './scrape-service';
 import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './todo-triggers-scheduler';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './engine/hermes-memory-db';
@@ -279,13 +281,14 @@ function registerSubAgentsIPC(): void {
   }
   ipcMain.handle('subAgents:list', async (event) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
+    await ensureSubAgentRosterForWorkspace(root);
     const slots = await readSubAgentSlots(root);
     return { slots };
   });
   ipcMain.handle('subAgents:saveAll', async (event, raw: unknown) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
-    const slots = coerceSubAgentSlotsPayload(raw);
-    await writeSubAgentSlots(root, slots);
+    const merged = await mergeSubAgentSlotsAfterEditorSave(root, coerceSubAgentSlotsPayload(raw));
+    await writeSubAgentSlots(root, merged);
     broadcastSubAgentsUpdated(root);
     return { ok: true as const };
   });
@@ -299,6 +302,9 @@ function registerSubAgentsIPC(): void {
     const conversationId = typeof p.conversationId === 'string' ? p.conversationId.trim() : '';
     const modelId = typeof p.modelId === 'string' && p.modelId.trim() ? p.modelId.trim() : undefined;
     if (!slotId || !taskText || !conversationId) return { ok: false as const, error: 'missing_fields' };
+    if (slotId === SKILL_AGENT_SLOT_ID) {
+      return { ok: false as const, error: 'skill_agent_run_not_supported' };
+    }
 
     const sender = event.sender;
     const res = await runSubAgentOnce({

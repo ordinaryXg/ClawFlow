@@ -1,14 +1,22 @@
 /**
  * Workspace 目录与注册表（主进程）。
- * 每个 workspace 根目录下包含 `.clawflow/`。
+ * 每个 workspace 根目录下包含 `.clawflow/`（主会话与调度等）、`.subclawflow/`（各子 Agent 槽位工作缓存）及 `.agent/`。
  */
 
 import { randomUUID } from 'crypto';
 import { app, BrowserWindow, dialog, OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ensureWorkspaceAgentRoleTemplates, WORKSPACE_ROLE_AGENT_DIR } from './workspace-agent-bootstrap';
+import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { ensureWorkspaceSubAgentRoleTemplates } from './workspace-subagent-role-bootstrap';
+import { ensureWorkspaceDefaultHermesSkill } from './workspace-hermes-skill-bootstrap';
+import {
+  migrateLegacyWorkspaceAgentBundleSync,
+  WORKSPACE_AGENT_DIR,
+  workspaceAgentDotMemoryDirAbs,
+  workspaceToolDirAbs,
+} from './workspace-agent-layout';
+import { ensureSkillAgentSlotForWorkspace } from './skill-agent-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
@@ -16,6 +24,7 @@ import {
   type WorkspaceToolSelection,
   type WorkspaceToolSelectionInput,
 } from './shared/workspace-tools';
+import { ALL_SUBAGENT_SLOT_IDS_ORDERED } from './shared/sub-agent-roster-constants';
 import {
   buildWorkspaceToolBrowserMd,
   buildWorkspaceToolDocsMd,
@@ -30,16 +39,22 @@ export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 
 export const CLAWFLOW_DIR = '.clawflow';
 
-/** 工作区根下由 ClawFlow 写入的能力与说明目录（与 toolBundleDir 一致） */
-const WORKSPACE_TOOL_DIR = '.tool';
+/** 子 Agent 工作区缓存根（与主 `.clawflow/` 分离，按槽位分子目录） */
+export const SUBCLAWFLOW_DIR = '.subclawflow';
 
 /**
- * 仅从工作区根删除 ClawFlow 管理的三套目录，不删除用户项目文件。
- * 各目录不存在时忽略。
+ * 仅从工作区根删除 ClawFlow 管理的目录，不删除用户项目文件。
+ * 含 `.clawflow/`、`.subclawflow/`、`.agent/` 及历史遗留根下 `.roleAgent` / `.tool`；各目录不存在时忽略。
  */
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
-  const dirs = [path.join(root, CLAWFLOW_DIR), path.join(root, WORKSPACE_ROLE_AGENT_DIR), path.join(root, WORKSPACE_TOOL_DIR)];
+  const dirs = [
+    path.join(root, CLAWFLOW_DIR),
+    path.join(root, SUBCLAWFLOW_DIR),
+    path.join(root, WORKSPACE_AGENT_DIR),
+    path.join(root, '.roleAgent'),
+    path.join(root, '.tool'),
+  ];
   for (const d of dirs) {
     try {
       await fs.promises.rm(d, { recursive: true, force: true });
@@ -50,11 +65,11 @@ export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string):
 }
 
 function toolBundleDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), '.tool');
+  return workspaceToolDirAbs(workspaceRoot);
 }
 
 /**
- * 确保 \`.tool/\` 与说明文件存在；若传入 tools 或目录尚不存在，则写入 manifest。
+ * 确保 `.agent/.tool/` 与说明文件存在；若传入 tools 或目录尚不存在，则写入 manifest。
  */
 export async function ensureWorkspaceToolBundle(
   workspaceRoot: string,
@@ -86,7 +101,7 @@ export async function ensureWorkspaceToolBundle(
     }
   };
 
-  // `.tool/README.md`：避免与 `.roleAgent/TOOLS.md` 重复，仅保留指引（覆盖写入）。
+  // `.agent/.tool/README.md`：避免与 `.agent/.roleAgent/TOOLS.md` 重复，仅保留指引（覆盖写入）。
   // 该目录属于 ClawFlow 管理目录，README 用作“入口跳转”而非完整说明。
   try {
     const readme = [
@@ -94,7 +109,7 @@ export async function ensureWorkspaceToolBundle(
       '',
       '本目录由 ClawFlow 管理，包含工作区工具能力的开关与契约说明。',
       '',
-      '- 总览入口：请阅读工作区根目录的 `.roleAgent/TOOLS.md`',
+      '- 总览入口：请阅读工作区内 `.agent/.roleAgent/TOOLS.md`',
       '- 能力开关：`manifest.json`',
       '- 契约说明：`docs.md` / `browser.md` / `git.md` / `todos.md` / `subagents.md` / `skills.md` / `knowledge_base.md`',
       '',
@@ -126,7 +141,7 @@ const LEGACY_MANIFEST_TOOL_KEYS = new Set<string>([
   'browser', // v1 总开关
 ]);
 
-/** 读取 `.tool/manifest.json` 中的 tools；缺失则返回默认全开；兼容 v1 `browser` */
+/** 读取 `.agent/.tool/manifest.json` 中的 tools；缺失则返回默认全开；兼容 v1 `browser` */
 export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<Record<WorkspaceToolId, boolean>> {
   const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
   try {
@@ -147,9 +162,10 @@ export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<
   return mergeToolSelection(undefined);
 }
 
-/** 更新能力勾选并写入 `.tool/manifest.json`（并确保说明文件存在） */
+/** 更新能力勾选并写入 `.agent/.tool/manifest.json`（并确保说明文件存在） */
 export async function writeWorkspaceToolSelection(workspaceRoot: string, tools: WorkspaceToolSelection): Promise<void> {
   await ensureWorkspaceToolBundle(workspaceRoot, tools);
+  await ensureSkillAgentSlotForWorkspace(workspaceRoot);
 }
 
 export interface WorkspaceMeta {
@@ -187,6 +203,34 @@ export function isSameWorkspacePath(a: string, b: string): boolean {
 
 export function clawflowDir(workspaceRoot: string): string {
   return path.join(workspaceRoot, CLAWFLOW_DIR);
+}
+
+export function subclawflowDir(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), SUBCLAWFLOW_DIR);
+}
+
+/**
+ * 单个子 Agent 槽位在工作区下的缓存根目录（绝对路径）。
+ * 与主会话元数据 `.clawflow/` 分离；中间产物、草稿、本子 Agent 专属落盘可放此处对应子目录。
+ */
+export function subclawflowSlotDirAbs(workspaceRoot: string, slotId: string): string {
+  const id = String(slotId ?? '').trim();
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) return subclawflowDir(workspaceRoot);
+  return path.join(subclawflowDir(workspaceRoot), id);
+}
+
+/** 确保 `.subclawflow/` 及固定名册各槽位子目录存在 */
+export async function ensureSubclawflowWorkspaceCaches(workspaceRoot: string): Promise<void> {
+  const root = path.resolve(String(workspaceRoot || '').trim());
+  if (!root) return;
+  try {
+    await fs.promises.mkdir(subclawflowDir(root), { recursive: true });
+    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+      await fs.promises.mkdir(subclawflowSlotDirAbs(root, sid), { recursive: true });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function workspaceMetaPath(workspaceRoot: string): string {
@@ -406,20 +450,31 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
 }
 
 /**
- * 创建当前工作区 `.clawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
- * 同时在**工作区根目录下的 `.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
+ * 创建当前工作区 `.clawflow/`、`.subclawflow/` 与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 同时在**工作区 `.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
   opts?: { tools?: WorkspaceToolSelection }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
+  migrateLegacyWorkspaceAgentBundleSync(root);
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
   const ocDir = globalOpenclawStateDir();
 
   await fs.promises.mkdir(cf, { recursive: true });
   await fs.promises.mkdir(ocDir, { recursive: true });
+  try {
+    await fs.promises.mkdir(workspaceAgentDotMemoryDirAbs(root), { recursive: true });
+  } catch {
+    /* ignore */
+  }
+  try {
+    await ensureSubclawflowWorkspaceCaches(root);
+  } catch {
+    /* ignore */
+  }
 
   migrateLegacyConversationsOnce(root);
 
@@ -435,7 +490,7 @@ export async function ensureWorkspaceInitialized(
     console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
   }
 
-  // 子 Agent 的角色模板（program/creative/data/assistant），缺失才补写到 `.clawflow/subagent-roles/`
+  // 子 Agent 的角色模板（program/creative/data/assistant），缺失才补写到 `.agent/.subagent-roles/`
   try {
     const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
     if (created.length) {
@@ -444,6 +499,24 @@ export async function ensureWorkspaceInitialized(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
+  }
+
+  // Hermes：`.agent/.skills` 下尚无任何技能时，补写默认示例 `default/SKILL.md`
+  try {
+    const { created } = await ensureWorkspaceDefaultHermesSkill(root);
+    if (created.length) {
+      console.log('[workspace-service] default Hermes skill created:', created.join(', '));
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceDefaultHermesSkill failed:', msg);
+  }
+
+  try {
+    await ensureSkillAgentSlotForWorkspace(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureSkillAgentSlotForWorkspace failed:', msg);
   }
 
   const now = Date.now();
@@ -557,7 +630,7 @@ export type RemoveWorkspaceUserResult =
   | { ok: false; error: string };
 
 /**
- * 从最近列表移除；非「默认工作区」时仅删除工作区根下的 `.clawflow`、`.roleAgent`、`.tool`，不删除用户其余文件。
+ * 从最近列表移除；非「默认工作区」时删除工作区下的 `.clawflow`、`.subclawflow`、`.agent` 及遗留根目录 `.roleAgent`、`.tool`，不删除用户其余文件。
  */
 export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
   const abs = path.resolve(workspacePath);

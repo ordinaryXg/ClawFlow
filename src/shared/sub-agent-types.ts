@@ -2,13 +2,23 @@
 
 export type SubAgentRunStatus = 'stopped' | 'starting' | 'running' | 'error';
 
-export type SubAgentRoleTemplateId = 'program' | 'creative' | 'data' | 'assistant';
+export type SubAgentRoleTemplateId = 'program' | 'creative' | 'data' | 'assistant' | 'skills';
 
 export type SubAgentSlot = {
   id: string;
   label: string;
   behavior: string;
-  /** 子 Agent 角色模板（不继承主 Agent `.roleAgent/`）。默认 assistant */
+  /** 子 Agent 角色模板（不继承主 Agent `.agent/.roleAgent/`）。默认 assistant */
   roleTemplateId?: SubAgentRoleTemplateId;
   status: SubAgentRunStatus;
+  /**
+   * 是否允许被主 Agent 的 `delegate_to_subagent` 调度。系统 Skill Agent 为 false。
+   * 缺省视为 true（兼容旧数据）。
+   */
+  delegatable?: boolean;
+  /**
+   * 仅 Skill Agent 槽位（`cf-skill-agent`）：工作区 manifest 是否启用 `tools.skills`。
+   * 供 UI 区分「系统监控中」与「技能能力未开启」。
+   */
+  skillToolsEnabled?: boolean;
 };

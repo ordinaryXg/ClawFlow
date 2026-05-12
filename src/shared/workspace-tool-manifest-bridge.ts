@@ -1,5 +1,5 @@
 /**
- * 将 `.tool/manifest.json` 中的能力开关映射到 ClawFlow 内置 tool function.name。
+ * 将 `.agent/.tool/manifest.json` 中的能力开关映射到 ClawFlow 内置 tool function.name。
  * 在 `tool-runtime.ts` 新增 register 时，须同步更新此映射（否则新工具默认不可见且执行会被拒绝）。
  */
 

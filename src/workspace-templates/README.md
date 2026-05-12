@@ -4,10 +4,13 @@
 
 | 子目录 | 写入工作区路径 | 说明 |
 |--------|----------------|------|
-| `tool/` | _（模板文件已迁至代码生成）_ | `.tool/docs.md` / `browser.md` / `git.md` 由 `src/shared/workspace-tool-template-md.ts` 根据 `workspace-tool-manifest-bridge.ts` **自动生成**（缺失才写） |
-| `role-agent/` | `<workspace>/.roleAgent/` | `TOOLS.md`、`AGENTS.md` 等 |
+| `tool/` | _（模板文件已迁至代码生成）_ | `.agent/.tool/docs.md` / `browser.md` / `git.md` 由 `src/shared/workspace-tool-template-md.ts` 根据 `workspace-tool-manifest-bridge.ts` **自动生成**（缺失才写） |
+| `role-agent/` | `<workspace>/.agent/.roleAgent/` | `TOOLS.md`、`AGENTS.md` 等 |
+| _（无单独子目录）_ | `<workspace>/.agent/.memory/` | 片段/当日笔记落盘；由 `ensureWorkspaceInitialized` 创建空目录 |
+| _（无单独子目录）_ | `<workspace>/.subclawflow/<槽位 id>/` | 子 Agent 工作缓存；由 `ensureSubclawflowWorkspaceCaches` 与子 Agent 运行前确保目录存在 |
+| `subagent-roles/` | `<workspace>/.agent/.subagent-roles/` | 各 slot 模板 |
 
 逻辑入口：
 
-- `.tool` 正文：`workspace-service.ts` → `ensureWorkspaceToolBundle` + `buildWorkspaceTool*Md()`
-- `.roleAgent`：`workspace-agent-bootstrap.ts` → `ensureWorkspaceAgentRoleTemplates`
+- `.agent/.tool` 正文：`workspace-service.ts` → `ensureWorkspaceToolBundle` + `buildWorkspaceTool*Md()`
+- `.agent/.roleAgent`：`workspace-agent-bootstrap.ts` → `ensureWorkspaceAgentRoleTemplates`

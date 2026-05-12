@@ -13,20 +13,29 @@ function storePath(workspaceRoot: string): string {
   return path.join(workspaceService.clawflowDir(workspaceRoot), 'sub-agents.v1.json');
 }
 
+function isDelegatableFlag(x: unknown): boolean {
+  return x === undefined || x === true || x === false;
+}
+
 function isSlot(x: unknown): x is SubAgentSlot {
   if (!x || typeof x !== 'object') return false;
   const o = x as Record<string, unknown>;
   if (typeof o.id !== 'string' || typeof o.label !== 'string' || typeof o.behavior !== 'string') return false;
+  if (!isDelegatableFlag(o.delegatable)) return false;
   if (
     o.roleTemplateId !== undefined &&
     o.roleTemplateId !== 'program' &&
     o.roleTemplateId !== 'creative' &&
     o.roleTemplateId !== 'data' &&
-    o.roleTemplateId !== 'assistant'
+    o.roleTemplateId !== 'assistant' &&
+    o.roleTemplateId !== 'skills'
   )
     return false;
   const st = o.status;
-  return st === 'stopped' || st === 'starting' || st === 'running' || st === 'error';
+  if (!(st === 'stopped' || st === 'starting' || st === 'running' || st === 'error')) return false;
+  const ste = o.skillToolsEnabled;
+  if (ste !== undefined && ste !== true && ste !== false) return false;
+  return true;
 }
 
 /** 供 IPC / 渲染进程写入前清洗 */

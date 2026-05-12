@@ -1,7 +1,7 @@
 /**
- * 子 Agent 角色模板：写入工作区 `.clawflow/subagent-roles/`，仅在缺失时创建（不覆盖用户修改）。
+ * 子 Agent 角色模板：写入工作区 `.agent/.subagent-roles/`，仅在缺失时创建（不覆盖用户修改）。
  *
- * 这些模板与主 Agent `.roleAgent/` 无关；子 Agent 运行时会按 slot.roleTemplateId 读取。
+ * 这些模板与主 Agent `.agent/.roleAgent/` 无关；子 Agent 运行时会按 slot.roleTemplateId 读取。
  */
 
 import * as fs from 'fs';
@@ -25,10 +25,13 @@ import templateAssistantAgents from './workspace-templates/subagent-roles/assist
 import templateAssistantSoul from './workspace-templates/subagent-roles/assistant/SOUL.md';
 import templateAssistantTools from './workspace-templates/subagent-roles/assistant/TOOLS.md';
 import templateAssistantIdentity from './workspace-templates/subagent-roles/assistant/IDENTITY.md';
-import { clawflowDir } from './workspace-service';
-import type { SubAgentRoleTemplateId } from './shared/sub-agent-types';
 
-export const WORKSPACE_SUBAGENT_ROLE_DIR = path.join('.clawflow', 'subagent-roles').replace(/\\/g, '/');
+import templateSkillsAgents from './workspace-templates/subagent-roles/skills/AGENTS.md';
+import templateSkillsSoul from './workspace-templates/subagent-roles/skills/SOUL.md';
+import templateSkillsTools from './workspace-templates/subagent-roles/skills/TOOLS.md';
+import templateSkillsIdentity from './workspace-templates/subagent-roles/skills/IDENTITY.md';
+import type { SubAgentRoleTemplateId } from './shared/sub-agent-types';
+import { WORKSPACE_SUBAGENT_ROLE_DIR, workspaceSubagentRolesDirAbs } from './workspace-agent-layout';
 
 const TEMPLATE_SETS: Record<
   SubAgentRoleTemplateId,
@@ -58,6 +61,12 @@ const TEMPLATE_SETS: Record<
     { name: 'TOOLS.md', content: templateAssistantTools },
     { name: 'IDENTITY.md', content: templateAssistantIdentity },
   ],
+  skills: [
+    { name: 'AGENTS.md', content: templateSkillsAgents },
+    { name: 'SOUL.md', content: templateSkillsSoul },
+    { name: 'TOOLS.md', content: templateSkillsTools },
+    { name: 'IDENTITY.md', content: templateSkillsIdentity },
+  ],
 };
 
 async function writeFileIfMissing(filePath: string, content: string): Promise<boolean> {
@@ -72,8 +81,7 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
 
 export async function ensureWorkspaceSubAgentRoleTemplates(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
-  const cf = clawflowDir(root);
-  const roleDir = path.join(cf, 'subagent-roles');
+  const roleDir = workspaceSubagentRolesDirAbs(root);
   await fs.promises.mkdir(roleDir, { recursive: true });
 
   const created: string[] = [];

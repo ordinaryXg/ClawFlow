@@ -3,6 +3,7 @@
  */
 
 import * as path from 'path';
+import { normalizeHermesSkillWorkspaceRel } from '../workspace-agent-layout';
 
 export function normalizeWorkspaceRel(rel: string): string {
   return String(rel ?? '')
@@ -11,10 +12,15 @@ export function normalizeWorkspaceRel(rel: string): string {
     .replace(/^\/+/, '');
 }
 
+/** 规范化后用于技能工具：历史 `.clawflow/skills`、`.agent/skills` → `.agent/.skills` */
+export function normalizeSkillWorkspaceRel(rel: string): string {
+  return normalizeHermesSkillWorkspaceRel(normalizeWorkspaceRel(rel));
+}
+
 /** 可编入 FTS 的技能文档：任意深度的 SKILL.md，或任意 references/ 下 .md/.txt */
 export function isSkillIndexedDocumentRel(rel: string): boolean {
-  const n = normalizeWorkspaceRel(rel);
-  if (n !== '.clawflow/skills' && !n.startsWith('.clawflow/skills/')) return false;
+  const n = normalizeSkillWorkspaceRel(rel);
+  if (n !== '.agent/.skills' && !n.startsWith('.agent/.skills/')) return false;
   const base = n.split('/').pop() ?? '';
   if (base === 'SKILL.md') return true;
   if (n.includes('/references/')) {
@@ -26,8 +32,8 @@ export function isSkillIndexedDocumentRel(rel: string): boolean {
 
 /** 仅 references 下辅助文档（不含 SKILL.md） */
 export function isSkillReferencesOnlyDocRel(rel: string): boolean {
-  const n = normalizeWorkspaceRel(rel);
-  if (!n.startsWith('.clawflow/skills/') || !n.includes('/references/')) return false;
+  const n = normalizeSkillWorkspaceRel(rel);
+  if (!n.startsWith('.agent/.skills/') || !n.includes('/references/')) return false;
   const base = n.split('/').pop() ?? '';
   const ext = path.posix.extname(base).toLowerCase();
   return ext === '.md' || ext === '.txt';

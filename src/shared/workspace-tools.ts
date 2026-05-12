@@ -1,4 +1,4 @@
-/** 工作区可用工具（与 `.tool/manifest.json` 的 `tools` 对齐；渲染进程可安全导入） */
+/** 工作区可用工具（与 `.agent/.tool/manifest.json` 的 `tools` 对齐；渲染进程可安全导入） */
 
 /** manifest v2：原「browser」拆为三项，可独立关断 */
 export type WorkspaceToolId =

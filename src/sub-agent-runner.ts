@@ -1,9 +1,13 @@
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
 import type { WebContents } from 'electron';
 import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from './engine/clawflow-engine';
 import { buildSubAgentRoleSystemContent } from './engine/subagent-role-context';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
+import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
+import { isReservedSubAgentSlotId } from './shared/sub-agent-roster-constants';
+import { subclawflowSlotDirAbs } from './workspace-service';
 
 export type SubAgentRunRequest = {
   workspaceRoot: string;
@@ -63,6 +67,11 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
 
   try {
     await setStatus('starting');
+    try {
+      await fs.promises.mkdir(subclawflowSlotDirAbs(ws, slotId), { recursive: true });
+    } catch {
+      /* ignore */
+    }
     const slots = await readSubAgentSlots(ws);
     const slot = slots.find((s) => s.id === slotId);
     const label = slot?.label?.trim() || slotId;
@@ -80,6 +89,7 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
       `子 Agent ID：${slotId}`,
       `子 Agent 名称：${label}`,
       `子 Agent 角色模板：${roleTemplateId}`,
+      `本子 Agent 工作缓存目录（相对工作区根，与主会话 .clawflow/ 分离）：.subclawflow/${slotId}/`,
       behavior ? `子 Agent 行为摘要：\n${behavior}` : '子 Agent 行为摘要：（空）',
       '---',
       '',
@@ -117,8 +127,8 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
         : {}),
     });
 
-    await setStatus('stopped');
-    if (req.oneOff) {
+    await setStatus(slotId === SKILL_AGENT_SLOT_ID ? 'running' : 'stopped');
+    if (req.oneOff && !isReservedSubAgentSlotId(slotId)) {
       try {
         const latest = await readSubAgentSlots(ws);
         const next = latest.filter((s) => s.id !== slotId);

@@ -1,5 +1,5 @@
 /**
- * `.tool/*.md` 正文由本模块按 `WORKSPACE_CAPABILITY_TOOL_NAMES` 自动生成，与引擎注册的工具名保持同步。
+ * `.agent/.tool/*.md` 正文由本模块按 `WORKSPACE_CAPABILITY_TOOL_NAMES` 自动生成，与引擎注册的工具名保持同步。
  * 修改能力清单请改 `workspace-tool-manifest-bridge.ts`，勿手写分裂列表。
  */
 
@@ -9,7 +9,7 @@ function bulletTools(names: readonly string[]): string {
   return names.map((n) => `- \`${n}\``).join('\n');
 }
 
-/** `.tool/docs.md` */
+/** `.agent/.tool/docs.md` */
 export function buildWorkspaceToolDocsMd(): string {
   return [
     `# 文档读写能力（docs）`,
@@ -18,7 +18,7 @@ export function buildWorkspaceToolDocsMd(): string {
     ``,
     `这是一组「对工作区文件/目录进行读取与写入」的模型工具。它们受工作区沙箱约束，只能在当前工作区内操作。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.docs\``,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.docs\``,
     ``,
     `## 有什么用`,
     ``,
@@ -72,7 +72,7 @@ export function buildWorkspaceToolDocsMd(): string {
   ].join('\n');
 }
 
-/** `.tool/browser.md` —— 网络搜索 / 爬取 / 内嵌打开 分项关断 */
+/** `.agent/.tool/browser.md` —— 网络搜索 / 爬取 / 内嵌打开 分项关断 */
 export function buildWorkspaceToolBrowserMd(): string {
   return [
     `# 网络与页面能力（browser）`,
@@ -81,7 +81,7 @@ export function buildWorkspaceToolBrowserMd(): string {
     ``,
     `用于访问外部网站/页面的工具集合，分为：**搜索**、**爬取（抽取文本）**、**在应用内打开页面**。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.web_search\` / \`tools.web_scrape\` / \`tools.embedded_browser\`（彼此独立）`,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.web_search\` / \`tools.web_scrape\` / \`tools.embedded_browser\`（彼此独立）`,
     ``,
     `## 有什么用`,
     ``,
@@ -120,7 +120,7 @@ export function buildWorkspaceToolBrowserMd(): string {
   ].join('\n');
 }
 
-/** `.tool/git.md` */
+/** `.agent/.tool/git.md` */
 export function buildWorkspaceToolGitMd(): string {
   return [
     `# Git 操作能力（git）`,
@@ -129,7 +129,7 @@ export function buildWorkspaceToolGitMd(): string {
     ``,
     `用于在当前工作区内执行受控的 Git 操作（只读/对比/日志等）。具体可用命令以工具清单为准。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.git\``,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.git\``,
     ``,
     `## 有什么用`,
     ``,
@@ -158,82 +158,111 @@ export function buildWorkspaceToolGitMd(): string {
   ].join('\n');
 }
 
-/** `.tool/todos.md` */
+/** `.agent/.tool/todos.md` */
 export function buildWorkspaceToolTodosMd(): string {
   return [
     `# 待办与调度（todos）`,
     ``,
     `## 是什么`,
     ``,
-    `用于在工作区内创建/更新/删除“可调度待办”（todo triggers），并由主进程调度器在到点触发。`,
+    `**自动待办 / 调度**是工作区内的**纯功能性**能力：创建、更新、删除「到点触发」的 todo trigger，由主进程在指定时间或间隔把**简短指令**写回会话并驱动后续处理。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.todos\``,
+    `它**不是**子 Agent：无人格、不做多轮澄清，也不替你拆解复杂项目；只负责**时间表 + 任务登记 + 状态跟踪**。`,
+    ``,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.todos\``,
+    ``,
+    `## 与子 Agent 的核心区别`,
+    ``,
+    `| 维度 | 子 Agent（见 \`subagents.md\`） | 待办与调度（本页） |`,
+    `|------|------------------------------|----------------------|`,
+    `| 本质 | 有独立角色模板的执行体，可多轮推理与工具调用 | 触发器 + 任务元数据，结构化、标准化 |`,
+    `| 典型交互 | 主会话通过 \`delegate_to_subagent\` 委派一整块任务 | 创建/更新 trigger，到点自动写入会话 |`,
+    `| 记忆 | 子会话内上下文；不替代 \`.agent/.memory/\` 落盘 | 只记录待办项与调度规则（\`.clawflow/\`） |`,
+    `| 适用 | 模糊需求、需要专才实施、异步大块工作 | 需求已写成明确短句 + 需要定时/周期提醒 |`,
+    ``,
+    `**结合使用（推荐）**：由主会话或子 Agent **理解与拆计划**；把「到点要做的事」或「重复检查」落成 **todo trigger** 做跟踪与提醒。`,
     ``,
     `## 有什么用`,
     ``,
-    `- 定时提醒、定时执行“写入对话/触发模型处理”的任务`,
-    `- 把周期性工作自动化（例如每小时汇总、每日检查）`,
+    `- 定时提醒、间隔执行「写入对话 / 触发模型继续处理」`,
+    `- 周期性工作钉在时间表上（如每日检查、每周汇总）`,
     ``,
     `## 该怎么用`,
     ``,
-    `- 用 \`workspace_todo_create\` 创建；用 \`workspace_todo_update\` 调整；用 \`workspace_todo_remove\` 删除`,
-    `- 数据持久化在 \`.clawflow/\`，修改后会广播刷新 UI 并与调度器对齐`,
+    `- \`workspace_todo_create\` / \`workspace_todo_update\` / \`workspace_todo_remove\`；列表用侧栏或相关列表工具`,
+    `- 数据持久化在 \`.clawflow/\`，修改后会刷新侧栏待办并与主进程调度对齐`,
     ``,
     `## 什么时候用`,
     ``,
-    `- 你希望某件事在未来自动发生（提醒/执行）`,
-    `- 你不想每次都手动重复触发同样的检查/汇总`,
+    `- 任务**已经能写成一条清晰指令**，且需要**未来某时刻或周期**自动再出现`,
+    `- 不需要「像同事一样」包办实施，只需要**钉住时间与状态**`,
     ``,
-    `下列工具受 \`tools.todos\` 关断；数据持久化在 \`.clawflow/\`，修改后会刷新侧栏待办并与主进程调度对齐：`,
+    `下列工具受 \`tools.todos\` 关断：`,
     ``,
     bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.todos),
     ``,
   ].join('\n');
 }
 
-/** `.tool/subagents.md` */
+/** `.agent/.tool/subagents.md` */
 export function buildWorkspaceToolSubagentsMd(): string {
   return [
     `# 子 Agent 槽位（subagents）`,
     ``,
     `## 是什么`,
     ``,
-    `用于管理工作区内的子 Agent 槽位（slots）：名称、行为偏好、角色模板等元信息。槽位持久化在 \`.clawflow/sub-agents.v1.json\`。`,
+    `**子 Agent** 是工作区内带**独立角色模板**的执行体（多轮对话、工具调用、结构化交付），更接近「**专才协作者**」，不是简单的待办表。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.subagents\``,
+    `ClawFlow 使用**固定名册**（程序 / 创意 / 数据 / 助理 + 始终占位的 Skill Agent），名称与行为摘要等元信息持久化在 \`.clawflow/sub-agents.v1.json\`。**不支持**在应用内任意新建/删除槽位；元数据可通过工具或 UI 编辑。`,
     ``,
-    `## 有什么用`,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.subagents\``,
     ``,
-    `- 预先配置多个子 Agent（程序/创意/数据/助理）供后续委派`,
-    `- 用于 UI 管理与编排（创建、更新、删除、查看状态）`,
+    `## 与「待办与调度」的核心区别`,
     ``,
-    `## 该怎么用`,
+    `| 维度 | 子 Agent（本页） | 待办与调度（见 \`todos.md\`） |`,
+    `|------|------------------|------------------------------|`,
+    `| 本质 | 有角色、能规划与实施 | 无人格，时间表 + 任务登记 |`,
+    `| 典型入口 | 主会话工具 \`delegate_to_subagent\`（委派大块任务） | \`workspace_todo_create\` 等到点触发 |`,
+    `| 输出 | 自然语言报告、代码/文件变更等 | 固定格式的任务状态与触发记录 |`,
+    `| 适用 | 复杂/模糊需求、需要异步专才执行 | 已写清的短指令 + 定时/周期提醒 |`,
     ``,
-    `- 通过 UI 的「子 Agent」面板配置槽位最直观`,
-    `- 或使用下述工具进行列表/更新/删除`,
+    `**结合使用**：子 Agent **制定或执行**复杂步骤；待办 **钉时间、做重复提醒与进度钉点**。`,
     ``,
-    `## 什么时候用`,
+    `## 主 Agent 如何正确委派`,
     ``,
-    `- 你希望把不同类型工作拆分给不同“角色/偏好”的子 Agent`,
-    `- 你希望长期保留某个子 Agent 配置供重复使用`,
+    `- 仅允许四个委派槽 id（固定）：\`cf-sub-program\`、\`cf-sub-creative\`、\`cf-sub-data\`、\`cf-sub-assistant\`。`,
+    `- 使用工具 **\`delegate_to_subagent\`**，传入 \`slotId\`、\`taskText\`、当前工作区会话 \`conversationId\` 等参数；子 Agent 在**同一工作区**内异步运行，结果回写到主会话。`,
+    `- **禁止**向 \`delegate_to_subagent\` 传入 **\`cf-skill-agent\`**：Skill Agent 为 Hermes 技能进化保留，由系统在启用 \`tools.skills\` 时单独调度，**不参与**主 Agent 委派。`,
     ``,
-    `下列工具受 \`tools.subagents\` 关断；用于登记/调整最小槽位元数据（\`.clawflow/sub-agents.v1.json\`），不包含真正的进程级委派：`,
+    `## 工作区缓存（.subclawflow/）`,
+    ``,
+    `工作区根下 **\`.subclawflow/\`** 与 **\`.clawflow/\`** 并列：前者为**各子 Agent 槽位的工作缓存**（每槽位一子目录，如 \`.subclawflow/cf-sub-program/\`），用于本子 Agent 的中间产物、草稿等；主会话对话、待办触发器、子 Agent **名册 JSON**（\`sub-agents.v1.json\`）等仍在 **\`.clawflow/\`**。初始化工作区时会创建 \`.subclawflow/\` 及固定名册对应子目录。`,
+    ``,
+    `## 元数据与 UI`,
+    ``,
+    `- **\`workspace_subagent_list\` / \`workspace_subagent_upsert\`**：查看或更新固定槽位的 label / behavior（id 不可随意新增）。`,
+    `- **\`workspace_subagent_remove\`**：已禁用（名册固定）。`,
+    `- 应用内「子 Agent」面板可查看状态、编辑摘要；Skill Agent 的「运行」由系统负责，不在此手动触发。`,
+    ``,
+    `下列工具受 \`tools.subagents\` 关断：`,
     ``,
     bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.subagents),
     ``,
   ].join('\n');
 }
 
-/** `.tool/skills.md` — Hermes 式工作区技能（`.clawflow/skills`） */
+/** `.agent/.tool/skills.md` — Hermes 式工作区技能（`.agent/.skills`） */
 export function buildWorkspaceToolSkillsMd(): string {
   return [
     `# 技能（Skills，Hermes 式工作区技能）`,
     ``,
     `## 是什么`,
     ``,
-    `工作区技能存放在 **\`.clawflow/skills/<名称>/\`**，主文件为 **\`SKILL.md\`**，可选 **\`references/\`** 下放补充 \`.md\` / \`.txt\`。由应用内 FTS 索引与 UI 只读浏览；**不提供** OpenClaw CLI 技能市场。`,
+    `工作区技能存放在 **\`.agent/.skills/<名称>/\`**，主文件为 **\`SKILL.md\`**，可选 **\`references/\`** 下放补充 \`.md\` / \`.txt\`。由应用内 FTS 索引与 UI 只读浏览；**不提供** OpenClaw CLI 技能市场。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.skills\`（仅影响下列 **只读** 模型工具；浏览技能请用应用内「技能」面板）`,
+    `> 首次初始化且尚无任何技能时，会自动创建示例 **\`.agent/.skills/default/SKILL.md\`**，便于面板与检索立刻可见。`,
+    ``,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.skills\`（仅影响下列 **只读** 模型工具；浏览技能请用应用内「技能」面板）`,
     ``,
     `## 模型工具（只读）`,
     ``,
@@ -242,7 +271,7 @@ export function buildWorkspaceToolSkillsMd(): string {
   ].join('\n');
 }
 
-/** `.tool/knowledge_base.md` */
+/** `.agent/.tool/knowledge_base.md` */
 export function buildWorkspaceToolKnowledgeBaseMd(): string {
   return [
     `# 知识库（knowledge_base，占位）`,
@@ -251,7 +280,7 @@ export function buildWorkspaceToolKnowledgeBaseMd(): string {
     ``,
     `面向未来的“工作区知识库/检索”能力入口（RAG / 向量索引 / 路径索引等）。目前为占位实现。`,
     ``,
-    `> 开关：\`.tool/manifest.json\` → \`tools.knowledge_base\``,
+    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.knowledge_base\``,
     ``,
     `## 有什么用`,
     ``,

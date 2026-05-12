@@ -36,7 +36,7 @@ function normRelPath(r: string): string {
 }
 
 /** 便签列表隐藏系统目录（仍存在于磁盘，仅不在 UI 展示） */
-const STICKY_HIDDEN_DIRS = new Set(['.clawflow', '.roleAgent', '.tool']);
+const STICKY_HIDDEN_DIRS = new Set(['.clawflow', '.subclawflow', '.agent', '.roleAgent', '.tool']);
 
 function filterStickyEntries(list: Entry[]): Entry[] {
   return list.filter((e) => !(e.kind === 'dir' && STICKY_HIDDEN_DIRS.has(e.name)));

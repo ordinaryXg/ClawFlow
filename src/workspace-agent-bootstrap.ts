@@ -1,6 +1,6 @@
 /**
  * 工作区 Agent 角色模板：对齐 OpenClaw `ensureAgentWorkspace` + `docs/reference/templates/*`
- * 统一放在工作区根目录下的 `.roleAgent/`，仅在文件不存在时创建（flag wx），不覆盖用户已有内容。
+ * 统一放在工作区 `.agent/.roleAgent/`，仅在文件不存在时创建（flag wx），不覆盖用户已有内容。
  */
 
 import * as fs from 'fs';
@@ -9,9 +9,9 @@ import templateAgents from './workspace-templates/role-agent/AGENTS.md';
 import templateHeartbeat from './workspace-templates/role-agent/HEARTBEAT.md';
 import templateSoul from './workspace-templates/role-agent/SOUL.md';
 import templateTools from './workspace-templates/role-agent/TOOLS.md';
+import { WORKSPACE_ROLE_AGENT_DIR, workspaceRoleAgentDirAbs } from './workspace-agent-layout';
 
-/** 角色模板目录（相对工作区根） */
-export const WORKSPACE_ROLE_AGENT_DIR = '.roleAgent';
+export { WORKSPACE_ROLE_AGENT_DIR };
 
 export const WORKSPACE_AGENT_AGENTS_MD = 'AGENTS.md';
 export const WORKSPACE_AGENT_SOUL_MD = 'SOUL.md';
@@ -45,11 +45,11 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
 }
 
 /**
- * 在工作区根目录下 `.roleAgent/` 中写入 agent 角色模板（缺失则创建）。
+ * 在工作区 `.agent/.roleAgent/` 中写入 agent 角色模板（缺失则创建）。
  */
 export async function ensureWorkspaceAgentRoleTemplates(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
-  const roleDir = path.join(root, WORKSPACE_ROLE_AGENT_DIR);
+  const roleDir = workspaceRoleAgentDirAbs(root);
   await fs.promises.mkdir(roleDir, { recursive: true });
 
   const created: string[] = [];

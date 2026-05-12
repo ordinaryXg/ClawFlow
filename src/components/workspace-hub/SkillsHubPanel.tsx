@@ -5,7 +5,7 @@ type Props = {
   workspacePath: string | null;
 };
 
-/** 聊天侧栏「技能」分支：只读浏览 `.clawflow/skills` */
+/** 聊天侧栏「技能」分支：只读浏览 `.agent/.skills` */
 const SkillsHubPanel: FC<Props> = ({ workspacePath }) => {
   return (
     <div className="cf-hubPage">

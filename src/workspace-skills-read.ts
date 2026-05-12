@@ -1,11 +1,12 @@
 /**
- * 只读扫描 `.clawflow/skills/**` 下的 Hermes 技能（Main / tool-runtime 使用）。
+ * 只读扫描 `.agent/.skills/**` 下的 Hermes 技能（Main / tool-runtime 使用）。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolvePathInsideWorkspace } from './workspace-explorer';
 import type { WorkspaceSkillListItem } from './shared/workspace-skills-types';
+import { normalizeHermesSkillWorkspaceRel, WORKSPACE_AGENT_SKILLS_REL } from './workspace-agent-layout';
 
 const REF_EXT = new Set(['.md', '.txt']);
 export const WORKSPACE_SKILL_VIEW_MAX_BYTES = 512 * 1024;
@@ -42,7 +43,7 @@ export function listWorkspaceHermesSkills(workspaceRoot: string): WorkspaceSkill
   const root = path.resolve(workspaceRoot);
   let skillsBaseAbs: string;
   try {
-    skillsBaseAbs = resolvePathInsideWorkspace(root, '.clawflow/skills');
+    skillsBaseAbs = resolvePathInsideWorkspace(root, WORKSPACE_AGENT_SKILLS_REL);
   } catch {
     return [];
   }
@@ -90,7 +91,7 @@ function isUnderSkillsTree(skillsRootResolved: string, fileResolved: string): bo
 }
 
 /**
- * 读取技能树内文本：SKILL.md 或 references 下 .md / .txt；路径须已解析在工作区内且位于 `.clawflow/skills`。
+ * 读取技能树内文本：SKILL.md 或 references 下 .md / .txt；路径须已解析在工作区内且位于 `.agent/.skills`（兼容历史 `.agent/skills`、`.clawflow/skills` 前缀）。
  */
 export function readWorkspaceSkillTextFile(
   workspaceRoot: string,
@@ -98,18 +99,24 @@ export function readWorkspaceSkillTextFile(
 ): { ok: true; content: string } | { ok: false; error: string } {
   let full: string;
   try {
-    full = resolvePathInsideWorkspace(workspaceRoot, relativePath);
+    const normalizedRel = normalizeHermesSkillWorkspaceRel(
+      String(relativePath ?? '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+    );
+    full = resolvePathInsideWorkspace(workspaceRoot, normalizedRel);
   } catch {
     return { ok: false, error: 'Invalid path' };
   }
   let skillsRoot: string;
   try {
-    skillsRoot = resolvePathInsideWorkspace(workspaceRoot, '.clawflow/skills');
+    skillsRoot = resolvePathInsideWorkspace(workspaceRoot, WORKSPACE_AGENT_SKILLS_REL);
   } catch {
     return { ok: false, error: 'Skills directory not found' };
   }
   if (!isUnderSkillsTree(skillsRoot, full)) {
-    return { ok: false, error: 'Path must be under .clawflow/skills' };
+    return { ok: false, error: 'Path must be under .agent/.skills' };
   }
   const base = path.basename(full);
   const ext = path.extname(full).toLowerCase();

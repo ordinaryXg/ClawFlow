@@ -19,7 +19,7 @@ _你刚在一个新的 ClawFlow 工作区「上线」。_
 
 ## 有初步共识之后
 
-在同一目录 `.roleAgent/` 下更新：
+在同一目录 `.agent/.roleAgent/` 下更新：
 
 - `IDENTITY.md` — 名字、形态、气质、表情符号
 - `USER.md` — 对方姓名、称呼方式、时区、备忘
@@ -28,7 +28,7 @@ _你刚在一个新的 ClawFlow 工作区「上线」。_
 
 ## 完成后
 
-删除本文件（`.roleAgent/BOOTSTRAP.md`）——引导流程不再需要。
+删除本文件（`.agent/.roleAgent/BOOTSTRAP.md`）——引导流程不再需要。
 
 ---
 

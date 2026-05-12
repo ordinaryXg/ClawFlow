@@ -10,6 +10,6 @@
 
 ## 与 `.tool/` 的关系
 
-- 能力开关：`.tool/manifest.json`
+- 能力开关：`.agent/.tool/manifest.json`
 - 契约说明：`.tool/docs.md` / `.tool/browser.md` / `.tool/git.md`
 

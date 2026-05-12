@@ -8,7 +8,14 @@ export function isWorkspaceRelativeUnderHermesSkillTree(rel: string): boolean {
   const n = String(rel ?? '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '');
-  return n === '.clawflow/skills' || n.startsWith('.clawflow/skills/');
+  return (
+    n === '.agent/.skills' ||
+    n.startsWith('.agent/.skills/') ||
+    n === '.agent/skills' ||
+    n.startsWith('.agent/skills/') ||
+    n === '.clawflow/skills' ||
+    n.startsWith('.clawflow/skills/')
+  );
 }
 
 export type PatchPathsSummary = { added: string[]; modified: string[]; deleted: string[] };
