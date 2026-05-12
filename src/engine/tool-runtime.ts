@@ -1511,7 +1511,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_todo_create',
         description:
-          'Create a scheduled todo in this workspace. repeat=once|interval; for interval, set intervalMinutes>0.',
+          'Create a scheduled todo in this workspace. repeat=once|interval|cron; for interval set intervalMinutes>0; for cron set cron.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1519,10 +1519,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
             title: { type: 'string', description: 'Short title' },
             actionText: { type: 'string', description: 'Body text injected when the todo fires' },
             submitToModel: { type: 'boolean', description: 'Whether firing should submit to the model' },
-            repeat: { type: 'string', description: 'once or interval', enum: ['once', 'interval'] },
+            repeat: { type: 'string', description: 'once | interval | cron', enum: ['once', 'interval', 'cron'] },
             intervalMinutes: { type: 'number', description: 'For repeat=interval, minutes between fires (ignored for once)' },
+            cron: { type: 'string', description: 'For repeat=cron, cron expression (min hour dom mon dow)' },
+            cronTz: { type: 'string', description: 'Optional IANA timezone for cron, e.g. Asia/Shanghai' },
           },
-          required: ['title', 'actionText', 'submitToModel', 'repeat', 'intervalMinutes'],
+          required: ['title', 'actionText', 'submitToModel', 'repeat'],
           additionalProperties: false,
         },
       },
@@ -1531,11 +1533,13 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const title = String(args?.title ?? '').trim();
       const actionText = String(args?.actionText ?? '');
       const submitToModel = Boolean(args?.submitToModel);
-      const repeat = args?.repeat === 'interval' ? 'interval' : 'once';
+      const repeat = args?.repeat === 'interval' ? 'interval' : args?.repeat === 'cron' ? 'cron' : 'once';
       const intervalMinutes =
         typeof args?.intervalMinutes === 'number' && Number.isFinite(args.intervalMinutes) && args.intervalMinutes > 0
           ? Math.max(1, Math.floor(args.intervalMinutes))
           : undefined;
+      const cron = typeof args?.cron === 'string' ? args.cron.trim() : '';
+      const cronTz = typeof args?.cronTz === 'string' ? args.cronTz.trim() : '';
 
       let t = defaultTodoTrigger({ title: title || undefined });
       t = {
@@ -1552,6 +1556,19 @@ export function createDefaultToolRuntime(): ToolRuntime {
             repeat: 'interval',
             intervalMinutes,
             nextFireAt: Date.now() + intervalMinutes * 60_000,
+          },
+          consumeOnFire: false,
+        };
+      }
+      if (repeat === 'cron' && cron) {
+        t = {
+          ...t,
+          trigger: {
+            kind: 'schedule',
+            repeat: 'cron',
+            cron,
+            ...(cronTz ? { cronTz } : {}),
+            nextFireAt: undefined,
           },
           consumeOnFire: false,
         };
@@ -1581,8 +1598,10 @@ export function createDefaultToolRuntime(): ToolRuntime {
             status: { type: 'string', enum: ['pending', 'done'], description: 'Mark pending or done' },
             actionText: { type: 'string', description: 'Replace action body text' },
             submitToModel: { type: 'boolean', description: 'Replace submit-to-model flag' },
-            repeat: { type: 'string', enum: ['once', 'interval'], description: 'Schedule repeat mode' },
+            repeat: { type: 'string', enum: ['once', 'interval', 'cron'], description: 'Schedule repeat mode' },
             intervalMinutes: { type: 'number', description: 'Interval minutes when repeat=interval' },
+            cron: { type: 'string', description: 'Cron expression when repeat=cron' },
+            cronTz: { type: 'string', description: 'Optional IANA timezone for cron' },
           },
           required: ['id'],
           additionalProperties: false,
@@ -1604,11 +1623,20 @@ export function createDefaultToolRuntime(): ToolRuntime {
         t = { ...t, action: { ...t.action, text: args.actionText }, updatedAt: now };
       if (typeof args.submitToModel === 'boolean')
         t = { ...t, action: { ...t.action, submitToModel: args.submitToModel }, updatedAt: now };
-      if ((args.repeat === 'once' || args.repeat === 'interval') && t.trigger.kind === 'schedule') {
+      if ((args.repeat === 'once' || args.repeat === 'interval' || args.repeat === 'cron') && t.trigger.kind === 'schedule') {
         const tr = t.trigger;
+        const nextRepeat = args.repeat;
         t = {
           ...t,
-          trigger: { ...tr, repeat: args.repeat },
+          trigger: {
+            ...tr,
+            repeat: nextRepeat,
+            ...(nextRepeat === 'interval'
+              ? { cron: undefined, cronTz: undefined }
+              : nextRepeat === 'cron'
+                ? { intervalMinutes: undefined }
+                : { intervalMinutes: undefined, cron: undefined, cronTz: undefined }),
+          },
           updatedAt: now,
         };
       }
@@ -1619,9 +1647,37 @@ export function createDefaultToolRuntime(): ToolRuntime {
           trigger: {
             ...tr,
             intervalMinutes: Math.max(1, Math.floor(args.intervalMinutes)),
-            repeat: tr.repeat === 'once' ? 'interval' : tr.repeat,
+            repeat: tr.repeat === 'once' || tr.repeat === 'cron' ? 'interval' : tr.repeat,
             nextFireAt: Date.now() + Math.max(1, Math.floor(args.intervalMinutes)) * 60_000,
+            cron: undefined,
+            cronTz: undefined,
           },
+          updatedAt: now,
+        };
+      }
+      if (typeof args.cron === 'string' && args.cron.trim() && t.trigger.kind === 'schedule') {
+        const tr = t.trigger;
+        const cron = args.cron.trim();
+        const cronTz = typeof args.cronTz === 'string' ? args.cronTz.trim() : '';
+        t = {
+          ...t,
+          trigger: {
+            ...tr,
+            repeat: 'cron',
+            cron,
+            ...(cronTz ? { cronTz } : { cronTz: undefined }),
+            intervalMinutes: undefined,
+            nextFireAt: undefined,
+          },
+          consumeOnFire: false,
+          updatedAt: now,
+        };
+      } else if (typeof args.cronTz === 'string' && t.trigger.kind === 'schedule' && t.trigger.repeat === 'cron') {
+        const tr = t.trigger;
+        const tz = args.cronTz.trim();
+        t = {
+          ...t,
+          trigger: { ...tr, cronTz: tz || undefined, nextFireAt: undefined },
           updatedAt: now,
         };
       }

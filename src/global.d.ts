@@ -84,8 +84,9 @@ export interface IElectronAPI {
   windowPaste: () => Promise<void>;
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
+  appRelaunch: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
-  workspaceListRecent: () => Promise<string[]>;
+  workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceGetDefaultPath: () => Promise<string>;
   workspaceRemove: (
     folderPath: string
@@ -112,11 +113,30 @@ export interface IElectronAPI {
   workspaceStatAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }>;
-  workspacePickFolder: () => Promise<string | null>;
+  workspacePickFolder: (opts?: { title?: string }) => Promise<string | null>;
   workspaceEnsureInitialized: (
     folderPath: string,
-    opts?: { tools?: import('./shared/workspace-tools').WorkspaceToolSelection }
+    opts?: {
+      tools?: import('./shared/workspace-tools').WorkspaceToolSelection;
+      gitRemoteUrl?: string | null;
+    }
   ) => Promise<{ meta: unknown }>;
+  workspaceGitClone: (params: {
+    remoteUrl: string;
+    parentDir: string;
+  }) => Promise<{ ok: true; dest: string } | { ok: false; error: string }>;
+  workspaceGitPull: (
+    folderPath: string
+  ) => Promise<{ ok: true; stdout: string } | { ok: false; error: string }>;
+  workspaceGitPush: (
+    folderPath: string
+  ) => Promise<{ ok: true; stdout: string } | { ok: false; error: string }>;
+  workspaceResetCache: (
+    folderPath: string
+  ) => Promise<
+    | { ok: true; removed: { agent: boolean; subagent: boolean } }
+    | { ok: false; error: string }
+  >;
   workspaceGetToolSelection: (
     folderPath: string
   ) => Promise<

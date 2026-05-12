@@ -6,26 +6,55 @@ export interface WorkspaceMetaLite {
   name: string;
   createdAt: number;
   lastOpened: number;
+  gitRemoteUrl?: string;
+}
+
+export interface WorkspaceRecentEntry {
+  path: string;
+  gitRemoteUrl: string | null;
+}
+
+function normalizeRecentFromApi(raw: unknown): WorkspaceRecentEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WorkspaceRecentEntry[] = [];
+  for (const x of raw) {
+    if (typeof x === 'string') {
+      out.push({ path: x, gitRemoteUrl: null });
+      continue;
+    }
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    const p = typeof o.path === 'string' ? o.path : '';
+    if (!p.trim()) continue;
+    const g = typeof o.gitRemoteUrl === 'string' && o.gitRemoteUrl.trim() ? o.gitRemoteUrl.trim() : null;
+    out.push({ path: p, gitRemoteUrl: g });
+  }
+  return out;
 }
 
 interface WorkspaceState {
   activePath: string | null;
   meta: WorkspaceMetaLite | null;
-  recent: string[];
+  /** 注册表 recent 条目（含 Git 克隆标记） */
+  recentEntries: WorkspaceRecentEntry[];
   loading: boolean;
   refresh: () => Promise<void>;
   setWorkspace: (folderPath: string, opts?: { fromMainShell?: boolean }) => Promise<void>;
   /** 仅弹出系统选目录，不初始化工作区 */
-  pickWorkspacePath: () => Promise<string | null>;
+  pickWorkspacePath: (opts?: { title?: string }) => Promise<string | null>;
   /** 初始化（含 .tool）并切换为当前工作区 */
-  commitNewWorkspace: (folderPath: string, tools: WorkspaceToolSelection) => Promise<void>;
+  commitNewWorkspace: (
+    folderPath: string,
+    tools: WorkspaceToolSelection,
+    opts?: { gitRemoteUrl?: string }
+  ) => Promise<void>;
   removeWorkspace: (folderPath: string) => Promise<{ ok: true; deletedFromDisk: boolean } | { ok: false; error: string }>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   activePath: null,
   meta: null,
-  recent: [],
+  recentEntries: [],
   loading: false,
 
   refresh: async () => {
@@ -37,11 +66,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         return;
       }
       const active = await api.workspaceGetActive();
-      const recent = await api.workspaceListRecent();
+      const recentRaw = await api.workspaceListRecent();
+      const metaRaw = active?.meta as WorkspaceMetaLite | null | undefined;
       set({
         activePath: active?.path ?? null,
-        meta: (active?.meta as WorkspaceMetaLite | null | undefined) ?? null,
-        recent: Array.isArray(recent) ? recent : [],
+        meta: metaRaw ?? null,
+        recentEntries: normalizeRecentFromApi(recentRaw),
         loading: false,
       });
     } catch {
@@ -59,14 +89,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  pickWorkspacePath: async () => {
-    return (await window.electronAPI?.workspacePickFolder?.()) ?? null;
+  pickWorkspacePath: async (opts?: { title?: string }) => {
+    return (await window.electronAPI?.workspacePickFolder?.(opts)) ?? null;
   },
 
-  commitNewWorkspace: async (folderPath: string, tools: WorkspaceToolSelection) => {
+  commitNewWorkspace: async (folderPath: string, tools: WorkspaceToolSelection, opts?: { gitRemoteUrl?: string }) => {
     set({ loading: true });
     try {
-      await window.electronAPI?.workspaceEnsureInitialized?.(folderPath, { tools });
+      await window.electronAPI?.workspaceEnsureInitialized?.(folderPath, {
+        tools,
+        ...(opts?.gitRemoteUrl?.trim() ? { gitRemoteUrl: opts.gitRemoteUrl.trim() } : {}),
+      });
       await get().setWorkspace(folderPath, { fromMainShell: true });
     } finally {
       set({ loading: false });

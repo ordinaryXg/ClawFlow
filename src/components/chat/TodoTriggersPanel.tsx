@@ -28,6 +28,10 @@ function validateTriggersForSave(list: TodoTriggerRecord[], tErr: (k: string) =>
       const m = tr.trigger.intervalMinutes ?? 0;
       if (m < 1) return tErr('todoTriggers.intervalInvalid');
     }
+    if (tr.trigger.kind === 'schedule' && tr.trigger.repeat === 'cron') {
+      const c = String(tr.trigger.cron ?? '').trim();
+      if (!c) return tErr('todoTriggers.cronInvalid');
+    }
   }
   return null;
 }
@@ -343,11 +347,14 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                         patchTrigger({
                           repeat,
                           intervalMinutes: repeat === 'interval' ? selected.trigger.intervalMinutes ?? 60 : undefined,
+                          cron: repeat === 'cron' ? String((selected.trigger as any).cron ?? '').trim() || '0 9 * * *' : undefined,
+                          cronTz: repeat === 'cron' ? String((selected.trigger as any).cronTz ?? '').trim() || undefined : undefined,
                         });
                       }}
                     >
                       <option value="once">{t('todoTriggers.repeatOnce')}</option>
                       <option value="interval">{t('todoTriggers.repeatInterval')}</option>
+                      <option value="cron">{t('todoTriggers.repeatCron')}</option>
                     </select>
                   </label>
                   <label className="cf-todoPanel__field">
@@ -355,7 +362,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                     <input
                       type="datetime-local"
                       value={nextFireStr}
-                      disabled={readOnly || selected.trigger.repeat === 'interval'}
+                      disabled={readOnly || selected.trigger.repeat === 'interval' || selected.trigger.repeat === 'cron'}
                       onChange={(e) => patchTrigger({ nextFireAt: fromLocalDatetimeValue(e.target.value) })}
                     />
                   </label>
@@ -373,6 +380,33 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                         }
                       />
                     </label>
+                  ) : null}
+                  {selected.trigger.repeat === 'cron' ? (
+                    <>
+                      <label className="cf-todoPanel__field">
+                        <span>{t('todoTriggers.fieldCron')}</span>
+                        <input
+                          type="text"
+                          value={String((selected.trigger as any).cron ?? '')}
+                          disabled={readOnly}
+                          placeholder={t('todoTriggers.cronPh')}
+                          onChange={(e) => patchTrigger({ cron: e.target.value } as any)}
+                        />
+                        <div className="cf-sub" style={{ marginTop: 6 }}>
+                          {t('todoTriggers.cronHint')}
+                        </div>
+                      </label>
+                      <label className="cf-todoPanel__field">
+                        <span>{t('todoTriggers.fieldCronTz')}</span>
+                        <input
+                          type="text"
+                          value={String((selected.trigger as any).cronTz ?? '')}
+                          disabled={readOnly}
+                          placeholder={t('todoTriggers.cronTzPh')}
+                          onChange={(e) => patchTrigger({ cronTz: e.target.value || undefined } as any)}
+                        />
+                      </label>
+                    </>
                   ) : null}
                 </>
               ) : null}

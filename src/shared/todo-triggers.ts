@@ -7,7 +7,7 @@ export const TODO_TRIGGERS_FILE_VERSION = 1 as const;
 
 export type TodoTriggerStatus = 'pending' | 'done';
 
-export type TodoTriggerRepeat = 'once' | 'interval';
+export type TodoTriggerRepeat = 'once' | 'interval' | 'cron';
 
 export type TodoTriggerSchedule = {
   kind: 'schedule';
@@ -16,6 +16,13 @@ export type TodoTriggerSchedule = {
   repeat: TodoTriggerRepeat;
   /** repeat === 'interval' 时必填（分钟） */
   intervalMinutes?: number;
+  /**
+   * repeat === 'cron' 时必填：cron 表达式（默认 5 段：min hour dom mon dow）。
+   * 由调度器计算 nextFireAt；UI 可展示但不建议手改 nextFireAt。
+   */
+  cron?: string;
+  /** 可选：IANA 时区名（如 "Asia/Shanghai"）；缺省使用本机时区 */
+  cronTz?: string;
 };
 
 export type TodoTriggerAction = {
@@ -56,7 +63,7 @@ export type TodoTriggersFile = {
 export function isTodoTriggerCountedInWorkspaceHub(t: TodoTriggerRecord): boolean {
   if (t.status !== 'pending') return false;
   if (t.trigger.kind !== 'schedule') return false;
-  return t.trigger.repeat === 'once' || t.trigger.repeat === 'interval';
+  return t.trigger.repeat === 'once' || t.trigger.repeat === 'interval' || t.trigger.repeat === 'cron';
 }
 
 export function countTodoTriggersForWorkspaceHub(triggers: TodoTriggerRecord[]): number {

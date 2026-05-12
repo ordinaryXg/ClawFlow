@@ -84,8 +84,9 @@ export interface IElectronAPI {
   windowPaste: () => Promise<void>;
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
+  appRelaunch: () => Promise<void>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
-  workspaceListRecent: () => Promise<string[]>;
+  workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceSetActive: (
     folderPath: string,
     opts?: { fromMainShell?: boolean }
@@ -106,8 +107,27 @@ export interface IElectronAPI {
   workspaceStatAbsolutePath: (
     absPath: string
   ) => Promise<{ ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }>;
-  workspacePickFolder: () => Promise<string | null>;
-  workspaceEnsureInitialized: (folderPath: string, opts?: { tools?: WorkspaceToolSelection }) => Promise<{ meta: unknown }>;
+  workspacePickFolder: (opts?: { title?: string }) => Promise<string | null>;
+  workspaceEnsureInitialized: (
+    folderPath: string,
+    opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
+  ) => Promise<{ meta: unknown }>;
+  workspaceGitClone: (params: {
+    remoteUrl: string;
+    parentDir: string;
+  }) => Promise<{ ok: true; dest: string } | { ok: false; error: string }>;
+  workspaceGitPull: (
+    folderPath: string
+  ) => Promise<{ ok: true; stdout: string } | { ok: false; error: string }>;
+  workspaceGitPush: (
+    folderPath: string
+  ) => Promise<{ ok: true; stdout: string } | { ok: false; error: string }>;
+  workspaceResetCache: (
+    folderPath: string
+  ) => Promise<
+    | { ok: true; removed: { agent: boolean; subagent: boolean } }
+    | { ok: false; error: string }
+  >;
   workspaceGetToolSelection: (
     folderPath: string
   ) => Promise<{ ok: true; tools: Record<WorkspaceToolId, boolean> } | { ok: false; error: string }>;
@@ -341,6 +361,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowPaste: () => ipcRenderer.invoke('window:paste'),
   windowSelectAll: () => ipcRenderer.invoke('window:selectAll'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
+  appRelaunch: () => ipcRenderer.invoke('app:relaunch'),
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
@@ -369,9 +390,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('workspace:statAbsolutePath', absPath) as Promise<
       { ok: true; path: string; isDirectory: boolean } | { ok: false; error: 'not_found' }
     >,
-  workspacePickFolder: () => ipcRenderer.invoke('workspace:pickFolder'),
-  workspaceEnsureInitialized: (folderPath: string, opts?: { tools?: WorkspaceToolSelection }) =>
-    ipcRenderer.invoke('workspace:ensureInitialized', folderPath, opts),
+  workspacePickFolder: (opts?: { title?: string }) => ipcRenderer.invoke('workspace:pickFolder', opts),
+  workspaceEnsureInitialized: (
+    folderPath: string,
+    opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
+  ) => ipcRenderer.invoke('workspace:ensureInitialized', folderPath, opts),
+  workspaceGitClone: (params: { remoteUrl: string; parentDir: string }) =>
+    ipcRenderer.invoke('workspace:gitClone', params),
+  workspaceGitPull: (folderPath: string) => ipcRenderer.invoke('workspace:gitPull', folderPath),
+  workspaceGitPush: (folderPath: string) => ipcRenderer.invoke('workspace:gitPush', folderPath),
+  workspaceResetCache: (folderPath: string) => ipcRenderer.invoke('workspace:resetCache', folderPath),
   workspaceGetToolSelection: (folderPath: string) =>
     ipcRenderer.invoke('workspace:getToolSelection', folderPath) as Promise<
       { ok: true; tools: Record<WorkspaceToolId, boolean> } | { ok: false; error: string }

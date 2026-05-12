@@ -1,6 +1,17 @@
 import type { ModelProvider } from './provider';
 import type { ChatCompletionRequest, ChatCompletionResult } from './types';
 import { apiModelFromClawId } from './model-id';
+import { classifyNetworkFailure, fetchWithProxyRetry } from '../../utils/net-fetch';
+
+function fetchTimeoutMs(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_TIMEOUT_MS ?? 30_000);
+  return Number.isFinite(raw) && raw >= 1000 ? raw : 30_000;
+}
+
+function fetchRetries(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_RETRIES ?? 1);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.floor(raw))) : 1;
+}
 
 type AnthropicResp = {
   content?: Array<{ type?: string; text?: string }>;
@@ -64,16 +75,25 @@ export class AnthropicProvider implements ModelProvider {
       ...(system ? { system } : {}),
     };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: opts?.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`Anthropic fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`Anthropic HTTP ${res.status}: ${text.slice(0, 800)}`);

@@ -594,6 +594,42 @@ export const useChatStore = create<ChatState>()((set, get) => {
           streamingActivity: null,
           streamingThinking: null,
         });
+
+        // Ensure the user sees a final message even when the engine failed
+        // before persisting an assistant reply (e.g. network fetch failed).
+        const assistantText = String(fullText ?? '');
+        const assistantReasoning = String(reasoningText ?? '').trim();
+        if (assistantText.trim()) {
+          const now = Date.now();
+          const msg: Message = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: assistantText,
+            timestamp: now,
+            ...(assistantReasoning ? { reasoningContent: assistantReasoning } : {}),
+          };
+          set((state) => {
+            const nextConvs = state.conversations.map((c) => {
+              if (c.id !== sessionId) return c;
+              const last = c.messages[c.messages.length - 1];
+              const dup = last?.role === 'assistant' && String(last.content ?? '') === assistantText;
+              if (dup) return c;
+              return { ...c, messages: [...c.messages, msg], updatedAt: now };
+            });
+            const active = state.activeConversationId === sessionId;
+            return {
+              conversations: nextConvs,
+              messages: active ? [...state.messages, msg] : state.messages,
+            };
+          });
+          try {
+            const conv = get().conversations.find((c) => c.id === sessionId);
+            if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
+          } catch {
+            // best-effort
+          }
+        }
+
         await get().fetchConversations();
 
         void Promise.resolve(

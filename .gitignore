@@ -96,5 +96,3 @@ dist-pack-build/
 dist-pack-build-*/
 dist/
 
-# temp-openclaw
-temp-openclaw/

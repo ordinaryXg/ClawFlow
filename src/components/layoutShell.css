@@ -243,6 +243,7 @@
   align-items:center;
   gap:1px;
   margin-left:2px;
+  position:relative;
 }
 .cf-sideTree__wsRowAct{
   flex-shrink:0;
@@ -274,6 +275,63 @@
 .cf-sideTree__wsRowAct--del:hover:not(:disabled){
   color:var(--text);
   background:rgba(200,72,72,.18);
+}
+.cf-sideTree__wsRowAct--gitPull:hover:not(:disabled){
+  color:rgba(59,130,246,.95);
+  background:rgba(59,130,246,.14);
+}
+.cf-sideTree__wsRowAct--gitPush:hover:not(:disabled){
+  color:rgba(139,92,246,.95);
+  background:rgba(139,92,246,.14);
+}
+.cf-sideTree__wsRowAct--more:hover:not(:disabled){
+  color:var(--text);
+  background:rgba(148,163,184,.18);
+}
+
+.cf-sideTree__wsActionPopover{
+  position:absolute;
+  top:28px;
+  right:0;
+  min-width:220px;
+  padding:6px;
+  border:1px solid var(--border);
+  background:var(--panel);
+  box-shadow:0 14px 28px rgba(0,0,0,.22);
+  border-radius:8px;
+  z-index:50;
+}
+.cf-sideTree__wsActionItem{
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  text-align:left;
+  font-size:13px;
+}
+.cf-sideTree__wsActionItem:hover:not(:disabled){
+  background:rgba(148,163,184,.14);
+}
+.cf-sideTree__wsActionItem:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.cf-sideTree__wsActionSep{
+  height:1px;
+  background:var(--border);
+  margin:6px 4px;
+}
+.cf-sideTree__wsActionItem--danger{
+  color:rgba(220,38,38,.95);
+}
+.cf-sideTree__wsActionItem--danger:hover:not(:disabled){
+  background:rgba(220,38,38,.12);
 }
 .cf-sideTree__rootList{
   list-style:none;

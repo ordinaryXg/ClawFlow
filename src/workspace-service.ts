@@ -183,6 +183,8 @@ export interface WorkspaceMeta {
   name: string;
   createdAt: number;
   lastOpened: number;
+  /** 通过「Git 克隆」创建工作区时写入；用于侧栏显示拉取/推送 */
+  gitRemoteUrl?: string;
 }
 
 export interface WorkspaceRegistry {
@@ -531,7 +533,7 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
-  opts?: { tools?: WorkspaceToolSelection }
+  opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
   migrateLegacyWorkspaceAgentBundleSync(root);
@@ -596,6 +598,10 @@ export async function ensureWorkspaceInitialized(
   try {
     const buf = await fs.promises.readFile(metaPath, 'utf-8');
     const parsed = JSON.parse(buf);
+    const gitFromDisk =
+      typeof parsed?.gitRemoteUrl === 'string' && parsed.gitRemoteUrl.trim()
+        ? parsed.gitRemoteUrl.trim()
+        : undefined;
     meta = {
       id: typeof parsed?.id === 'string' && parsed.id ? parsed.id : randomUUID(),
       name:
@@ -604,6 +610,7 @@ export async function ensureWorkspaceInitialized(
           : path.basename(root),
       createdAt: typeof parsed?.createdAt === 'number' ? parsed.createdAt : now,
       lastOpened: now,
+      ...(gitFromDisk ? { gitRemoteUrl: gitFromDisk } : {}),
     };
   } catch {
     meta = {
@@ -614,6 +621,9 @@ export async function ensureWorkspaceInitialized(
     };
   }
   meta.lastOpened = now;
+  if (opts?.gitRemoteUrl != null && String(opts.gitRemoteUrl).trim()) {
+    meta.gitRemoteUrl = String(opts.gitRemoteUrl).trim();
+  }
   await fs.promises.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
   return meta;
 }
@@ -631,25 +641,83 @@ export function readWorkspaceMetaSync(workspaceRoot: string): WorkspaceMeta | nu
     const buf = fs.readFileSync(workspaceMetaPath(workspaceRoot), 'utf-8');
     const parsed = JSON.parse(buf);
     if (!parsed || typeof parsed !== 'object') return null;
+    const gitRemoteUrl =
+      typeof parsed.gitRemoteUrl === 'string' && parsed.gitRemoteUrl.trim()
+        ? parsed.gitRemoteUrl.trim()
+        : undefined;
     return {
       id: typeof parsed.id === 'string' ? parsed.id : '',
       name: typeof parsed.name === 'string' ? parsed.name : path.basename(workspaceRoot),
       createdAt: typeof parsed.createdAt === 'number' ? parsed.createdAt : 0,
       lastOpened: typeof parsed.lastOpened === 'number' ? parsed.lastOpened : 0,
+      ...(gitRemoteUrl ? { gitRemoteUrl } : {}),
     };
   } catch {
     return null;
   }
 }
 
-export async function pickWorkspaceFolder(senderWindow: BrowserWindow | null): Promise<string | null> {
+export async function pickWorkspaceFolder(senderWindow: BrowserWindow | null, dialogTitle?: string): Promise<string | null> {
   const opts: OpenDialogOptions = {
-    title: '选择工作空间文件夹',
+    title: typeof dialogTitle === 'string' && dialogTitle.trim() ? dialogTitle.trim() : '选择工作空间文件夹',
     properties: ['openDirectory', 'createDirectory'],
   };
   const res = senderWindow ? await dialog.showOpenDialog(senderWindow, opts) : await dialog.showOpenDialog(opts);
   if (res.canceled || res.filePaths.length === 0) return null;
   return path.resolve(res.filePaths[0]);
+}
+
+/** 路径是否已在注册表（recent 或当前 active） */
+export function isWorkspacePathRegistered(workspaceRoot: string): boolean {
+  const abs = path.resolve(workspaceRoot);
+  return isWorkspaceKnownInRegistry(abs, loadRegistry());
+}
+
+/** 侧栏列表：recent 路径 + 每条 workspace.json 中的 gitRemoteUrl */
+export function listRecentWorkspaceEntries(): Array<{ path: string; gitRemoteUrl: string | null }> {
+  const reg = loadRegistry();
+  const paths = (reg.recentWorkspacePaths ?? []).map((p) => path.resolve(p));
+  return paths.map((p) => {
+    const m = readWorkspaceMetaSync(p);
+    const url = m?.gitRemoteUrl?.trim();
+    return { path: p, gitRemoteUrl: url || null };
+  });
+}
+
+export async function resetWorkspaceCacheDirs(
+  workspaceRoot: string
+): Promise<
+  | { ok: true; removed: { agent: boolean; subagent: boolean } }
+  | { ok: false; error: string }
+> {
+  const root = path.resolve(String(workspaceRoot || ''));
+  const agentDir = path.join(root, '.agent');
+  const subagentDir = path.join(root, '.subagent');
+  const removed = { agent: false, subagent: false };
+  try {
+    try {
+      const st = await fs.promises.stat(agentDir);
+      if (st.isDirectory()) {
+        await fs.promises.rm(agentDir, { recursive: true, force: true });
+        removed.agent = true;
+      }
+    } catch {
+      /* missing */
+    }
+    try {
+      const st = await fs.promises.stat(subagentDir);
+      if (st.isDirectory()) {
+        await fs.promises.rm(subagentDir, { recursive: true, force: true });
+        removed.subagent = true;
+      }
+    } catch {
+      /* missing */
+    }
+    return { ok: true, removed };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
 }
 
 function isWorkspaceKnownInRegistry(abs: string, reg: WorkspaceRegistry): boolean {

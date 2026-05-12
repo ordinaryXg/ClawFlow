@@ -1,8 +1,8 @@
 import { FC, useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const SIZE = 34;
-const STROKE = 3.25;
+const SIZE = 28;
+const STROKE = 3;
 const R = (SIZE - STROKE) / 2;
 const C = 2 * Math.PI * R;
 

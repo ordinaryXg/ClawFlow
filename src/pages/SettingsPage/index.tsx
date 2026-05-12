@@ -11,6 +11,7 @@ import { useWorkspaceStore } from '../../store/modules/workspaceStore';
 import { useChatStore } from '../../store/modules/chatStore';
 import { CfSelectWithHints } from '../../components/CfSelectWithHints';
 import WorkspaceNewToolsModal from '../../components/workspace/WorkspaceNewToolsModal';
+import WorkspaceCreateModal from '../../components/workspace/WorkspaceCreateModal';
 import {
   DEFAULT_WORKSPACE_TOOL_SELECTION,
   WORKSPACE_TOOL_IDS,
@@ -71,15 +72,16 @@ const SettingsPage: FC = () => {
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
-  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
   const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
 
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [toolModal, setToolModal] = useState<{
     open: boolean;
     path: string | null;
     mode: 'create';
+    gitRemoteUrl?: string | null;
   }>({ open: false, path: null, mode: 'create' });
   const [accountToolsSel, setAccountToolsSel] = useState<Record<WorkspaceToolId, boolean>>({
     ...DEFAULT_WORKSPACE_TOOL_SELECTION,
@@ -236,17 +238,15 @@ const SettingsPage: FC = () => {
     (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
   };
 
-  const onPickWorkspaceFolder = async () => {
-    const picked = await pickWorkspacePath();
-    if (!picked) return;
-    setToolModal({ open: true, path: picked, mode: 'create' });
+  const onPickWorkspaceFolder = () => {
+    setCreateModalOpen(true);
   };
 
   const onConfirmWorkspaceTools = async (tools: WorkspaceToolSelection) => {
-    const p = toolModal.path;
-    setToolModal({ open: false, path: null, mode: 'create' });
+    const { path: p, gitRemoteUrl } = toolModal;
+    setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined });
     if (!p) return;
-    await commitNewWorkspace(p, tools);
+    await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
     await fetchConversations();
     (window as any).__cf_toast?.success?.(t('settings.workspacePickOkTitle'), t('settings.workspacePickOkBody'));
   };
@@ -1075,11 +1075,25 @@ const SettingsPage: FC = () => {
         </div>
       </div>
 
+      <WorkspaceCreateModal
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        onContinueToTools={(folderPath, opts) => {
+          setCreateModalOpen(false);
+          setToolModal({
+            open: true,
+            path: folderPath,
+            mode: 'create',
+            gitRemoteUrl: opts?.gitRemoteUrl ?? undefined,
+          });
+        }}
+      />
+
       <WorkspaceNewToolsModal
         open={toolModal.open}
         folderPath={toolModal.path}
         mode="create"
-        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined })}
         onConfirm={(tools) => void onConfirmWorkspaceTools(tools)}
       />
     </>

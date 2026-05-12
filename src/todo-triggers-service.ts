@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { CronExpressionParser } from 'cron-parser';
 import {
   TODO_TRIGGERS_FILE_VERSION,
   type TodoTriggerRecord,
@@ -55,7 +56,27 @@ export function ensureScheduleNextFire(t: TodoTriggerRecord, now = Date.now()): 
   if (t.status === 'done' || !t.enabled || t.trigger.kind !== 'schedule') return t;
   const tr = t.trigger;
   let next = tr.nextFireAt;
-  if (next == null || !Number.isFinite(next)) {
+  const resolveCronNext = (): number | null => {
+    const expr = String(tr.cron ?? '').trim();
+    if (!expr) return null;
+    try {
+      const it = CronExpressionParser.parse(expr, {
+        currentDate: new Date(now + 1000),
+        ...(tr.cronTz && String(tr.cronTz).trim() ? { tz: String(tr.cronTz).trim() } : {}),
+      });
+      const d = it.next().toDate();
+      const ms = d.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    } catch {
+      return null;
+    }
+  };
+
+  if (tr.repeat === 'cron') {
+    const cronNext = resolveCronNext();
+    next = cronNext ?? undefined;
+    if (next == null) next = now + 60_000;
+  } else if (next == null || !Number.isFinite(next)) {
     if (tr.repeat === 'interval' && tr.intervalMinutes && tr.intervalMinutes > 0) {
       next = now + tr.intervalMinutes * 60_000;
     } else {

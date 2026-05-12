@@ -40,7 +40,12 @@ export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-s
 
 /** Chat 下拉：内置引擎可用模型 ID（`/ 前即为 provider router id） */
 const BUILTIN_CHAT_MODEL_CATALOG: Record<string, readonly string[]> = {
-  deepseek: ['deepseek/deepseek-chat', 'deepseek/deepseek-reasoner'],
+  deepseek: [
+    'deepseek/deepseek-v4-pro',
+    'deepseek/deepseek-v4-flash',
+    'deepseek/deepseek-reasoner',
+    'deepseek/deepseek-chat',
+  ],
   openai: ['openai/gpt-4o-mini', 'openai/gpt-4o'],
   anthropic: ['anthropic/claude-3-5-sonnet-20241022', 'anthropic/claude-3-5-haiku-20241022'],
 };
@@ -479,6 +484,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
     const firstAvail = models.find((m) => m.available) ?? null;
     const preferred =
+      models.find((m) => m.available && m.id === 'deepseek/deepseek-v4-pro') ??
+      models.find((m) => m.available && m.id === 'deepseek/deepseek-v4-flash') ??
+      models.find((m) => m.available && m.id === 'deepseek/deepseek-reasoner') ??
       models.find((m) => m.available && m.id === 'deepseek/deepseek-chat') ??
       firstAvail ??
       models[0] ??
@@ -521,6 +529,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
     let reply = '';
     const reasoningSteps: string[] = [];
+    let lastAssistantTurnText = '';
     if (provider && providerId) {
       const loopMessages: ChatMessage[] = await this.buildHistoryMessages(
         params.conversationId,
@@ -581,11 +590,14 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         }
 
         const toolCalls = res.tool_calls ?? null;
+        // For DeepSeek thinking mode: if API returned reasoning_content, it MUST be sent back on subsequent turns.
+        // Also avoid stuffing reasoning into `content` when `content` is empty; keep the split fields for providers.
         const contentForLoop = dispTrim || reasonTrim;
-        const reasoningForLoop = reasonTrim && dispTrim ? reasoningCombined : undefined;
+        lastAssistantTurnText = contentForLoop;
+        const reasoningForLoop = reasonTrim ? reasoningCombined : undefined;
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: contentForLoop,
+          content: dispTrim,
           ...(reasoningForLoop ? { reasoning_content: reasoningForLoop } : {}),
           ...(toolCalls ? { tool_calls: toolCalls as any } : {}),
         };
@@ -812,7 +824,10 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     }
 
     if (!reply) {
-      reply = `【ClawFlowEngine:stub】mode=${mode} model=${modelId}\n\n你说：${params.userText}`;
+      const last = String(lastAssistantTurnText ?? '').trim();
+      reply = last
+        ? last
+        : `【ClawFlowEngine:stub】mode=${mode} model=${modelId}\n\n你说：${params.userText}`;
     }
 
     // Persist final assistant reply as its own message.

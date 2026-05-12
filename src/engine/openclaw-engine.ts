@@ -105,56 +105,9 @@ type ConversationRecord = {
 
 /**
  * 解析 OpenClaw CLI 路径
- * 优先使用内置版本，回退到系统 PATH
+ * 仅使用系统 PATH（本项目不再内置 OpenClaw CLI）
  */
 function resolveOpenClawPath(): string {
-  const isDev = !app.isPackaged;
-  
-  if (isDev) {
-    // 开发模式：优先使用仓库内置的 vendor/openclaw-standalone
-    const vendorMjs = path.join(
-      process.cwd(),
-      'vendor',
-      'openclaw-standalone',
-      'node_modules',
-      'openclaw',
-      'openclaw.mjs'
-    );
-    if (fs.existsSync(vendorMjs)) {
-      return vendorMjs;
-    }
-
-    // 回退：使用系统 PATH 中的 openclaw
-    return 'openclaw';
-  }
-  
-  // 生产模式：从应用资源中解析
-  const resourcesPath = process.resourcesPath || 
-    (process.platform === 'darwin' 
-      ? path.join(app.getAppPath(), '..', '..', '..', '..')  // macOS: ../../..
-      : path.join(app.getAppPath(), '..'));                  // Windows/Linux: ../
-  
-  // 尝试多个可能位置（按优先级）
-  const possiblePaths = [
-    // 1. postPackage 钩子复制的位置（推荐）
-    path.join(resourcesPath, 'openclaw-cli', 'openclaw.mjs'),
-    path.join(resourcesPath, 'openclaw-cli', 'bin', 'openclaw.mjs'),
-    // 2. 解压的 asar 位置（如果配置了 asarUnpack）
-    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'openclaw', 'openclaw.mjs'),
-    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.bin', 'openclaw'),
-    // 3. 未打包的 node_modules（如果 asar: false）
-    path.join(resourcesPath, 'app', 'node_modules', '.bin', 'openclaw'),
-    path.join(app.getAppPath(), 'node_modules', '.bin', 'openclaw'),
-  ];
-  
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return p;
-    }
-  }
-  
-  // 回退到系统 PATH 中的 openclaw
-  console.warn('[OpenClawEngine] 未找到内置 OpenClaw，尝试使用系统版本');
   return 'openclaw';
 }
 

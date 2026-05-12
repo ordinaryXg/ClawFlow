@@ -1,5 +1,13 @@
 import { FC, useEffect, useMemo, useState } from 'react';
-import { DeleteOutlined, FolderOutlined, SettingOutlined } from '@ant-design/icons';
+import {
+  CloudDownloadOutlined,
+  CloudUploadOutlined,
+  DeleteOutlined,
+  EllipsisOutlined,
+  FolderOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../store/modules/chatStore';
@@ -10,6 +18,7 @@ import { useSubAgentStore } from '../store/modules/subAgentStore';
 import { useWorkspaceSkillsStore } from '../store/modules/workspaceSkillsStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
+import WorkspaceCreateModal from './workspace/WorkspaceCreateModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
 import { countTodoTriggersForWorkspaceHub } from '../shared/todo-triggers';
 import { skillsForHermesDiscoveryUi } from '../shared/workspace-skills-discovery-filter';
@@ -28,8 +37,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
-  const workspaceRecent = useWorkspaceStore((s) => s.recent);
-  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
+  const recentEntries = useWorkspaceStore((s) => s.recentEntries);
   const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
@@ -45,10 +53,15 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
   const [wsHubExpanded, setWsHubExpanded] = useState(true);
   const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [gitBusyPath, setGitBusyPath] = useState<string | null>(null);
+  const [wsActionMenuFor, setWsActionMenuFor] = useState<string | null>(null);
+  const [resetBusyPath, setResetBusyPath] = useState<string | null>(null);
   const [toolModal, setToolModal] = useState<{
     open: boolean;
     path: string | null;
     mode: 'create' | 'edit';
+    gitRemoteUrl?: string | null;
   }>({ open: false, path: null, mode: 'create' });
 
   useEffect(() => {
@@ -123,26 +136,104 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const kbHubCount = 0;
 
   const workspaceRows = useMemo(() => {
-    const r = [...(workspaceRecent ?? [])];
+    const r = recentEntries.map((e) => e.path);
     const act = activeWorkspacePath;
-    if (act && !r.includes(act)) {
+    if (act && !r.some((x) => workspacePathsLikelyEqual(x, act))) {
       r.unshift(act);
     }
     return r;
-  }, [workspaceRecent, activeWorkspacePath]);
+  }, [recentEntries, activeWorkspacePath]);
 
-  const onNewWorkspace = async () => {
-    const picked = await pickWorkspacePath();
-    if (!picked) return;
-    setToolModal({ open: true, path: picked, mode: 'create' });
+  const gitRemoteForRow = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const e of recentEntries) {
+      m.set(e.path, e.gitRemoteUrl);
+    }
+    return m;
+  }, [recentEntries]);
+
+  const resolveGitRemoteUrl = (folderPath: string): string | null => {
+    for (const [k, v] of gitRemoteForRow) {
+      if (workspacePathsLikelyEqual(k, folderPath)) return v;
+    }
+    if (activeWorkspacePath && workspacePathsLikelyEqual(folderPath, activeWorkspacePath)) {
+      const u = workspaceMeta?.gitRemoteUrl?.trim();
+      return u || null;
+    }
+    return null;
+  };
+
+  const onNewWorkspace = () => {
+    setCreateModalOpen(true);
+  };
+
+  const onGitPullRow = async (folderPath: string) => {
+    setGitBusyPath(folderPath);
+    try {
+      const res = await window.electronAPI?.workspaceGitPull?.(folderPath);
+      const toast = (window as unknown as { __cf_toast?: { success?: (a: string, b?: string) => void; error?: (a: string, b?: string) => void } }).__cf_toast;
+      if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
+        const out = 'stdout' in res ? String((res as { stdout?: string }).stdout ?? '').trim() : '';
+        toast?.success?.(t('workspace.gitPullOk'), out ? out.slice(0, 400) : undefined);
+        await refreshWorkspace();
+        return;
+      }
+      const err = res && typeof res === 'object' && 'error' in res ? String((res as { error?: string }).error ?? '') : 'failed';
+      toast?.error?.(t('workspace.gitOpFailed'), err);
+    } finally {
+      setGitBusyPath(null);
+    }
+  };
+
+  const onGitPushRow = async (folderPath: string) => {
+    setGitBusyPath(folderPath);
+    try {
+      const res = await window.electronAPI?.workspaceGitPush?.(folderPath);
+      const toast = (window as unknown as { __cf_toast?: { success?: (a: string, b?: string) => void; error?: (a: string, b?: string) => void } }).__cf_toast;
+      if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
+        const out = 'stdout' in res ? String((res as { stdout?: string }).stdout ?? '').trim() : '';
+        toast?.success?.(t('workspace.gitPushOk'), out ? out.slice(0, 400) : undefined);
+        await refreshWorkspace();
+        return;
+      }
+      const err = res && typeof res === 'object' && 'error' in res ? String((res as { error?: string }).error ?? '') : 'failed';
+      toast?.error?.(t('workspace.gitOpFailed'), err);
+    } finally {
+      setGitBusyPath(null);
+    }
+  };
+
+  const onResetWorkspaceCacheRow = async (folderPath: string) => {
+    const name = workspaceFolderLabel(folderPath);
+    const msg = t('workspace.resetCacheConfirm', { name });
+    if (!window.confirm(msg)) return;
+    setResetBusyPath(folderPath);
+    try {
+      const res = await window.electronAPI?.workspaceResetCache?.(folderPath);
+      const toast = (window as unknown as {
+        __cf_toast?: { success?: (a: string, b?: string) => void; error?: (a: string, b?: string) => void };
+      }).__cf_toast;
+      if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
+        toast?.success?.(t('workspace.resetCacheOkTitle'), t('workspace.resetCacheOkBody'));
+        await refreshWorkspace();
+        await fetchConversations();
+        navigate('/chat');
+        return;
+      }
+      const err = res && typeof res === 'object' && 'error' in res ? String((res as { error?: string }).error ?? '') : 'failed';
+      toast?.error?.(t('workspace.resetCacheFailed'), err);
+    } finally {
+      setResetBusyPath(null);
+      setWsActionMenuFor(null);
+    }
   };
 
   const onConfirmWorkspaceToolsModal = async (tools: WorkspaceToolSelection) => {
-    const { path: p, mode } = toolModal;
-    setToolModal({ open: false, path: null, mode: 'create' });
+    const { path: p, mode, gitRemoteUrl } = toolModal;
+    setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined });
     if (!p) return;
     if (mode === 'create') {
-      await commitNewWorkspace(p, tools);
+      await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
       await fetchConversations();
       navigate('/chat');
       return;
@@ -228,8 +319,12 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
               ) : (
                 <ul className="cf-sideTree__rootList" role="tree">
                   {workspaceRows.map((p) => {
-                    const isActiveWs = Boolean(activeWorkspacePath && p === activeWorkspacePath);
+                    const isActiveWs = Boolean(activeWorkspacePath && workspacePathsLikelyEqual(p, activeWorkspacePath));
                     const showNest = isActiveWs && wsHubExpanded;
+                    const gitRemote = resolveGitRemoteUrl(p);
+                    const gitBusyHere = gitBusyPath != null && workspacePathsLikelyEqual(gitBusyPath, p);
+                    const resetBusyHere = resetBusyPath != null && workspacePathsLikelyEqual(resetBusyPath, p);
+                    const menuOpen = wsActionMenuFor != null && workspacePathsLikelyEqual(wsActionMenuFor, p);
 
                     return (
                       <li key={p} className="cf-sideTree__wsLi" role="none">
@@ -260,30 +355,84 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                           <div className="cf-sideTree__wsRowActions">
                             <button
                               type="button"
-                              className="cf-sideTree__wsRowAct cf-sideTree__wsRowAct--tools"
-                              title={t('chat.workspaceToolSettings')}
-                              aria-label={t('chat.workspaceToolSettings')}
+                              className="cf-sideTree__wsRowAct cf-sideTree__wsRowAct--more"
+                              title={t('workspace.rowActionsMore')}
+                              aria-label={t('workspace.rowActionsMore')}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                setToolModal({ open: true, path: p, mode: 'edit' });
+                                setWsActionMenuFor((prev) => (prev && workspacePathsLikelyEqual(prev, p) ? null : p));
                               }}
                             >
-                              <SettingOutlined />
+                              <EllipsisOutlined />
                             </button>
-                            <button
-                              type="button"
-                              className="cf-sideTree__wsRowAct cf-sideTree__wsRowAct--del"
-                              title={t('chat.removeWorkspace')}
-                              aria-label={t('chat.removeWorkspace')}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                void onRemoveWorkspaceRow(p);
-                              }}
-                            >
-                              <DeleteOutlined />
-                            </button>
+
+                            {menuOpen ? (
+                              <div
+                                className="cf-sideTree__wsActionPopover"
+                                role="dialog"
+                                aria-label={t('workspace.rowActionsMore')}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                              >
+                                {gitRemote ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="cf-sideTree__wsActionItem"
+                                      disabled={gitBusyHere}
+                                      onClick={() => void onGitPullRow(p)}
+                                    >
+                                      <CloudDownloadOutlined /> {t('workspace.gitPullTitle')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="cf-sideTree__wsActionItem"
+                                      disabled={gitBusyHere}
+                                      onClick={() => void onGitPushRow(p)}
+                                    >
+                                      <CloudUploadOutlined /> {t('workspace.gitPushTitle')}
+                                    </button>
+                                    <div className="cf-sideTree__wsActionSep" />
+                                  </>
+                                ) : null}
+
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__wsActionItem"
+                                  onClick={() => {
+                                    setWsActionMenuFor(null);
+                                    setToolModal({ open: true, path: p, mode: 'edit', gitRemoteUrl: undefined });
+                                  }}
+                                >
+                                  <SettingOutlined /> {t('chat.workspaceToolSettings')}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__wsActionItem"
+                                  disabled={resetBusyHere}
+                                  onClick={() => void onResetWorkspaceCacheRow(p)}
+                                >
+                                  <ReloadOutlined /> {t('workspace.resetCacheTitle')}
+                                </button>
+
+                                <div className="cf-sideTree__wsActionSep" />
+
+                                <button
+                                  type="button"
+                                  className="cf-sideTree__wsActionItem cf-sideTree__wsActionItem--danger"
+                                  onClick={() => {
+                                    setWsActionMenuFor(null);
+                                    void onRemoveWorkspaceRow(p);
+                                  }}
+                                >
+                                  <DeleteOutlined /> {t('chat.removeWorkspace')}
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                           {isActiveWs ? (
                             <button
@@ -447,11 +596,25 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
         </div>
       </div>
 
+      <WorkspaceCreateModal
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        onContinueToTools={(folderPath, opts) => {
+          setCreateModalOpen(false);
+          setToolModal({
+            open: true,
+            path: folderPath,
+            mode: 'create',
+            gitRemoteUrl: opts?.gitRemoteUrl ?? undefined,
+          });
+        }}
+      />
+
       <WorkspaceNewToolsModal
         open={toolModal.open}
         folderPath={toolModal.path}
         mode={toolModal.mode}
-        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined })}
         onConfirm={(tools) => void onConfirmWorkspaceToolsModal(tools)}
       />
     </aside>

@@ -3,9 +3,20 @@ import type { ChatCompletionRequest, ChatCompletionResult, ToolSchema } from './
 import { apiModelFromClawId } from './model-id';
 import { readOpenAiSseContentStream } from '../streaming/openai-sse';
 import { readOpenAiSseAgentStream } from '../streaming/openai-sse-agent';
+import { classifyNetworkFailure, fetchWithProxyRetry } from '../../utils/net-fetch';
 
 function cloneJson<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
+}
+
+function fetchTimeoutMs(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_TIMEOUT_MS ?? 30_000);
+  return Number.isFinite(raw) && raw >= 1000 ? raw : 30_000;
+}
+
+function fetchRetries(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_RETRIES ?? 1);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.floor(raw))) : 1;
 }
 
 /**
@@ -114,15 +125,24 @@ export class DeepSeekProvider implements ModelProvider {
 
     logDeepSeekOutgoing(url, 'chat/completions', body);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: opts?.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`DeepSeek fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`DeepSeek HTTP ${res.status}: ${text.slice(0, 800)}`);
@@ -168,15 +188,24 @@ export class DeepSeekProvider implements ModelProvider {
 
     logDeepSeekOutgoing(url, 'chat/completions (stream)', body);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: opts?.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`DeepSeek stream fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`DeepSeek stream HTTP ${res.status}: ${text.slice(0, 800)}`);
@@ -221,15 +250,24 @@ export class DeepSeekProvider implements ModelProvider {
 
     logDeepSeekOutgoing(url, 'chat/completions (agent stream)', body);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(handlers.signal ? { signal: handlers.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: handlers.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`DeepSeek agent stream fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`DeepSeek agent stream HTTP ${res.status}: ${text.slice(0, 800)}`);

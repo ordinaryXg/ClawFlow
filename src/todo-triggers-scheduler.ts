@@ -69,7 +69,7 @@ async function applyPostFireMutation(workspaceRoot: string, triggerId: string): 
         enabled: false,
         trigger: { ...t.trigger, nextFireAt: undefined },
       };
-    } else {
+    } else if (t.trigger.repeat === 'interval') {
       const mins = t.trigger.intervalMinutes && t.trigger.intervalMinutes > 0 ? t.trigger.intervalMinutes : 60;
       next = {
         ...next,
@@ -78,6 +78,17 @@ async function applyPostFireMutation(workspaceRoot: string, triggerId: string): 
           nextFireAt: now + mins * 60_000,
         },
       };
+      if (next.consumeOnFire) {
+        next = {
+          ...next,
+          status: 'done',
+          enabled: false,
+          trigger: { ...next.trigger, nextFireAt: undefined },
+        };
+      }
+    } else {
+      // cron：由 ensureScheduleNextFire 计算下一次触发；consumeOnFire 为 true 时也可一次性消费
+      next = ensureScheduleNextFire({ ...next, trigger: { ...t.trigger, nextFireAt: undefined } }, now);
       if (next.consumeOnFire) {
         next = {
           ...next,

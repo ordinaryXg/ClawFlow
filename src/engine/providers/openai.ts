@@ -2,6 +2,17 @@ import type { ModelProvider } from './provider';
 import type { ChatCompletionRequest, ChatCompletionResult, ToolCall } from './types';
 import { apiModelFromClawId } from './model-id';
 import { readOpenAiSseContentStream } from '../streaming/openai-sse';
+import { classifyNetworkFailure, fetchWithProxyRetry } from '../../utils/net-fetch';
+
+function fetchTimeoutMs(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_TIMEOUT_MS ?? 30_000);
+  return Number.isFinite(raw) && raw >= 1000 ? raw : 30_000;
+}
+
+function fetchRetries(): number {
+  const raw = Number(process.env.CLAWFLOW_FETCH_RETRIES ?? 1);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.floor(raw))) : 1;
+}
 
 type OpenAiChatResponse = {
   choices?: Array<{
@@ -51,15 +62,24 @@ export class OpenAIProvider implements ModelProvider {
       body.response_format = { type: 'json_object' };
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: opts?.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`OpenAI fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`OpenAI HTTP ${res.status}: ${text.slice(0, 800)}`);
@@ -102,15 +122,24 @@ export class OpenAIProvider implements ModelProvider {
     }
     if (req.modeConfig.jsonMode) body.response_format = { type: 'json_object' };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    let res: Response;
+    try {
+      res = await fetchWithProxyRetry(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: fetchTimeoutMs(), retries: fetchRetries(), signal: opts?.signal }
+      );
+    } catch (e: any) {
+      const nf = classifyNetworkFailure(e, url);
+      throw new Error(`OpenAI stream fetch failed url=${url}: ${nf.hint}`);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`OpenAI stream HTTP ${res.status}: ${text.slice(0, 800)}`);

@@ -14,7 +14,9 @@ export function defaultModeConfig(mode: InteractionMode): ModeConfig {
     ...(mode === 'ask'
       ? { thinking: { type: 'disabled' } }
       : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-    ...((mode === 'multitask' || mode === 'plan') ? { useBetaBaseUrl: true } : {}),
+    // NOTE: do NOT enable DeepSeek beta base URL by default.
+    // In many networks, /beta endpoints are blocked or unstable, causing UND_ERR_CONNECT_TIMEOUT.
+    // Users can still opt-in via policyOverrides.useBetaBaseUrl when needed.
   };
 }
 

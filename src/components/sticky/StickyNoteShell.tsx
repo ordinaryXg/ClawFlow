@@ -1,5 +1,5 @@
 import { FC, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { DragOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloudDownloadOutlined, CloudUploadOutlined, DragOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
@@ -8,6 +8,7 @@ import { useShellViewStore } from '../../store/modules/shellViewStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../../utils/workspace-path';
 import ViewModeFab from '../ViewModeFab';
 import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
+import WorkspaceCreateModal from '../workspace/WorkspaceCreateModal';
 import StickyFileStrip from './StickyFileStrip';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
@@ -54,19 +55,22 @@ const StickyNoteShell: FC = () => {
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);
-  const workspaceRecent = useWorkspaceStore((s) => s.recent);
+  const recentEntries = useWorkspaceStore((s) => s.recentEntries);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
-  const pickWorkspacePath = useWorkspaceStore((s) => s.pickWorkspacePath);
   const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
+  const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
 
   const { fetchConversations } = useChatStore();
 
   const splitWrapRef = useRef<HTMLDivElement | null>(null);
   const [addDropOver, setAddDropOver] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [gitBusyPath, setGitBusyPath] = useState<string | null>(null);
   const [toolModal, setToolModal] = useState<{
     open: boolean;
     path: string | null;
     mode: 'create' | 'edit';
+    gitRemoteUrl?: string | null;
   }>({ open: false, path: null, mode: 'create' });
   const [filePaneHeightPx, setFilePaneHeightPx] = useState(loadFilePaneHeight);
   const filePaneHeightRef = useRef(filePaneHeightPx);
@@ -130,13 +134,42 @@ const StickyNoteShell: FC = () => {
     if (isSatellite && stickyBootstrap?.satelliteWorkspace) {
       return [stickyBootstrap.satelliteWorkspace];
     }
-    const r = [...(workspaceRecent ?? [])];
+    const r = recentEntries.map((e) => e.path);
     const act = activeWorkspacePath;
     if (act && !r.some((p) => workspacePathsLikelyEqual(p, act))) {
       r.unshift(act);
     }
     return r.filter((p) => !detachedPaths.some((d) => workspacePathsLikelyEqual(d, p)));
-  }, [workspaceRecent, activeWorkspacePath, detachedPaths, isSatellite, stickyBootstrap?.satelliteWorkspace]);
+  }, [recentEntries, activeWorkspacePath, detachedPaths, isSatellite, stickyBootstrap?.satelliteWorkspace]);
+
+  const gitRemoteForRow = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const e of recentEntries) {
+      m.set(e.path, e.gitRemoteUrl);
+    }
+    return m;
+  }, [recentEntries]);
+
+  const resolveGitRemoteUrl = useCallback(
+    (folderPath: string): string | null => {
+      for (const [k, v] of gitRemoteForRow) {
+        if (workspacePathsLikelyEqual(k, folderPath)) return v;
+      }
+      if (activeWorkspacePath && workspacePathsLikelyEqual(folderPath, activeWorkspacePath)) {
+        const u = workspaceMeta?.gitRemoteUrl?.trim();
+        return u || null;
+      }
+      return null;
+    },
+    [gitRemoteForRow, activeWorkspacePath, workspaceMeta?.gitRemoteUrl]
+  );
+
+  const activeGitRemote =
+    activeWorkspacePath?.trim() && !isSatellite ? resolveGitRemoteUrl(activeWorkspacePath) : null;
+  const gitBusyHere =
+    gitBusyPath != null &&
+    activeWorkspacePath != null &&
+    workspacePathsLikelyEqual(gitBusyPath, activeWorkspacePath);
 
   const canTearOffTab = useCallback(
     (path: string) =>
@@ -286,18 +319,54 @@ const StickyNoteShell: FC = () => {
     }
   };
 
-  const onAddWorkspace = async () => {
-    const picked = await pickWorkspacePath();
-    if (!picked) return;
-    setToolModal({ open: true, path: picked, mode: 'create' });
+  const onAddWorkspace = () => {
+    setCreateModalOpen(true);
+  };
+
+  const onGitPullActive = async () => {
+    const p = activeWorkspacePath?.trim();
+    if (!p) return;
+    setGitBusyPath(p);
+    try {
+      const res = await window.electronAPI?.workspaceGitPull?.(p);
+      if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
+        const out = 'stdout' in res ? String((res as { stdout?: string }).stdout ?? '').trim() : '';
+        pushToast('success', t('workspace.gitPullOk'), out ? out.slice(0, 400) : undefined);
+        await refreshWorkspace();
+        return;
+      }
+      const err = res && typeof res === 'object' && 'error' in res ? String((res as { error?: string }).error ?? '') : 'failed';
+      pushToast('error', t('workspace.gitOpFailed'), err);
+    } finally {
+      setGitBusyPath(null);
+    }
+  };
+
+  const onGitPushActive = async () => {
+    const p = activeWorkspacePath?.trim();
+    if (!p) return;
+    setGitBusyPath(p);
+    try {
+      const res = await window.electronAPI?.workspaceGitPush?.(p);
+      if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
+        const out = 'stdout' in res ? String((res as { stdout?: string }).stdout ?? '').trim() : '';
+        pushToast('success', t('workspace.gitPushOk'), out ? out.slice(0, 400) : undefined);
+        await refreshWorkspace();
+        return;
+      }
+      const err = res && typeof res === 'object' && 'error' in res ? String((res as { error?: string }).error ?? '') : 'failed';
+      pushToast('error', t('workspace.gitOpFailed'), err);
+    } finally {
+      setGitBusyPath(null);
+    }
   };
 
   const onConfirmWorkspaceToolsModal = async (tools: WorkspaceToolSelection) => {
-    const { path: p, mode } = toolModal;
-    setToolModal({ open: false, path: null, mode: 'create' });
+    const { path: p, mode, gitRemoteUrl } = toolModal;
+    setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined });
     if (!p) return;
     if (mode === 'create') {
-      await commitNewWorkspace(p, tools);
+      await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
       await fetchConversations();
       navigate('/chat');
       pushToast('success', t('sticky.workspaceDropAddOk'));
@@ -353,7 +422,7 @@ const StickyNoteShell: FC = () => {
       pushToast('error', t('sticky.workspaceDropAddNotFolder'));
       return;
     }
-    setToolModal({ open: true, path: stat.path, mode: 'create' });
+    setToolModal({ open: true, path: stat.path, mode: 'create', gitRemoteUrl: undefined });
   };
 
   const onPickWorkspace = async (folderPath: string) => {
@@ -430,6 +499,30 @@ const StickyNoteShell: FC = () => {
             <span className="cf-stickyMain__title">{workspaceLabel}</span>
           </div>
           <div className="cf-stickyMain__barRight">
+            {activeGitRemote ? (
+              <>
+                <button
+                  type="button"
+                  className="cf-stickyMain__workspaceToolsBtn"
+                  title={t('workspace.gitPullTitle')}
+                  aria-label={t('workspace.gitPullTitle')}
+                  disabled={gitBusyHere}
+                  onClick={() => void onGitPullActive()}
+                >
+                  <CloudDownloadOutlined />
+                </button>
+                <button
+                  type="button"
+                  className="cf-stickyMain__workspaceToolsBtn"
+                  title={t('workspace.gitPushTitle')}
+                  aria-label={t('workspace.gitPushTitle')}
+                  disabled={gitBusyHere}
+                  onClick={() => void onGitPushActive()}
+                >
+                  <CloudUploadOutlined />
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               className="cf-stickyMain__workspaceToolsBtn"
@@ -443,7 +536,7 @@ const StickyNoteShell: FC = () => {
               onClick={() => {
                 const p = activeWorkspacePath?.trim();
                 if (!p) return;
-                setToolModal({ open: true, path: p, mode: 'edit' });
+                setToolModal({ open: true, path: p, mode: 'edit', gitRemoteUrl: undefined });
               }}
             >
               <SettingOutlined />
@@ -477,11 +570,25 @@ const StickyNoteShell: FC = () => {
         </div>
       </div>
 
+      <WorkspaceCreateModal
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        onContinueToTools={(folderPath, opts) => {
+          setCreateModalOpen(false);
+          setToolModal({
+            open: true,
+            path: folderPath,
+            mode: 'create',
+            gitRemoteUrl: opts?.gitRemoteUrl ?? undefined,
+          });
+        }}
+      />
+
       <WorkspaceNewToolsModal
         open={toolModal.open}
         folderPath={toolModal.path}
         mode={toolModal.mode}
-        onCancel={() => setToolModal({ open: false, path: null, mode: 'create' })}
+        onCancel={() => setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined })}
         onConfirm={(tools) => void onConfirmWorkspaceToolsModal(tools)}
       />
     </div>

@@ -24,6 +24,7 @@
     "@ant-design/icons": "^5.5.0",
     "antd": "^5.22.0",
     "better-sqlite3": "^12.9.0",
+    "cron-parser": "^5.5.0",
     "electron-squirrel-startup": "^1.0.1",
     "highlight.js": "^11.10.0",
     "i18next": "^26.0.10",
