@@ -35,7 +35,7 @@ import { getLauncherIconDataUrl } from './launcher-icon-main';
 import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main-ui-prefs';
 import { destroyAppTray, ensureAppTray } from './app-tray';
 import { registerMessagingIPC } from './messaging/register-messaging-ipc';
-import { stopFeishuEventServer } from './messaging/feishu-event-server';
+import { stopFeishuEventServer, restartFeishuEventServerFromPrefs } from './messaging/feishu-event-server';
 import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './desktop-pin-hide-main';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
 import { readSkillEvolutionState } from './skill-evolution-state';
@@ -1351,6 +1351,7 @@ app.whenReady().then(async () => {
   setupApplicationMenu();
 
   createWindow();
+  restartFeishuEventServerFromPrefs();
 });
 
 app.on('before-quit', () => {

@@ -5,7 +5,6 @@
  */
 
 import * as path from 'path';
-import * as Lark from '@larksuiteoapi/node-sdk';
 import { readMessagingPrefsFile } from '../messaging-prefs';
 import type { FeishuReceiveIdType } from '../messaging-prefs';
 import * as workspaceService from '../workspace-service';
@@ -15,7 +14,23 @@ import { feishuGetTenantAccessToken, feishuSendTextMessage, resolveFeishuAppCred
 import { formatAssistantReplyForFeishu } from './feishu-outbound-text';
 import { broadcastChatConversationsDirty } from './chat-broadcast';
 
-let wsClient: Lark.WSClient | null = null;
+/** 运行时加载（webpack external）；未安装时主进程仍可启动，仅飞书长连不可用 */
+function loadLarkSdk(): any {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@larksuiteoapi/node-sdk');
+  } catch (e: unknown) {
+    console.warn(
+      '[feishu-ws] @larksuiteoapi/node-sdk 未安装或加载失败，飞书长连接已跳过。请在项目根执行: npm install @larksuiteoapi/node-sdk',
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
+}
+
+type FeishuWsClient = { close: (opts?: { force?: boolean }) => void; start: (opts: unknown) => Promise<void> };
+
+let wsClient: FeishuWsClient | null = null;
 
 const recentMessageIds = new Set<string>();
 const RECENT_CAP = 800;
@@ -267,6 +282,11 @@ export function restartFeishuEventServerFromPrefs(): void {
   const { appId, appSecret } = resolveFeishuAppCredentials();
   if (!appId || !appSecret) {
     console.warn('[feishu-ws] long connection not started: missing App ID / App Secret (or env FEISHU_*).');
+    return;
+  }
+
+  const Lark = loadLarkSdk();
+  if (!Lark) {
     return;
   }
 

@@ -177,6 +177,4 @@ export function registerMessagingIPC(): void {
       return { ok: false as const, error, detail: detailWithCtx };
     }
   });
-
-  restartFeishuEventServerFromPrefs();
 }

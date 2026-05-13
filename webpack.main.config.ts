@@ -45,5 +45,7 @@ export const mainConfig: Configuration = {
   externals: {
     ws: 'commonjs ws',
     'better-sqlite3': 'commonjs better-sqlite3',
+    /** 飞书 WS：运行时从 node_modules 加载，避免未安装时阻塞 webpack 解析；安装见 package.json */
+    '@larksuiteoapi/node-sdk': 'commonjs @larksuiteoapi/node-sdk',
   },
 };
