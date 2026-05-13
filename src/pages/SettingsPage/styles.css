@@ -76,6 +76,10 @@
   margin-bottom: 12px;
 }
 
+.cf-settingsMessagingPlaceholder {
+  opacity: 0.72;
+}
+
 @media (max-width: 760px) {
   .cf-settingsSplit {
     flex-direction: column;

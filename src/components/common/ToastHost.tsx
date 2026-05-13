@@ -1,7 +1,7 @@
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type ToastType = 'success' | 'error';
+type ToastType = 'success' | 'error' | 'info';
 
 type ToastItem = {
   id: string;
@@ -29,6 +29,7 @@ export const ToastHost: FC = () => {
     return {
       success: (title: string, message?: string) => push('success', title, message),
       error: (title: string, message?: string) => push('error', title, message),
+      info: (title: string, message?: string) => push('info', title, message),
       dismiss: (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)),
     };
   }, []);
@@ -49,7 +50,13 @@ export const ToastHost: FC = () => {
             minWidth: 320,
             maxWidth: 420,
             borderRadius: 14,
-            border: `1px solid ${toast.type === 'success' ? 'rgba(30,91,69,.5)' : 'rgba(194,75,75,.5)'}`,
+            border: `1px solid ${
+              toast.type === 'success'
+                ? 'rgba(30,91,69,.5)'
+                : toast.type === 'info'
+                  ? 'rgba(70,120,180,.55)'
+                  : 'rgba(194,75,75,.5)'
+            }`,
             background: 'rgba(26,29,33,.92)',
             boxShadow: 'var(--shadow)',
             padding: '10px 12px',

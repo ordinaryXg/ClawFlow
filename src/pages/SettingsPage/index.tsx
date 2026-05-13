@@ -18,6 +18,7 @@ import {
   type WorkspaceToolId,
   type WorkspaceToolSelection,
 } from '../../shared/workspace-tools';
+import { PLACEHOLDER_MESSAGING_CHANNELS } from '../../shared/messaging-channels';
 const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
@@ -108,6 +109,23 @@ const SettingsPage: FC = () => {
   const [accountToolsSaving, setAccountToolsSaving] = useState(false);
   const [connectorCount, setConnectorCount] = useState(0);
 
+  type FeishuRecvUi = 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+  const [feishuAppId, setFeishuAppId] = useState('');
+  const [feishuSecretDraft, setFeishuSecretDraft] = useState('');
+  const [feishuClearSecretOnSave, setFeishuClearSecretOnSave] = useState(false);
+  const [feishuDefaultReceiveId, setFeishuDefaultReceiveId] = useState('');
+  const [feishuReceiveIdType, setFeishuReceiveIdType] = useState<FeishuRecvUi>('chat_id');
+  const [feishuAppSecretConfigured, setFeishuAppSecretConfigured] = useState(false);
+  const [feishuAppSecretSavedInFile, setFeishuAppSecretSavedInFile] = useState(false);
+  const [feishuSaving, setFeishuSaving] = useState(false);
+  const [feishuTesting, setFeishuTesting] = useState(false);
+  const [feishuSendingTest, setFeishuSendingTest] = useState(false);
+  const [feishuTestText, setFeishuTestText] = useState('');
+  const [feishuBridgeEnabled, setFeishuBridgeEnabled] = useState(false);
+  const [feishuBridgeWorkspace, setFeishuBridgeWorkspace] = useState('');
+  const [feishuBridgeConvId, setFeishuBridgeConvId] = useState('');
+  const [feishuBridgeSenderLabel, setFeishuBridgeSenderLabel] = useState('');
+
   const [appVersion, setAppVersion] = useState<string>('');
   const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai' | 'anthropic'>('deepseek');
   const [modelEnvironment, setModelEnvironment] = useState<'personal' | 'work' | 'custom'>('personal');
@@ -184,6 +202,26 @@ const SettingsPage: FC = () => {
     }
   }, []);
 
+  const reloadFeishuMessaging = useCallback(async () => {
+    try {
+      const s = await window.electronAPI?.messagingGetFeishuSettings?.();
+      if (!s) return;
+      setFeishuAppId(s.appId ?? '');
+      setFeishuReceiveIdType(s.receiveIdType);
+      setFeishuDefaultReceiveId(s.defaultReceiveId ?? '');
+      setFeishuSecretDraft('');
+      setFeishuClearSecretOnSave(false);
+      setFeishuAppSecretConfigured(s.appSecretConfigured);
+      setFeishuAppSecretSavedInFile(s.appSecretSavedInFile);
+      setFeishuBridgeEnabled(Boolean(s.bridgeEnabled));
+      setFeishuBridgeWorkspace(s.bridgeWorkspacePath ?? '');
+      setFeishuBridgeConvId(s.bridgeConversationId ?? '');
+      setFeishuBridgeSenderLabel(s.bridgeSenderLabel ?? '');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     if (activeSection !== 'models') return;
     void reloadBuiltinCatalog();
@@ -194,7 +232,8 @@ const SettingsPage: FC = () => {
     void fetchStatus();
     void reloadConnectorsCount();
     void fetchLogs(80);
-  }, [activeSection, fetchStatus, reloadConnectorsCount]);
+    void reloadFeishuMessaging();
+  }, [activeSection, fetchStatus, reloadConnectorsCount, reloadFeishuMessaging, fetchLogs]);
 
   useEffect(() => {
     if (activeSection !== 'account') return;
@@ -431,6 +470,109 @@ const SettingsPage: FC = () => {
     ],
     [t],
   );
+
+  const feishuReceiveIdSelectOptions = useMemo(
+    () => [
+      { value: 'chat_id', label: 'chat_id', hint: t('settings.messagingFeishuRecvHint_chat_id') },
+      { value: 'open_id', label: 'open_id', hint: t('settings.messagingFeishuRecvHint_open_id') },
+      { value: 'user_id', label: 'user_id', hint: t('settings.messagingFeishuRecvHint_user_id') },
+      { value: 'union_id', label: 'union_id', hint: t('settings.messagingFeishuRecvHint_union_id') },
+      { value: 'email', label: 'email', hint: t('settings.messagingFeishuRecvHint_email') },
+    ],
+    [t],
+  );
+
+  const onSaveFeishuMessaging = async () => {
+    setFeishuSaving(true);
+    try {
+      await window.electronAPI?.messagingSaveFeishuSettings?.({
+        appId: feishuAppId,
+        defaultReceiveId: feishuDefaultReceiveId,
+        receiveIdType: feishuReceiveIdType,
+        clearAppSecret: feishuClearSecretOnSave,
+        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
+        bridgeEnabled: feishuBridgeEnabled,
+        bridgeWorkspacePath: feishuBridgeWorkspace,
+        bridgeConversationId: feishuBridgeConvId,
+        bridgeSenderLabel: feishuBridgeSenderLabel,
+      });
+      await reloadFeishuMessaging();
+      (window as any).__cf_toast?.success?.(t('settings.messagingFeishuSavedTitle'), t('settings.messagingFeishuSavedBody'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.messagingFeishuSaveFail'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setFeishuSaving(false);
+    }
+  };
+
+  const onTestFeishuConnection = async () => {
+    setFeishuTesting(true);
+    try {
+      const r = await window.electronAPI?.messagingTestFeishu?.({
+        ...(feishuAppId.trim() ? { appId: feishuAppId.trim() } : {}),
+        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
+      });
+      if (r?.ok) {
+        (window as any).__cf_toast?.success?.(
+          t('settings.messagingFeishuTestOkTitle'),
+          t('settings.messagingFeishuTestOkBody', { seconds: r.expireSeconds }),
+        );
+      } else {
+        const raw = r as { error?: string; detail?: string };
+        const err = raw.error ?? '';
+        const detail = typeof raw.detail === 'string' ? raw.detail.trim() : '';
+        console.error('[Settings] Feishu test connection failed', { error: err, detail: detail || undefined });
+        const map: Record<string, string> = {
+          missing_credentials: t('settings.messagingErr_missing_credentials'),
+        };
+        const msg = err && map[err] ? map[err] : err || t('common.sampleOpFailBody');
+        const body = detail ? `${msg}\n\n${detail}` : msg;
+        (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestFailTitle'), body.slice(0, 8000));
+      }
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setFeishuTesting(false);
+    }
+  };
+
+  const onSendFeishuTestMessage = async () => {
+    const text = feishuTestText.trim();
+    if (!text) {
+      (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestMsgEmptyTitle'), t('settings.messagingFeishuTestMsgEmptyBody'));
+      return;
+    }
+    setFeishuSendingTest(true);
+    try {
+      const r = await window.electronAPI?.messagingSendFeishuTestMessage?.({
+        text,
+        receiveId: feishuDefaultReceiveId.trim() || undefined,
+        receiveIdType: feishuReceiveIdType,
+        ...(feishuAppId.trim() ? { appId: feishuAppId.trim() } : {}),
+        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
+      });
+      if (r?.ok) {
+        (window as any).__cf_toast?.success?.(t('settings.messagingFeishuSendOkTitle'), t('settings.messagingFeishuSendOkBody'));
+      } else {
+        const raw = r as { error?: string; detail?: string };
+        const err = raw.error ?? '';
+        const detail = typeof raw.detail === 'string' ? raw.detail.trim() : '';
+        console.error('[Settings] Feishu send test message failed', { error: err, detail: detail || undefined });
+        const map: Record<string, string> = {
+          missing_credentials: t('settings.messagingErr_missing_credentials'),
+          missing_receive_id: t('settings.messagingErr_missing_receive_id'),
+          empty_text: t('settings.messagingErr_empty_text'),
+        };
+        const msg = err && map[err] ? map[err] : err || t('common.sampleOpFailBody');
+        const body = detail ? `${msg}\n\n${detail}` : msg;
+        (window as any).__cf_toast?.error?.(t('settings.messagingFeishuSendFailTitle'), body.slice(0, 8000));
+      }
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.messagingFeishuSendFailTitle'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setFeishuSendingTest(false);
+    }
+  };
 
   const handleStartGateway = async () => {
     try {
@@ -1242,70 +1384,275 @@ const SettingsPage: FC = () => {
     );
   } else if (activeSection === 'integrations') {
     detailPanels = (
-      <div className="cf-card">
-        <h3>{t('settings.gatewayLabel')}</h3>
-        <div className="cf-divider" />
-        <div className="cf-settingsIntegrationRow">
-          {gatewayChip}
-          <button className="cf-btn cf-btnSmall" type="button" onClick={() => void fetchStatus()}>
-            {t('dashboard.refreshStatus')}
-          </button>
-          <button
-            className="cf-btn cf-btnSmall"
-            type="button"
-            disabled={isStarting}
-            onClick={() => void handleStartGateway()}
-          >
-            {isStarting ? t('dashboard.starting') : t('dashboard.startGateway')}
-          </button>
-          <button
-            className="cf-btn cf-btnSmall"
-            type="button"
-            disabled={isStopping || gatewayStatus !== 'running'}
-            onClick={() => void handleStopGateway()}
-          >
-            {isStopping ? t('dashboard.stopping') : t('dashboard.stop')}
-          </button>
-          <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" disabled={isStarting} onClick={() => void restartGateway()}>
-            {t('settings.gatewayRestart')}
-          </button>
-        </div>
-        {gatewayError ? <div className="cf-errorText" style={{ marginBottom: 8 }}>{gatewayError}</div> : null}
-        <div className="cf-help" style={{ marginBottom: 8 }}>
-          {t('settings.gatewayPort')}：{typeof gatewayPort === 'number' ? gatewayPort : '—'} · {t('settings.gatewayUptime')}：
-          {gatewayStatus === 'running' ? `${Math.round((gatewayUptimeMs ?? 0) / 1000)}s` : '—'}
-        </div>
-        <div className="cf-help" style={{ marginBottom: 12 }}>
-          {t('settings.connectorsCountHint', { count: connectorCount })}
-        </div>
-        <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void reloadConnectorsCount()}>
-          {t('settings.refreshIntegrationStatus')}
-        </button>
-        <button className="cf-btn cf-btnGhost" type="button" onClick={() => void fetchLogs(120)}>
-          {t('settings.gatewayViewLogs')}
-        </button>
-        {Array.isArray(gatewayLogs) && gatewayLogs.length ? (
-          <pre className="cf-codeBlock" style={{ marginTop: 10, maxHeight: 220, overflow: 'auto' }}>
-            {gatewayLogs
-              .slice(-80)
-              .map((l) => `[${new Date(l.ts).toLocaleTimeString()}] ${l.level}: ${l.msg}`)
-              .join('\n')}
-          </pre>
-        ) : (
-          <div className="cf-help" style={{ marginTop: 10 }}>
-            {t('settings.gatewayLogsEmpty')}
+      <>
+        <div className="cf-card">
+          <h3>{t('settings.gatewayLabel')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-settingsIntegrationRow">
+            {gatewayChip}
+            <button className="cf-btn cf-btnSmall" type="button" onClick={() => void fetchStatus()}>
+              {t('dashboard.refreshStatus')}
+            </button>
+            <button
+              className="cf-btn cf-btnSmall"
+              type="button"
+              disabled={isStarting}
+              onClick={() => void handleStartGateway()}
+            >
+              {isStarting ? t('dashboard.starting') : t('dashboard.startGateway')}
+            </button>
+            <button
+              className="cf-btn cf-btnSmall"
+              type="button"
+              disabled={isStopping || gatewayStatus !== 'running'}
+              onClick={() => void handleStopGateway()}
+            >
+              {isStopping ? t('dashboard.stopping') : t('dashboard.stop')}
+            </button>
+            <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" disabled={isStarting} onClick={() => void restartGateway()}>
+              {t('settings.gatewayRestart')}
+            </button>
           </div>
-        )}
-        <div style={{ height: 12 }} />
-        <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => navigate('/connectors')}>
-            {t('settings.openConnectors')}
+          {gatewayError ? <div className="cf-errorText" style={{ marginBottom: 8 }}>{gatewayError}</div> : null}
+          <div className="cf-help" style={{ marginBottom: 8 }}>
+            {t('settings.gatewayPort')}：{typeof gatewayPort === 'number' ? gatewayPort : '—'} · {t('settings.gatewayUptime')}：
+            {gatewayStatus === 'running' ? `${Math.round((gatewayUptimeMs ?? 0) / 1000)}s` : '—'}
+          </div>
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.connectorsCountHint', { count: connectorCount })}
+          </div>
+          <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void reloadConnectorsCount()}>
+            {t('settings.refreshIntegrationStatus')}
           </button>
-          <button className="cf-btn" type="button" onClick={() => navigate('/skills')}>
-            {t('settings.openSkills')}
+          <button className="cf-btn cf-btnGhost" type="button" onClick={() => void fetchLogs(120)}>
+            {t('settings.gatewayViewLogs')}
+          </button>
+          {Array.isArray(gatewayLogs) && gatewayLogs.length ? (
+            <pre className="cf-codeBlock" style={{ marginTop: 10, maxHeight: 220, overflow: 'auto' }}>
+              {gatewayLogs
+                .slice(-80)
+                .map((l) => `[${new Date(l.ts).toLocaleTimeString()}] ${l.level}: ${l.msg}`)
+                .join('\n')}
+            </pre>
+          ) : (
+            <div className="cf-help" style={{ marginTop: 10 }}>
+              {t('settings.gatewayLogsEmpty')}
+            </div>
+          )}
+          <div style={{ height: 12 }} />
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button className="cf-btn cf-btnPrimary" type="button" onClick={() => navigate('/connectors')}>
+              {t('settings.openConnectors')}
+            </button>
+            <button className="cf-btn" type="button" onClick={() => navigate('/skills')}>
+              {t('settings.openSkills')}
+            </button>
+          </div>
+        </div>
+
+        <div className="cf-card">
+          <h3>{t('settings.messagingFeishuTitle')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.messagingFeishuLead')}{' '}
+            <a href="https://open.feishu.cn/document/server-docs/im-v1/message/create" target="_blank" rel="noreferrer">
+              {t('settings.messagingFeishuDocIm')}
+            </a>
+            {' · '}
+            <a
+              href="https://open.feishu.cn/document/ukTMukTMukTM/ukTMzUjLzMzM14yMyMTN/authorization/access-token/tenant_access_token_internal"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('settings.messagingFeishuDocToken')}
+            </a>
+          </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuAppId')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={feishuAppId}
+            onChange={(e) => setFeishuAppId(e.target.value)}
+            placeholder={t('settings.messagingFeishuAppIdPh')}
+            autoComplete="off"
+          />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuAppSecret')}
+          </div>
+          <input
+            className="cf-input"
+            type="password"
+            style={{ width: '100%', marginBottom: 6 }}
+            value={feishuSecretDraft}
+            onChange={(e) => setFeishuSecretDraft(e.target.value)}
+            placeholder={t('settings.messagingFeishuAppSecretPh')}
+            autoComplete="new-password"
+          />
+          <div className="cf-help" style={{ marginBottom: 8 }}>
+            {feishuAppSecretConfigured
+              ? t('settings.messagingFeishuSecretStatus_ok')
+              : t('settings.messagingFeishuSecretStatus_none')}
+            {feishuAppSecretSavedInFile ? ` · ${t('settings.messagingFeishuSecretStatus_file')}` : ''}
+          </div>
+          {feishuAppSecretSavedInFile ? (
+            <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+              {feishuClearSecretOnSave ? (
+                <>
+                  <span className="cf-help" style={{ color: 'var(--warning, #c9a227)' }}>{t('settings.messagingFeishuClearPending')}</span>
+                  <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setFeishuClearSecretOnSave(false)}>
+                    {t('settings.messagingFeishuClearCancel')}
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setFeishuClearSecretOnSave(true)}>
+                  {t('settings.messagingFeishuClearSecret')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ height: 4, marginBottom: 10 }} />
+          )}
+          <div className="cf-row cf-settingsPage__row" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="cf-sub">
+                <strong style={{ color: 'var(--text)' }}>{t('settings.messagingFeishuReceiveIdType')}</strong>
+              </div>
+              <div className="cf-help">{t('settings.messagingFeishuReceiveIdTypeHelp')}</div>
+            </div>
+            <div style={{ minWidth: 220, flex: '1 1 200px' }}>
+              <CfSelectWithHints
+                className="cf-selectHint--wide"
+                value={feishuReceiveIdType}
+                onChange={(v) => setFeishuReceiveIdType(v as FeishuRecvUi)}
+                options={feishuReceiveIdSelectOptions}
+                hintIconAriaBase={t('common.selectOptionHintAria')}
+                aria-label={t('settings.messagingFeishuReceiveIdType')}
+              />
+            </div>
+          </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuDefaultReceiveId')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={feishuDefaultReceiveId}
+            onChange={(e) => setFeishuDefaultReceiveId(e.target.value)}
+            placeholder={t('settings.messagingFeishuDefaultReceiveIdPh')}
+            autoComplete="off"
+          />
+          <div className="cf-help" style={{ marginBottom: 10 }}>
+            {t('settings.messagingFeishuScopeNote')}
+          </div>
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.messagingFeishuEnvHint')}
+          </div>
+
+          <div className="cf-divider" style={{ margin: '16px 0' }} />
+          <h4 style={{ margin: '0 0 8px', fontSize: 15, color: 'var(--text)' }}>{t('settings.messagingFeishuBridgeTitle')}</h4>
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.messagingFeishuBridgeHelp')}
+          </div>
+          <div className="cf-help" style={{ marginBottom: 12, color: 'var(--muted)' }}>
+            {t('settings.messagingFeishuBridgeLogsHint')}
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <Checkbox checked={feishuBridgeEnabled} onChange={(e) => setFeishuBridgeEnabled(e.target.checked)}>
+              {t('settings.messagingFeishuBridgeEnabled')}
+            </Checkbox>
+          </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuBridgeWorkspace')}
+          </div>
+          <div className="cf-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <input
+              className="cf-input"
+              style={{ flex: '1 1 200px', minWidth: 0 }}
+              value={feishuBridgeWorkspace}
+              onChange={(e) => setFeishuBridgeWorkspace(e.target.value)}
+              placeholder={t('settings.messagingFeishuBridgeWorkspacePh')}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="cf-btn cf-btnGhost cf-btnSmall"
+              disabled={!activeWorkspacePath?.trim()}
+              onClick={() => setFeishuBridgeWorkspace(activeWorkspacePath?.trim() ?? '')}
+            >
+              {t('settings.messagingFeishuBridgeFillActive')}
+            </button>
+          </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuBridgeConvId')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={feishuBridgeConvId}
+            onChange={(e) => setFeishuBridgeConvId(e.target.value)}
+            placeholder={t('settings.messagingFeishuBridgeConvIdPh')}
+            autoComplete="off"
+          />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuBridgeSenderLabel')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 12 }}
+            value={feishuBridgeSenderLabel}
+            onChange={(e) => setFeishuBridgeSenderLabel(e.target.value)}
+            placeholder={t('settings.messagingFeishuBridgeSenderLabelPh')}
+            autoComplete="off"
+          />
+
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <button
+              type="button"
+              className="cf-btn cf-btnPrimary cf-btnSmall"
+              disabled={feishuSaving}
+              onClick={() => void onSaveFeishuMessaging()}
+            >
+              {feishuSaving ? t('settings.messagingFeishuSaving') : t('settings.messagingFeishuSave')}
+            </button>
+            <button
+              type="button"
+              className="cf-btn cf-btnSmall"
+              disabled={feishuTesting}
+              onClick={() => void onTestFeishuConnection()}
+            >
+              {feishuTesting ? t('settings.messagingFeishuTesting') : t('settings.messagingFeishuTest')}
+            </button>
+          </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.messagingFeishuTestMsgLabel')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={feishuTestText}
+            onChange={(e) => setFeishuTestText(e.target.value)}
+            placeholder={t('settings.messagingFeishuTestMsgPh')}
+          />
+          <button
+            type="button"
+            className="cf-btn cf-btnGhost cf-btnSmall"
+            disabled={feishuSendingTest}
+            onClick={() => void onSendFeishuTestMessage()}
+          >
+            {feishuSendingTest ? t('settings.messagingFeishuSendingTest') : t('settings.messagingFeishuSendTest')}
           </button>
         </div>
-      </div>
+
+        {PLACEHOLDER_MESSAGING_CHANNELS.map((ch) => (
+          <div key={ch.id} className="cf-card cf-settingsMessagingPlaceholder">
+            <h3>{t(ch.nameKey)}</h3>
+            <div className="cf-divider" />
+            <div className="cf-help">{t('settings.messagingPlaceholderHint')}</div>
+          </div>
+        ))}
+      </>
     );
   } else if (activeSection === 'data') {
     detailPanels = (

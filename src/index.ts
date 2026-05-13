@@ -34,6 +34,8 @@ import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './workspa
 import { getLauncherIconDataUrl } from './launcher-icon-main';
 import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main-ui-prefs';
 import { destroyAppTray, ensureAppTray } from './app-tray';
+import { registerMessagingIPC } from './messaging/register-messaging-ipc';
+import { stopFeishuEventServer } from './messaging/feishu-event-server';
 import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './desktop-pin-hide-main';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
 import { readSkillEvolutionState } from './skill-evolution-state';
@@ -65,6 +67,9 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 if (require('electron-squirrel-startup')) {
   app.quit();
 }
+
+// 须在主进程启动时即注册，避免仅放在 app.whenReady 链后部时因前置步骤异常而未注册，导致渲染层报 “No handler registered”。
+registerMessagingIPC();
 
 type AppLang = 'zh' | 'en';
 let currentLang: AppLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
@@ -1349,6 +1354,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  stopFeishuEventServer();
   destroyAppTray();
 });
 

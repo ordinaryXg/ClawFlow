@@ -144,6 +144,18 @@ export interface ClawFlowEngine {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
+
+  /**
+   * 外部渠道（飞书事件等）写入一条用户消息并落盘；不触发模型。
+   * `channel` 建议使用 `user_feishu` 等与 UI 对齐。
+   */
+  appendPersistedUserMessage(params: {
+    workspaceRoot: string;
+    conversationId: string;
+    content: string;
+    channel?: string;
+    meta?: Record<string, unknown>;
+  }): Promise<void>;
 }
 
 class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
@@ -260,6 +272,26 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   async listConversations(workspaceRoot?: string): Promise<StoredConversation[]> {
     const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
     return await store.normalizeToSingletonIfNeeded();
+  }
+
+  async appendPersistedUserMessage(params: {
+    workspaceRoot: string;
+    conversationId: string;
+    content: string;
+    channel?: string;
+    meta?: Record<string, unknown>;
+  }): Promise<void> {
+    const effRoot = path.resolve(params.workspaceRoot);
+    const store = this.getSessionStore(effRoot);
+    const msg: StoredMessage = {
+      id: randomUUID(),
+      role: 'user',
+      content: String(params.content ?? ''),
+      timestamp: Date.now(),
+      ...(params.channel ? { channel: params.channel } : {}),
+      ...(params.meta && Object.keys(params.meta).length ? { meta: params.meta } : {}),
+    };
+    await this.appendMessages(params.conversationId, [msg], store);
   }
 
   async upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void> {
@@ -390,9 +422,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       };
       convs[idx] = next;
       await store.writeAll(convs);
-    }
-    for (const m of msgs) {
-      this.emit('engine:message', conversationId, m);
+      for (const m of msgs) {
+        this.emit('engine:message', conversationId, m);
+      }
+    } else {
+      console.warn(
+        `[ClawFlowEngine] appendMessages: conversation ${conversationId} not found in workspace store; skip persist (${msgs.length} msg)`,
+      );
     }
   }
 

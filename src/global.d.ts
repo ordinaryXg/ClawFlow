@@ -77,6 +77,38 @@ export interface IElectronAPI {
     searxngApiKey?: string;
     clearSearxngApiKey?: boolean;
   }) => Promise<{ ok: true }>;
+  messagingGetFeishuSettings: () => Promise<{
+    appId: string;
+    appSecretConfigured: boolean;
+    appSecretSavedInFile: boolean;
+    defaultReceiveId: string;
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    bridgeEnabled: boolean;
+    bridgeWorkspacePath: string;
+    bridgeConversationId: string;
+    bridgeSenderLabel: string;
+  }>;
+  messagingSaveFeishuSettings: (params: {
+    appId?: string;
+    appSecret?: string;
+    clearAppSecret?: boolean;
+    defaultReceiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    bridgeEnabled?: boolean;
+    bridgeWorkspacePath?: string;
+    bridgeConversationId?: string;
+    bridgeSenderLabel?: string;
+  }) => Promise<{ ok: true }>;
+  messagingTestFeishu: (params?: { appId?: string; appSecret?: string }) => Promise<
+    { ok: true; expireSeconds: number } | { ok: false; error: string; detail?: string }
+  >;
+  messagingSendFeishuTestMessage: (params: {
+    text: string;
+    receiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    appId?: string;
+    appSecret?: string;
+  }) => Promise<{ ok: true } | { ok: false; error: string; detail?: string }>;
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -87,6 +119,7 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
+  onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
   // 连接器管理（OpenClaw CLI 插件）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;

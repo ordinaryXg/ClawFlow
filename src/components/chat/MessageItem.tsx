@@ -4,6 +4,7 @@ import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import {
   BranchesOutlined,
+  CommentOutlined,
   ExperimentOutlined,
   InfoCircleOutlined,
   ScheduleOutlined,
@@ -48,6 +49,9 @@ const MessageItem: FC<Props> = ({ message }) => {
 
   let stripIcon: ReactNode = null;
   switch (ch) {
+    case 'user_feishu':
+      stripIcon = <CommentOutlined className="cf-msgItem__chIcon" aria-hidden />;
+      break;
     case 'user_todo_auto':
       stripIcon = <ScheduleOutlined className="cf-msgItem__chIcon" aria-hidden />;
       break;

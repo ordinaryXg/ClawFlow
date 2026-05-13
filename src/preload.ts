@@ -77,6 +77,38 @@ export interface IElectronAPI {
     searxngApiKey?: string;
     clearSearxngApiKey?: boolean;
   }) => Promise<{ ok: true }>;
+  messagingGetFeishuSettings: () => Promise<{
+    appId: string;
+    appSecretConfigured: boolean;
+    appSecretSavedInFile: boolean;
+    defaultReceiveId: string;
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    bridgeEnabled: boolean;
+    bridgeWorkspacePath: string;
+    bridgeConversationId: string;
+    bridgeSenderLabel: string;
+  }>;
+  messagingSaveFeishuSettings: (params: {
+    appId?: string;
+    appSecret?: string;
+    clearAppSecret?: boolean;
+    defaultReceiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    bridgeEnabled?: boolean;
+    bridgeWorkspacePath?: string;
+    bridgeConversationId?: string;
+    bridgeSenderLabel?: string;
+  }) => Promise<{ ok: true }>;
+  messagingTestFeishu: (params?: { appId?: string; appSecret?: string }) => Promise<
+    { ok: true; expireSeconds: number } | { ok: false; error: string; detail?: string }
+  >;
+  messagingSendFeishuTestMessage: (params: {
+    text: string;
+    receiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    appId?: string;
+    appSecret?: string;
+  }) => Promise<{ ok: true } | { ok: false; error: string; detail?: string }>;
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -87,6 +119,7 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
+  onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
   // 连接器管理（OpenClaw CLI 插件）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
@@ -358,6 +391,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
   engineGetWebSearchSettings: () => ipcRenderer.invoke('engine:getWebSearchSettings'),
   engineSaveWebSearchSettings: (params) => ipcRenderer.invoke('engine:saveWebSearchSettings', params),
+  messagingGetFeishuSettings: () => ipcRenderer.invoke('messaging:getFeishuSettings'),
+  messagingSaveFeishuSettings: (params: {
+    appId?: string;
+    appSecret?: string;
+    clearAppSecret?: boolean;
+    defaultReceiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    bridgeEnabled?: boolean;
+    bridgeWorkspacePath?: string;
+    bridgeConversationId?: string;
+    bridgeSenderLabel?: string;
+  }) => ipcRenderer.invoke('messaging:saveFeishuSettings', params),
+  messagingTestFeishu: (params?: { appId?: string; appSecret?: string }) =>
+    ipcRenderer.invoke('messaging:testFeishu', params ?? {}),
+  messagingSendFeishuTestMessage: (params: {
+    text: string;
+    receiveId?: string;
+    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+    appId?: string;
+    appSecret?: string;
+  }) => ipcRenderer.invoke('messaging:sendFeishuTestMessage', params),
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -387,6 +441,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('embedded-browser:navigate', handler);
     return () => ipcRenderer.removeListener('embedded-browser:navigate', handler);
+  },
+  onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (payload && typeof payload === 'object' && typeof (payload as { workspaceRoot?: unknown }).workspaceRoot === 'string') {
+        const w = String((payload as { workspaceRoot: string }).workspaceRoot).trim();
+        if (w) cb({ workspaceRoot: w });
+        else cb();
+      } else {
+        cb();
+      }
+    };
+    ipcRenderer.on('chat:conversationsDirty', handler);
+    return () => ipcRenderer.removeListener('chat:conversationsDirty', handler);
   },
   // 连接器管理
   getConnectors: () => ipcRenderer.invoke('openclaw:getConnectors'),

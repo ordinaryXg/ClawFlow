@@ -9,6 +9,7 @@ import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-conte
 import { useSettingsStore } from './settingsStore';
 import { useTodoTriggerStore } from './todoTriggerStore';
 import { dedupeUiToolMessages } from '../../engine/dedupe-tool-messages';
+import { normalizeWorkspacePathForCompare as normWorkspacePath } from '../../shared/workspace-path-compare';
 
 export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
 
@@ -59,6 +60,7 @@ export type ToolApprovalPendingState = {
 /** 对话气泡来源渠道：用于区分样式；未填写时按 role 推导默认外观 */
 export type MessageChannel =
   | 'user_manual'
+  | 'user_feishu'
   | 'user_todo_auto'
   | 'user_tool_delegate'
   | 'user_workflow'
@@ -68,6 +70,7 @@ export type MessageChannel =
 
 const MESSAGE_CHANNELS: readonly MessageChannel[] = [
   'user_manual',
+  'user_feishu',
   'user_todo_auto',
   'user_tool_delegate',
   'user_workflow',
@@ -216,14 +219,6 @@ let revealCleanup: (() => void) | null = null;
 
 /** 尚未被 engine 列表确认的本地新建会话 id → 规范化工作区路径，避免 fetch 竞态覆盖，且避免跨工作区串会话 */
 const optimisticConversationWorkspace = new Map<string, string>();
-
-function normWorkspacePath(p: string | null | undefined): string {
-  return String(p ?? '')
-    .trim()
-    .replace(/[/\\]+$/, '')
-    .replace(/\\/g, '/')
-    .toLowerCase();
-}
 
 /** 渲染进程 Conversation → 主进程持久化消息字段（reasoning_content 等） */
 function conversationForEngineUpsert(conv: Conversation) {

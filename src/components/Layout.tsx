@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useGatewayStore } from '../store/modules/gatewayStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useChatStore } from '../store/modules/chatStore';
+import { normalizeWorkspacePathForCompare } from '../shared/workspace-path-compare';
 import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
 import { startShellColumnDrag, usePersistedShellWidth } from '../hooks/usePersistedShellWidth';
 import ErrorBoundary from './common/ErrorBoundary';
@@ -89,6 +90,26 @@ const Layout: FC = () => {
     });
     return () => off?.();
   }, [refreshWorkspace, fetchConversations]);
+
+  useEffect(() => {
+    const off = window.electronAPI?.onChatConversationsDirty?.((p) => {
+      const incoming = typeof p?.workspaceRoot === 'string' ? p.workspaceRoot.trim() : '';
+      if (incoming) {
+        const active = useWorkspaceStore.getState().activePath?.trim() ?? '';
+        const ni = normalizeWorkspacePathForCompare(incoming);
+        const na = normalizeWorkspacePathForCompare(active);
+        if (ni && na && ni !== na) {
+          (window as any).__cf_toast?.info?.(
+            t('settings.messagingFeishuBridgeDirtyWsMismatchTitle'),
+            t('settings.messagingFeishuBridgeDirtyWsMismatchBody', { path: incoming }),
+          );
+          return;
+        }
+      }
+      void fetchConversations();
+    });
+    return () => off?.();
+  }, [fetchConversations, t]);
 
   useEffect(() => {
     const off = window.electronAPI?.onTodoTriggerFired?.((p) => {
