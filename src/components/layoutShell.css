@@ -784,6 +784,19 @@
   overflow:auto;
   padding:6px 0;
 }
+.cf-fileTree--dragOver{
+  outline:1px dashed rgba(88,166,255,.45);
+  outline-offset:-2px;
+  background:rgba(88,166,255,.06);
+  border-radius:6px;
+}
+.cf-rightWorkspace__treeDropHint{
+  font-size:10px;
+  line-height:1.35;
+  color:var(--muted);
+  margin:-2px 0 6px;
+  padding:0 2px 0 4px;
+}
 .cf-fileTree__rootLabel{
   font-size:11px;
   color:var(--muted);

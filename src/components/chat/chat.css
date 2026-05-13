@@ -368,6 +368,66 @@
   word-break: break-all;
 }
 
+/* 连续同类工具卡片合并为一行 */
+.cf-toolMsgGroup {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+  padding: 6px 10px;
+  border-radius: 0;
+}
+:root[data-theme='light'] .cf-toolMsgGroup {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+.cf-toolMsgGroup__summary {
+  width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.cf-toolMsgGroup .cf-toolMsg__title {
+  max-width: min(480px, 58vw);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cf-toolMsgGroup__count {
+  font-weight: 500;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.cf-toolMsgGroup__chev {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.cf-toolMsgGroup__body {
+  margin-top: 10px;
+  padding: 4px 0 2px 10px;
+  border-left: 2px solid rgba(88, 166, 255, 0.28);
+}
+.cf-toolMsgGroup__item {
+  margin-bottom: 10px;
+}
+.cf-toolMsgGroup__item:last-child {
+  margin-bottom: 0;
+}
+.cf-toolMsgGroup__item .cf-toolMsg__details {
+  margin-top: 0;
+}
+
 .cf-chatApiKeyBar {
   flex-shrink:0;
   margin-bottom: 10px;

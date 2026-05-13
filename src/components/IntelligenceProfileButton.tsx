@@ -102,9 +102,23 @@ const IntelligenceProfileButton: FC<Props> = ({ variant = 'fab' }) => {
   );
 
   const title = t('layout.intelligence.title');
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpen = () => setPopoverOpen(true);
+    window.addEventListener('cf-open-intelligence-popover', onOpen);
+    return () => window.removeEventListener('cf-open-intelligence-popover', onOpen);
+  }, []);
 
   return (
-    <Popover content={popContent} title={null} trigger="click" placement="topLeft">
+    <Popover
+      content={popContent}
+      title={null}
+      trigger="click"
+      placement="topLeft"
+      open={popoverOpen}
+      onOpenChange={setPopoverOpen}
+    >
       <button
         type="button"
         className={['cf-intelligenceFab', stickyBar ? 'cf-intelligenceFab--stickyBar' : ''].filter(Boolean).join(' ')}

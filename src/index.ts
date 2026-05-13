@@ -31,6 +31,8 @@ import { readDisabledSkillRootsSync, setSkillRootEnabled } from './workspace-ski
 import { deleteHermesSkillDirectory } from './workspace-skills-delete';
 import { reconcileRunSnapshotsAfterRestart, readRunSnapshots } from './sub-agent-run-snapshot';
 import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './workspace-git';
+import { getLauncherIconDataUrl } from './launcher-icon-main';
+import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './desktop-pin-hide-main';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
 import { readSkillEvolutionState } from './skill-evolution-state';
 import { intelligenceLevelFromXp, intelligenceLevelProgress } from './intelligence-profile';
@@ -219,6 +221,68 @@ function registerWorkspaceStatAbsolutePathIPC(): void {
   });
 }
 registerWorkspaceStatAbsolutePathIPC();
+
+/** 打开绝对路径 / 读取系统文件图标：模块加载时注册，避免 whenReady 前序 await 导致 invoke 无 handler */
+function registerAppPathAndIconIPC(): void {
+  for (const ch of ['app:openPath', 'app:getFileIconDataUrl', 'app:setPathHidden', 'app:sweepLauncherStash'] as const) {
+    try {
+      ipcMain.removeHandler(ch);
+    } catch {
+      /* first load */
+    }
+  }
+
+  ipcMain.handle('app:openPath', async (_e, absolutePath: string) => {
+    const raw = String(absolutePath ?? '').trim();
+    if (!raw || !path.isAbsolute(raw)) {
+      return { ok: false as const, error: 'invalid_path' };
+    }
+    try {
+      const st = await fs.promises.stat(raw);
+      if (st.isFile() || st.isSymbolicLink()) {
+        /* ok */
+      } else if (st.isDirectory() && raw.toLowerCase().endsWith('.app')) {
+        /* macOS .app bundle */
+      } else {
+        return { ok: false as const, error: 'unsupported' };
+      }
+    } catch {
+      return { ok: false as const, error: 'not_found' };
+    }
+    try {
+      const err = await shell.openPath(raw);
+      if (err) return { ok: false as const, error: err };
+      return { ok: true as const };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle('app:getFileIconDataUrl', async (_e, absolutePath: string) => getLauncherIconDataUrl(absolutePath));
+
+  ipcMain.handle(
+    'app:setPathHidden',
+    async (
+      _e,
+      payload: { absolutePath?: string; hidden?: boolean; workspacePath?: string }
+    ) => {
+      const abs = String(payload?.absolutePath ?? '').trim();
+      const hidden = Boolean(payload?.hidden);
+      const ws = String(payload?.workspacePath ?? '').trim();
+      return setDesktopEntryHidden(abs, hidden, ws || undefined);
+    }
+  );
+
+  ipcMain.handle('app:sweepLauncherStash', async (_e, payload: { workspacePath?: string }) => {
+    const ws = String(payload?.workspacePath ?? '').trim();
+    if (!ws) return { ok: false as const, error: 'workspace_required' as const };
+    await sweepLauncherStashForWorkspace(ws);
+    return { ok: true as const };
+  });
+}
+registerAppPathAndIconIPC();
+registerDesktopPinSessionRestoreOnQuit();
 
 /** 待办触发器：模块加载时注册，避免 whenReady 内 await 未完成时渲染进程已 invoke */
 function registerTodoTriggersIPC(): void {
@@ -1053,7 +1117,7 @@ function buildBaseBrowserWindow(): BrowserWindow {
     // Windows：无边框窗口，由页面内 Titlebar / 便签顶栏提供拖动与窗口按钮（无系统标题栏条）
     // Windows：透明 + 无边框时若保留 roundedCorners，DWM 常无法把桌面合成进来（表现为发灰/不透）。
     // 便签玻璃依赖 OS 级透明，故关闭系统圆角；界面圆角由页面 CSS 承担。
-    // thickFrame：参与 Win32 边缘缩放（WS_THICKFRAME）；39.2.x 透明无边框曾回归不可缩放，见 electron#48554，需 39.3+ 内核修复配合。
+    // thickFrame：参与 Win32 边缘缩放（WS_THICKFRAME）；透明无边框曾出现边缘不可缩放回归（electron#48554），需较新 Chromium/Electron。
     ...(process.platform === 'win32'
       ? {
           frame: false,

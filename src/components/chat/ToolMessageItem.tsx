@@ -11,16 +11,11 @@ import {
   WarningFilled,
 } from '@ant-design/icons';
 import type { Message } from '../../store/modules/chatStore';
+import { pickToolKind } from './tool-message-metadata';
 import './chat.css';
 
 function coerceString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
-}
-
-function pickToolKind(meta: Record<string, unknown> | undefined): string | null {
-  const kind = coerceString(meta?.kind);
-  if (kind) return kind;
-  return coerceString(meta?.toolKind) ?? coerceString(meta?.tool_kind);
 }
 
 function pickRiskLevel(meta: Record<string, unknown> | undefined): 'low' | 'medium' | 'high' | null {

@@ -24,9 +24,16 @@ function isRecord(x: unknown): x is TodoTriggerRecord {
   return true;
 }
 
-export async function readTodoTriggers(workspaceRoot: string): Promise<TodoTriggerRecord[]> {
-  const root = path.resolve(workspaceRoot);
-  const fp = workspaceService.todoTriggersStorePath(root);
+async function fileExists(fp: string): Promise<boolean> {
+  try {
+    await fs.promises.access(fp);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readTriggersFromFile(fp: string): Promise<TodoTriggerRecord[]> {
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
     const parsed = JSON.parse(buf) as unknown;
@@ -37,17 +44,34 @@ export async function readTodoTriggers(workspaceRoot: string): Promise<TodoTrigg
       }
     }
   } catch {
-    /* missing */
+    /* missing or invalid */
   }
   return [];
 }
 
+export async function readTodoTriggers(workspaceRoot: string): Promise<TodoTriggerRecord[]> {
+  const root = path.resolve(workspaceRoot);
+  const newFp = workspaceService.todoTriggersStorePath(root);
+  const legacyFp = workspaceService.legacyTodoTriggersStorePath(root);
+
+  const newExists = await fileExists(newFp);
+  const fromNew = newExists ? await readTriggersFromFile(newFp) : [];
+  if (fromNew.length > 0) return fromNew;
+  if (newExists) return [];
+
+  const fromLegacy = await readTriggersFromFile(legacyFp);
+  if (fromLegacy.length === 0) return [];
+
+  await writeTodoTriggers(root, fromLegacy);
+  await fs.promises.unlink(legacyFp).catch(() => undefined);
+  return fromLegacy;
+}
+
 export async function writeTodoTriggers(workspaceRoot: string, triggers: TodoTriggerRecord[]): Promise<void> {
   const root = path.resolve(workspaceRoot);
-  const dir = workspaceService.clawflowDir(root);
-  await fs.promises.mkdir(dir, { recursive: true });
   const body: TodoTriggersFile = { version: TODO_TRIGGERS_FILE_VERSION, triggers };
   const fp = workspaceService.todoTriggersStorePath(root);
+  await fs.promises.mkdir(path.dirname(fp), { recursive: true });
   await fs.promises.writeFile(fp, JSON.stringify(body, null, 2), 'utf-8');
 }
 

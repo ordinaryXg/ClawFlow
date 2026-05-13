@@ -186,6 +186,22 @@ export interface IElectronAPI {
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceDeletePath: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   clipboardWriteText: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  appOpenPath: (absolutePath: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  appGetFileIconDataUrl: (
+    absolutePath: string
+  ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error?: string }>;
+  appSetPathHidden: (params: {
+    absolutePath: string;
+    hidden: boolean;
+    workspacePath?: string;
+  }) => Promise<
+    | { ok: true; mode: 'stashed'; stashedPath: string; originalPath: string; leftSourceInPlace?: boolean }
+    | { ok: true; mode: 'unchanged' }
+    | { ok: true; mode: 'restored'; originalPath: string }
+    | { ok: true; mode: 'noop' }
+    | { ok: false; error: string }
+  >;
+  appSweepLauncherStash: (params: { workspacePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceGetChangeLog: (limit?: number) => Promise<{
     ok: boolean;
     entries: Array<{
@@ -436,6 +452,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => ipcRenderer.invoke('workspace:renamePath', params),
   workspaceDeletePath: (relativePath: string) => ipcRenderer.invoke('workspace:deletePath', { relativePath }),
   clipboardWriteText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
+  appOpenPath: (absolutePath: string) => ipcRenderer.invoke('app:openPath', absolutePath),
+  appGetFileIconDataUrl: (absolutePath: string) => ipcRenderer.invoke('app:getFileIconDataUrl', absolutePath),
+  appSetPathHidden: (params: { absolutePath: string; hidden: boolean; workspacePath?: string }) =>
+    ipcRenderer.invoke('app:setPathHidden', params),
+  appSweepLauncherStash: (params: { workspacePath: string }) =>
+    ipcRenderer.invoke('app:sweepLauncherStash', params),
   workspaceGetChangeLog: (limit?: number) => ipcRenderer.invoke('workspace:getChangeLog', limit),
   workspaceAppendChangeLog: (payload: { conversationId: string; userPreview: string; assistantExcerpt: string }) =>
     ipcRenderer.invoke('workspace:appendChangeLog', payload),

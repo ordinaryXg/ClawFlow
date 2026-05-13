@@ -1,0 +1,66 @@
+/* 便签模式：左下角可拖拽「快捷应用」条（收纳元数据，不移动工作区文件） */
+.cf-stickyDesktopDock {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  z-index: 1600;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--sticky-border, rgba(255, 255, 255, 0.12));
+  background: rgba(12, 14, 18, 0.72);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme='light'] .cf-stickyDesktopDock {
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12);
+}
+
+.cf-stickyDesktopDock__chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 52px;
+  padding: 4px 6px 5px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sticky-text, var(--text));
+  cursor: grab;
+  font-size: 10px;
+  line-height: 1.15;
+  user-select: none;
+}
+
+:root[data-theme='light'] .cf-stickyDesktopDock__chip {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.cf-stickyDesktopDock__chip:hover {
+  border-color: rgba(45, 179, 160, 0.45);
+  background: rgba(45, 179, 160, 0.12);
+}
+
+.cf-stickyDesktopDock__chip:active {
+  cursor: grabbing;
+}
+
+.cf-stickyDesktopDock__ico {
+  font-size: 18px;
+  opacity: 0.92;
+}
+
+.cf-stickyDesktopDock__label {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--sticky-muted, var(--muted));
+}

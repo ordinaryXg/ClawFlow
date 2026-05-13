@@ -46,6 +46,9 @@ export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 /** 工作区内主会话与调度等元数据（位于 `.agent/` 下） */
 export const CLAWFLOW_DIR = '.agent/.clawflow';
 
+/** 待办等「勿随 `.agent` 重置丢失」的工作区根下数据目录（勿使用根目录 `.clawflow/`，会与历史迁移 `migrateLegacyWorkspaceAgentBundleSync` 冲突） */
+export const WORKSPACE_TODO_DATA_DIR = '.clawflow-data';
+
 /** 子 Agent 根目录（工作区根下） */
 export const SUBAGENT_ROOT_DIR = '.subagent';
 
@@ -57,7 +60,7 @@ export const SUBMEMORY_DIR = '.subagent/.submemory';
 
 /**
  * 仅从工作区根删除 ClawFlow 管理的目录，不删除用户项目文件。
- * 含 `.agent/`（内含 `.clawflow/`）、`.subagent/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`；各目录不存在时忽略。
+ * 含 `.agent/`（内含 `.clawflow/`）、`.subagent/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`、`.clawflow-data`（待办等）；各目录不存在时忽略。
  */
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
@@ -65,6 +68,7 @@ export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string):
     path.join(root, WORKSPACE_AGENT_DIR),
     path.join(root, SUBAGENT_ROOT_DIR),
     path.join(root, '.clawflow'),
+    path.join(root, WORKSPACE_TODO_DATA_DIR),
     path.join(root, '.subclawflow'),
     path.join(root, '.submemory'),
     path.join(root, '.roleAgent'),
@@ -310,8 +314,13 @@ export function conversationsStorePath(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'conversations.json');
 }
 
-/** 待办触发器列表（每工作区一份） */
+/** 待办触发器列表（每工作区一份，落在工作区根 `.clawflow-data/`，不随「重置工作区缓存」删除 `.agent` 而丢失） */
 export function todoTriggersStorePath(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), WORKSPACE_TODO_DATA_DIR, 'todo-triggers.v1.json');
+}
+
+/** 旧版路径（`.agent/.clawflow/`）；`readTodoTriggers` 会在新路径无文件时自动迁移 */
+export function legacyTodoTriggersStorePath(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'todo-triggers.v1.json');
 }
 
@@ -870,7 +879,7 @@ export type RemoveWorkspaceUserResult =
   | { ok: false; error: string };
 
 /**
- * 从最近列表移除；非「默认工作区」时删除工作区下的 `.agent`、`.subagent` 及遗留根目录 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`，不删除用户其余文件。
+ * 从最近列表移除；非「默认工作区」时删除工作区下的 `.agent`、`.subagent` 及遗留根目录 `.clawflow`、`.clawflow-data`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`，不删除用户其余文件。
  */
 export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
   const abs = path.resolve(workspacePath);

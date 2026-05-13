@@ -48,6 +48,10 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
 
   const creatingIdRef = useRef<string | null>(null);
   const persistTimerRef = useRef<number | null>(null);
+  const triggersRef = useRef(triggers);
+  triggersRef.current = triggers;
+  const workspacePathRef = useRef(workspacePath);
+  workspacePathRef.current = workspacePath;
 
   useEffect(() => {
     creatingIdRef.current = creatingId;
@@ -143,6 +147,29 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
     },
     [load, t, workspacePath]
   );
+
+  const persistTriggersRef = useRef(persistTriggers);
+  persistTriggersRef.current = persistTriggers;
+
+  useEffect(() => {
+    const flushPending = () => {
+      if (persistTimerRef.current == null) return;
+      if (!workspacePathRef.current?.trim()) return;
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+      void persistTriggersRef.current(triggersRef.current);
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') flushPending();
+    };
+    window.addEventListener('pagehide', flushPending);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('pagehide', flushPending);
+      document.removeEventListener('visibilitychange', onVis);
+      flushPending();
+    };
+  }, []);
 
   const scheduleDebouncedPersist = useCallback(
     (next: TodoTriggerRecord[]) => {

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type MouseEvent,
   type ReactElement,
 } from 'react';
@@ -48,6 +49,32 @@ function loadTreeSplitRatio(): number {
 function joinRel(parent: string, name: string): string {
   const p = parent.replace(/\\/g, '/').replace(/\/+$/, '');
   return p ? `${p}/${name}` : name;
+}
+
+function pushToast(type: 'success' | 'error', title: string, message?: string): void {
+  const api = (window as unknown as { __cf_toast?: { success: (t: string, m?: string) => void; error: (t: string, m?: string) => void } })
+    .__cf_toast;
+  if (!api) return;
+  if (type === 'success') api.success(title, message);
+  else api.error(title, message);
+}
+
+function pathsFromDataTransfer(dt: DataTransfer): string[] {
+  const api = window.electronAPI;
+  if (!api?.getPathForFile || dt.files.length === 0) return [];
+  const out: string[] = [];
+  for (let i = 0; i < dt.files.length; i++) {
+    try {
+      out.push(api.getPathForFile(dt.files[i]));
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+function hasFileDrag(e: DragEvent): boolean {
+  return [...e.dataTransfer.types].includes('Files');
 }
 
 function isMarkdownFilename(rel: string): boolean {
@@ -102,6 +129,7 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     | null
     | { kind: 'newFile' | 'newDir' | 'rename' | 'delete'; baseRel: string; initialName: string; target?: ContextTarget }
   >(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
 
   const markdownOptions = useMemo(
     () => ({
@@ -210,6 +238,58 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
 
   const refreshTree = useCallback(() => {
     window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+  }, []);
+
+  const runExternalImport = useCallback(
+    async (targetRelativeDir: string, dt: DataTransfer) => {
+      const paths = pathsFromDataTransfer(dt);
+      if (paths.length === 0) {
+        pushToast('error', t('sticky.importNoPaths'));
+        return;
+      }
+      const res = await window.electronAPI?.workspaceImportExternalPaths?.({
+        targetRelativeDir,
+        sourceAbsolutePaths: paths,
+        overwrite: true,
+      });
+      if (!res || res.ok === false) {
+        pushToast('error', t('sticky.importFailed'), res && res.ok === false ? res.error : undefined);
+        return;
+      }
+      pushToast('success', t('sticky.importSuccess', { count: paths.length }));
+      refreshTree();
+    },
+    [refreshTree, t]
+  );
+
+  const onExternalDragOver = useCallback((e: DragEvent) => {
+    if (!hasFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleExternalDrop = useCallback(
+    async (targetRelativeDir: string, e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setFileDragOver(false);
+      if (!hasFileDrag(e)) return;
+      await runExternalImport(targetRelativeDir, e.dataTransfer);
+    },
+    [runExternalImport]
+  );
+
+  const onTreeDragEnter = useCallback((e: DragEvent) => {
+    if (!hasFileDrag(e)) return;
+    setFileDragOver(true);
+  }, []);
+
+  const onTreeDragLeave = useCallback((e: DragEvent) => {
+    if (!hasFileDrag(e)) return;
+    const cur = e.currentTarget;
+    const rel = e.relatedTarget;
+    if (rel && cur instanceof Node && cur.contains(rel as Node)) return;
+    setFileDragOver(false);
   }, []);
 
   const runNewDir = useCallback(
@@ -438,6 +518,8 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           <div
             key="__root"
             className="cf-fileTree__rootLabel"
+            onDragOver={onExternalDragOver}
+            onDrop={(e) => void handleExternalDrop('', e)}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -480,6 +562,8 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
               className={`cf-fileTree__row cf-fileTree__row--dir ${open ? 'cf-fileTree__row--open' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 }}
               onClick={() => toggleDir(childRel)}
+              onDragOver={onExternalDragOver}
+              onDrop={(ev) => void handleExternalDrop(childRel, ev)}
               onContextMenu={(ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
@@ -502,6 +586,8 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
               className={`cf-fileTree__row cf-fileTree__row--file ${active ? 'cf-fileTree__row--active' : ''}`}
               style={{ paddingLeft: 8 + depth * 12 }}
               onClick={() => setSelectedFile(childRel)}
+              onDragOver={onExternalDragOver}
+              onDrop={(ev) => void handleExternalDrop(rel, ev)}
               onContextMenu={(ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
@@ -518,7 +604,18 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
     };
 
     return renderDir('', 0);
-  }, [workspacePath, children, expanded, errors, loading, selectedFile, t]);
+  }, [
+    workspacePath,
+    children,
+    expanded,
+    errors,
+    loading,
+    selectedFile,
+    t,
+    toggleDir,
+    handleExternalDrop,
+    onExternalDragOver,
+  ]);
 
   if (!workspacePath) {
     return <div className="cf-sub">{t('chat.rightTabs.noWorkspaceForTree')}</div>;
@@ -540,9 +637,14 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           style={{ flex: 'none', width: treeColPx, minWidth: 0 }}
         >
           <div className="cf-rightWorkspace__colTitle">{t('chat.rightTabs.treeTitle')}</div>
+          <div className="cf-rightWorkspace__treeDropHint">{t('chat.rightTabs.treeDropHint')}</div>
           <div
-            className="cf-fileTree"
+            className={`cf-fileTree${fileDragOver ? ' cf-fileTree--dragOver' : ''}`}
             role="tree"
+            onDragEnter={onTreeDragEnter}
+            onDragLeave={onTreeDragLeave}
+            onDragOver={onExternalDragOver}
+            onDrop={(e) => void handleExternalDrop('', e)}
             onContextMenu={(e) => {
               // Right-click on blank area of tree should open root menu (new file/folder).
               // If the event originated from a file/dir row (or root label), let the row handler handle it.

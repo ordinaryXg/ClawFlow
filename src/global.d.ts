@@ -197,6 +197,23 @@ export interface IElectronAPI {
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceDeletePath: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   clipboardWriteText: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  appOpenPath: (absolutePath: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  appGetFileIconDataUrl: (
+    absolutePath: string
+  ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error?: string }>;
+  appSetPathHidden: (params: {
+    absolutePath: string;
+    hidden: boolean;
+    /** 收纳/恢复桌面快捷方式时必填当前工作区根路径（stash 落在该目录下） */
+    workspacePath?: string;
+  }) => Promise<
+    | { ok: true; mode: 'stashed'; stashedPath: string; originalPath: string; leftSourceInPlace?: boolean }
+    | { ok: true; mode: 'unchanged' }
+    | { ok: true; mode: 'restored'; originalPath: string }
+    | { ok: true; mode: 'noop' }
+    | { ok: false; error: string }
+  >;
+  appSweepLauncherStash: (params: { workspacePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceGetChangeLog: (limit?: number) => Promise<{
     ok: boolean;
     entries: Array<{

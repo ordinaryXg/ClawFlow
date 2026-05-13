@@ -13,6 +13,7 @@ import ChatRightTabs from './chat/ChatRightTabs';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BottomShellFabs from './BottomShellFabs';
 import StickyNoteShell from './sticky/StickyNoteShell';
+import StickyDesktopDock from './sticky/StickyDesktopDock';
 import { ShellLayoutProvider } from '../context/ShellLayoutContext';
 import { useShellViewStore } from '../store/modules/shellViewStore';
 import './layoutShell.css';
@@ -190,7 +191,7 @@ const Layout: FC = () => {
         </div>
       </div>
 
-      {!useStickyDesktopLayout ? <BottomShellFabs /> : null}
+      {!useStickyDesktopLayout ? <BottomShellFabs /> : <StickyDesktopDock />}
       <ToastHost />
     </>
   );

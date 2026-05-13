@@ -1484,7 +1484,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       type: 'function',
       function: {
         name: 'workspace_todo_list',
-        description: 'List scheduled todo triggers for this workspace (persistent under .agent/.clawflow)',
+        description: 'List scheduled todo triggers for this workspace (persistent under workspace `.clawflow-data/`)',
         strict: true,
         parameters: {
           type: 'object',

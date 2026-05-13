@@ -6,10 +6,25 @@ import {
   CaretRightOutlined,
   FileOutlined,
   FolderOutlined,
+  LinkOutlined,
+  SwapOutlined,
   UnorderedListOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { App } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useShellViewStore } from '../../store/modules/shellViewStore';
+import {
+  STICKY_LAUNCHER_MIME,
+  dragPayloadToSaved,
+  isOsLauncherStylePath,
+  loadStickyLauncherItems,
+  newLauncherItemId,
+  parseLauncherDragPayload,
+  saveStickyLauncherItems,
+  type StickyLauncherDragPayloadV1,
+  type StickyLauncherSavedItem,
+} from '../../shared/sticky-launcher-items';
 
 type Entry = { name: string; kind: 'file' | 'dir' };
 
@@ -36,10 +51,33 @@ function normRelPath(r: string): string {
 }
 
 /** 便签列表隐藏系统目录（仍存在于磁盘，仅不在 UI 展示） */
-const STICKY_HIDDEN_DIRS = new Set(['.subagent', '.agent', '.roleAgent', '.tool', '.clawflow', '.subclawflow', '.submemory']);
+const STICKY_HIDDEN_DIRS = new Set([
+  '.subagent',
+  '.agent',
+  '.roleAgent',
+  '.tool',
+  '.clawflow',
+  '.subclawflow',
+  '.submemory',
+  '.clawflow-launcher-stash',
+]);
 
 function filterStickyEntries(list: Entry[]): Entry[] {
   return list.filter((e) => !(e.kind === 'dir' && STICKY_HIDDEN_DIRS.has(e.name)));
+}
+
+function normLauncherPathLower(s: string): string {
+  return s.trim().toLowerCase().replace(/\\/g, '/');
+}
+
+function launchersReferencePath(items: StickyLauncherSavedItem[], abs: string): boolean {
+  const t = normLauncherPathLower(abs);
+  return items.some((x) => {
+    if (x.kind !== 'path') return false;
+    if (normLauncherPathLower(x.targetPath) === t) return true;
+    if (x.desktopOriginalPath && normLauncherPathLower(x.desktopOriginalPath) === t) return true;
+    return false;
+  });
 }
 
 function pushToast(type: 'success' | 'error', title: string, message?: string): void {
@@ -68,6 +106,10 @@ function hasFileDrag(e: React.DragEvent): boolean {
   return [...e.dataTransfer.types].includes('Files');
 }
 
+function hasLauncherDrag(e: React.DragEvent): boolean {
+  return [...e.dataTransfer.types].includes(STICKY_LAUNCHER_MIME);
+}
+
 type Props = {
   workspacePath: string | null;
   /** 嵌入分栏：占满父级高度；文件列表不滚动（仅对话区滚动） */
@@ -86,14 +128,98 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [fileDragOver, setFileDragOver] = useState(false);
   const [selectedRel, setSelectedRel] = useState<string | null>(null);
+  const [selectedLauncherId, setSelectedLauncherId] = useState<string | null>(null);
+  const [launcherItems, setLauncherItems] = useState<StickyLauncherSavedItem[]>([]);
   const [fileCtx, setFileCtx] = useState<null | { x: number; y: number; rel: string }>(null);
+  const [launcherCtx, setLauncherCtx] = useState<null | { x: number; y: number; id: string }>(null);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
 
+  const launcherItemsRef = useRef<StickyLauncherSavedItem[]>([]);
+  useEffect(() => {
+    launcherItemsRef.current = launcherItems;
+  }, [launcherItems]);
+
+  const hydrateLauncherIconsForPaths = useCallback(
+    async (targets: Array<{ id: string; targetPath: string }>) => {
+      const api = window.electronAPI?.appGetFileIconDataUrl;
+      if (!api || !workspacePath?.trim() || targets.length === 0) return;
+      const ws = workspacePath.trim();
+      for (const { id, targetPath } of targets) {
+        const res = await api(targetPath);
+        const dataUrl =
+          res &&
+          typeof res === 'object' &&
+          res.ok === true &&
+          'dataUrl' in res &&
+          typeof (res as { dataUrl?: unknown }).dataUrl === 'string'
+            ? (res as { dataUrl: string }).dataUrl
+            : null;
+        if (!dataUrl) continue;
+        setLauncherItems(() => {
+          const base = launcherItemsRef.current;
+          const cur = base.find((x) => x.id === id);
+          if (!cur || cur.kind !== 'path' || cur.iconDataUrl) return base;
+          const next = base.map((x) => (x.id === id && x.kind === 'path' ? { ...x, iconDataUrl: dataUrl } : x));
+          saveStickyLauncherItems(ws, next);
+          launcherItemsRef.current = next;
+          return next;
+        });
+      }
+    },
+    [workspacePath]
+  );
+
   useEffect(() => {
     setSelectedRel(null);
+    setSelectedLauncherId(null);
     setFileCtx(null);
-  }, [workspacePath]);
+    setLauncherCtx(null);
+    const ws = workspacePath?.trim() ?? '';
+    let cancelled = false;
+    const run = async () => {
+      const list = ws ? loadStickyLauncherItems(ws) : [];
+      let current = list;
+      const statApi = window.electronAPI?.workspaceStatAbsolutePath;
+      if (statApi && ws) {
+        const healed: StickyLauncherSavedItem[] = [];
+        let changed = false;
+        for (const x of list) {
+          if (x.kind !== 'path' || !x.desktopOriginalPath) {
+            healed.push(x);
+            continue;
+          }
+          const st = await statApi(x.targetPath);
+          const orig = await statApi(x.desktopOriginalPath);
+          const stashMissing = !st || st.ok === false;
+          const origOk = orig && orig.ok === true;
+          if (stashMissing && origOk) {
+            changed = true;
+            const { desktopOriginalPath: _drop, ...rest } = x;
+            healed.push({ ...rest, targetPath: x.desktopOriginalPath });
+          } else {
+            healed.push(x);
+          }
+        }
+        if (changed) {
+          current = healed;
+          saveStickyLauncherItems(ws, healed);
+        }
+      }
+      if (cancelled) return;
+      void window.electronAPI?.appSweepLauncherStash?.({ workspacePath: ws });
+      setLauncherItems(current);
+      launcherItemsRef.current = current;
+      const need = current
+        .filter((x): x is StickyLauncherSavedItem & { kind: 'path' } => x.kind === 'path' && !x.iconDataUrl)
+        .map((x) => ({ id: x.id, targetPath: x.targetPath }));
+      if (need.length) void hydrateLauncherIconsForPaths(need);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspacePath, hydrateLauncherIconsForPaths]);
 
   const persistLayout = (m: StickyFileLayoutMode) => {
     setLayoutMode(m);
@@ -185,6 +311,115 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
     void load();
   }, [load]);
 
+  const tryAddLauncherFromDragPayload = useCallback(
+    async (p: StickyLauncherDragPayloadV1): Promise<boolean> => {
+      if (!workspacePath?.trim()) return false;
+      const ws = workspacePath.trim();
+      const prev = launcherItemsRef.current;
+
+      if (p.kind === 'builtin') {
+        const item = dragPayloadToSaved(p);
+        if (item.kind !== 'builtin') return false;
+        if (prev.some((x) => x.kind === 'builtin' && x.builtinId === item.builtinId)) {
+          pushToast('error', t('sticky.launcherDupBuiltin'));
+          return false;
+        }
+        const next = [...prev, item];
+        saveStickyLauncherItems(ws, next);
+        setLauncherItems(next);
+        launcherItemsRef.current = next;
+        pushToast('success', t('sticky.launcherAdded'));
+        return true;
+      }
+
+      let item = dragPayloadToSaved(p) as StickyLauncherSavedItem & { kind: 'path' };
+      if (launchersReferencePath(prev, item.targetPath)) {
+        pushToast('error', t('sticky.launcherDupPath'));
+        return false;
+      }
+      let leftOnDesktop = false;
+      const hideApi = window.electronAPI?.appSetPathHidden;
+      if (hideApi) {
+        const r = await hideApi({ absolutePath: item.targetPath, hidden: true, workspacePath: ws });
+        if (!r || r.ok === false) {
+          pushToast('error', t('sticky.launcherStashFailed'), r && 'error' in r ? String(r.error) : undefined);
+          return false;
+        }
+        if (r.ok && r.mode === 'stashed') {
+          item = {
+            id: item.id,
+            kind: 'path',
+            targetPath: r.stashedPath,
+            label: item.label,
+            desktopOriginalPath: r.originalPath,
+          };
+          if (r.leftSourceInPlace) leftOnDesktop = true;
+        }
+      }
+      const next = [...prev, item];
+      saveStickyLauncherItems(ws, next);
+      setLauncherItems(next);
+      launcherItemsRef.current = next;
+      pushToast(
+        'success',
+        leftOnDesktop ? t('sticky.launcherStashPublicDup') : t('sticky.launcherAdded')
+      );
+      void hydrateLauncherIconsForPaths([{ id: item.id, targetPath: item.targetPath }]);
+      return true;
+    },
+    [workspacePath, t, hydrateLauncherIconsForPaths]
+  );
+
+  const addOsShortcutPathsFromList = useCallback(
+    async (paths: string[]) => {
+      if (!workspacePath?.trim() || paths.length === 0) return;
+      const ws = workspacePath.trim();
+      const prev = launcherItemsRef.current;
+      let next = [...prev];
+      let anyNew = false;
+      let anyLeftOnDesktop = false;
+      const added: Array<{ id: string; targetPath: string }> = [];
+      const hideApi = window.electronAPI?.appSetPathHidden;
+      for (const abs of paths) {
+        if (!isOsLauncherStylePath(abs)) continue;
+        if (launchersReferencePath(next, abs)) continue;
+        let targetPath = abs;
+        let desktopOriginalPath: string | undefined;
+        if (hideApi) {
+          const r = await hideApi({ absolutePath: abs, hidden: true, workspacePath: ws });
+          if (!r || r.ok === false) {
+            pushToast('error', t('sticky.launcherStashFailed'), r && 'error' in r ? String(r.error) : undefined);
+            continue;
+          }
+          if (r.ok && r.mode === 'stashed') {
+            targetPath = r.stashedPath;
+            desktopOriginalPath = r.originalPath;
+            if (r.leftSourceInPlace) anyLeftOnDesktop = true;
+          }
+        }
+        const label = abs.split(/[/\\]/).pop() || abs;
+        const id = newLauncherItemId();
+        const row: StickyLauncherSavedItem =
+          desktopOriginalPath !== undefined
+            ? { id, kind: 'path', targetPath, label, desktopOriginalPath }
+            : { id, kind: 'path', targetPath, label };
+        next.push(row);
+        added.push({ id, targetPath });
+        anyNew = true;
+      }
+      if (!anyNew) return;
+      saveStickyLauncherItems(ws, next);
+      setLauncherItems(next);
+      launcherItemsRef.current = next;
+      pushToast(
+        'success',
+        anyLeftOnDesktop ? t('sticky.launcherStashPublicDup') : t('sticky.launcherAdded')
+      );
+      void hydrateLauncherIconsForPaths(added);
+    },
+    [workspacePath, t, hydrateLauncherIconsForPaths]
+  );
+
   const runExternalImport = useCallback(
     async (targetRelativeDir: string, dt: DataTransfer) => {
       const paths = pathsFromDataTransfer(dt);
@@ -192,19 +427,23 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
         pushToast('error', t('sticky.importNoPaths'));
         return;
       }
+      const shortcutPaths = paths.filter(isOsLauncherStylePath);
+      const normalPaths = paths.filter((p) => !isOsLauncherStylePath(p));
+      if (shortcutPaths.length) await addOsShortcutPathsFromList(shortcutPaths);
+      if (normalPaths.length === 0) return;
       const res = await window.electronAPI?.workspaceImportExternalPaths?.({
         targetRelativeDir,
-        sourceAbsolutePaths: paths,
+        sourceAbsolutePaths: normalPaths,
         overwrite: true,
       });
       if (!res || res.ok === false) {
         pushToast('error', t('sticky.importFailed'), res && res.ok === false ? res.error : undefined);
         return;
       }
-      pushToast('success', t('sticky.importSuccess', { count: paths.length }));
+      pushToast('success', t('sticky.importSuccess', { count: normalPaths.length }));
       await load();
     },
-    [load, t]
+    [addOsShortcutPathsFromList, load, t]
   );
 
   const onDropTarget =
@@ -213,23 +452,31 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
       e.preventDefault();
       e.stopPropagation();
       setFileDragOver(false);
+      const raw = e.dataTransfer.getData(STICKY_LAUNCHER_MIME);
+      if (raw) {
+        const p = parseLauncherDragPayload(raw);
+        if (p) {
+          await tryAddLauncherFromDragPayload(p);
+          return;
+        }
+      }
       if (!hasFileDrag(e)) return;
       await runExternalImport(targetRelativeDir, e.dataTransfer);
     };
 
   const onDragOverTarget = (e: React.DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = hasLauncherDrag(e) ? 'copy' : 'move';
   };
 
   const onBodyDragEnter = (e: React.DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
     setFileDragOver(true);
   };
 
   const onBodyDragLeave = (e: React.DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
     const cur = e.currentTarget;
     const rel = e.relatedTarget;
     if (rel && cur instanceof Node && cur.contains(rel as Node)) return;
@@ -284,7 +531,52 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
     [copyTextToClipboard, t]
   );
 
-  const closeFileCtx = useCallback(() => setFileCtx(null), []);
+  const closeFileCtx = useCallback(() => {
+    setFileCtx(null);
+    setLauncherCtx(null);
+  }, []);
+
+  const removeLauncher = useCallback(
+    (id: string) => {
+      setLauncherCtx(null);
+      if (!workspacePath?.trim()) return;
+      const ws = workspacePath.trim();
+      const victim = launcherItemsRef.current.find((x) => x.id === id);
+      if (victim?.kind === 'path') {
+        void window.electronAPI?.appSetPathHidden?.({
+          absolutePath: victim.targetPath,
+          hidden: false,
+          workspacePath: ws,
+        });
+      }
+      setLauncherItems((prev) => {
+        const next = prev.filter((x) => x.id !== id);
+        saveStickyLauncherItems(ws, next);
+        launcherItemsRef.current = next;
+        return next;
+      });
+      setSelectedLauncherId((s) => (s === id ? null : s));
+    },
+    [workspacePath]
+  );
+
+  const openLauncherItem = useCallback(
+    async (item: StickyLauncherSavedItem) => {
+      if (item.kind === 'builtin') {
+        if (item.builtinId === 'viewMode') {
+          useShellViewStore.getState().toggleMode();
+          return;
+        }
+        window.dispatchEvent(new Event('cf-open-intelligence-popover'));
+        return;
+      }
+      const res = await window.electronAPI?.appOpenPath?.(item.targetPath);
+      if (!res?.ok) {
+        pushToast('error', t('sticky.launcherOpenFailed'), res && 'error' in res ? String(res.error) : undefined);
+      }
+    },
+    [t]
+  );
 
   const pruneExpandedForDeleted = useCallback((deletedRel: string) => {
     const norm = deletedRel.replace(/\\/g, '/');
@@ -353,11 +645,13 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
     if (
       el.closest('.cf-stickyFiles__rowBtn') ||
       el.closest('.cf-stickyFiles__gridCell') ||
-      el.closest('.cf-stickyFiles__chev')
+      el.closest('.cf-stickyFiles__chev') ||
+      el.closest('.cf-stickyFiles__launcherRow')
     ) {
       return;
     }
     setSelectedRel(null);
+    setSelectedLauncherId(null);
   };
 
   const rootClass = useMemo(() => {
@@ -382,7 +676,7 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
       const isExp = expanded.has(rel);
       const kids = childMap[rel];
       const loadingDir = dirLoading[rel];
-      const isSelected = selectedRel === rel;
+      const isSelected = selectedRel === rel && selectedLauncherId == null;
 
       const dropTargetRel = isDir ? rel : parentRel;
 
@@ -420,9 +714,13 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
               type="button"
               className={`cf-stickyFiles__rowBtn cf-stickyFiles__rowBtn--tree${isSelected ? ' cf-stickyFiles__rowBtn--selected' : ''}`}
               aria-selected={isSelected}
-              onClick={() => setSelectedRel(rel)}
+              onClick={() => {
+                setSelectedRel(rel);
+                setSelectedLauncherId(null);
+              }}
               onContextMenu={(ev) => {
                 ev.preventDefault();
+                setLauncherCtx(null);
                 setFileCtx({ x: ev.clientX, y: ev.clientY, rel });
               }}
               onDoubleClick={(ev) => {
@@ -477,7 +775,19 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
               <AppstoreOutlined aria-hidden />
             </button>
           </div>
-          <button type="button" className="cf-stickyFiles__refresh" onClick={() => void load()} disabled={loading}>
+          <button
+            type="button"
+            className="cf-stickyFiles__refresh"
+            onClick={() => {
+              void load();
+              const need: Array<{ id: string; targetPath: string }> = [];
+              for (const x of launcherItemsRef.current) {
+                if (x.kind === 'path' && !x.iconDataUrl) need.push({ id: x.id, targetPath: x.targetPath });
+              }
+              if (need.length) void hydrateLauncherIconsForPaths(need);
+            }}
+            disabled={loading}
+          >
             {loading ? '…' : t('sticky.refreshFiles')}
           </button>
         </div>
@@ -500,21 +810,25 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
               void onDropTarget('')(e);
             }}
           >
-            {entries.length === 0 && !loading && !err ? (
+            {entries.length === 0 && launcherItems.length === 0 && !loading && !err ? (
               <div className="cf-stickyFiles__gridEmpty">{t('sticky.fileListEmpty')}</div>
             ) : null}
             {entries.map((e) => {
               const rel = e.name;
-              const isSelected = selectedRel === rel;
+              const isSelected = selectedRel === rel && selectedLauncherId == null;
               return (
                 <button
                   key={rel}
                   type="button"
                   className={`cf-stickyFiles__gridCell${isSelected ? ' cf-stickyFiles__gridCell--selected' : ''}`}
                   aria-selected={isSelected}
-                  onClick={() => setSelectedRel(rel)}
+                  onClick={() => {
+                    setSelectedRel(rel);
+                    setSelectedLauncherId(null);
+                  }}
                   onContextMenu={(ev) => {
                     ev.preventDefault();
+                    setLauncherCtx(null);
                     setFileCtx({ x: ev.clientX, y: ev.clientY, rel });
                   }}
                   onDoubleClick={(ev) => {
@@ -532,14 +846,108 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
                 </button>
               );
             })}
+            {launcherItems.map((item) => {
+              const isSelected = selectedLauncherId === item.id;
+              const icon =
+                item.kind === 'builtin' && item.builtinId === 'intelligence' ? (
+                  <UserOutlined className="cf-stickyFiles__gridIcon" aria-hidden />
+                ) : item.kind === 'builtin' ? (
+                  <SwapOutlined className="cf-stickyFiles__gridIcon" aria-hidden />
+                ) : item.iconDataUrl ? (
+                  <img
+                    src={item.iconDataUrl}
+                    alt=""
+                    className="cf-stickyFiles__launcherIconImg cf-stickyFiles__launcherIconImg--grid"
+                  />
+                ) : (
+                  <LinkOutlined className="cf-stickyFiles__gridIcon" aria-hidden />
+                );
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`cf-stickyFiles__gridCell cf-stickyFiles__launcherCell${
+                    isSelected ? ' cf-stickyFiles__gridCell--selected' : ''
+                  }`}
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    setSelectedLauncherId(item.id);
+                    setSelectedRel(null);
+                  }}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    setFileCtx(null);
+                    setLauncherCtx({ x: ev.clientX, y: ev.clientY, id: item.id });
+                  }}
+                  onDoubleClick={(ev) => {
+                    ev.preventDefault();
+                    void openLauncherItem(item);
+                  }}
+                  title={item.label}
+                >
+                  {icon}
+                  <span className="cf-stickyFiles__gridName">{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         ) : (
-          <ul className="cf-stickyFiles__list cf-stickyFiles__list--tree">
-            {entries.length === 0 && !loading && !err ? (
-              <li className="cf-stickyFiles__emptyRow">{t('sticky.fileListEmpty')}</li>
+          <>
+            <ul className="cf-stickyFiles__list cf-stickyFiles__list--tree">
+              {entries.length === 0 && launcherItems.length === 0 && !loading && !err ? (
+                <li className="cf-stickyFiles__emptyRow">{t('sticky.fileListEmpty')}</li>
+              ) : null}
+              {renderTreeRows(entries, '', 0)}
+            </ul>
+            {launcherItems.length > 0 ? (
+              <div className="cf-stickyFiles__launcherTreeWrap">
+                <div className="cf-stickyFiles__launcherTreeHead">{t('sticky.fileSectionLauncher')}</div>
+                <ul className="cf-stickyFiles__list cf-stickyFiles__list--launcherTree">
+                  {launcherItems.map((item) => {
+                    const isSelected = selectedLauncherId === item.id;
+                    const rowIcon =
+                      item.kind === 'builtin' && item.builtinId === 'intelligence' ? (
+                        <UserOutlined className="cf-stickyFiles__icon" aria-hidden />
+                      ) : item.kind === 'builtin' ? (
+                        <SwapOutlined className="cf-stickyFiles__icon" aria-hidden />
+                      ) : item.iconDataUrl ? (
+                        <img src={item.iconDataUrl} alt="" className="cf-stickyFiles__launcherIconImg" />
+                      ) : (
+                        <LinkOutlined className="cf-stickyFiles__icon" aria-hidden />
+                      );
+                    return (
+                      <li key={item.id} className="cf-stickyFiles__launcherTreeItem">
+                        <button
+                          type="button"
+                          className={`cf-stickyFiles__rowBtn cf-stickyFiles__launcherRow${
+                            isSelected ? ' cf-stickyFiles__rowBtn--selected' : ''
+                          }`}
+                          aria-selected={isSelected}
+                          onClick={() => {
+                            setSelectedLauncherId(item.id);
+                            setSelectedRel(null);
+                          }}
+                          onContextMenu={(ev) => {
+                            ev.preventDefault();
+                            setFileCtx(null);
+                            setLauncherCtx({ x: ev.clientX, y: ev.clientY, id: item.id });
+                          }}
+                          onDoubleClick={(ev) => {
+                            ev.preventDefault();
+                            void openLauncherItem(item);
+                          }}
+                          title={item.kind === 'path' ? item.targetPath : item.label}
+                        >
+                          {rowIcon}
+                          <span className="cf-stickyFiles__name">{item.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             ) : null}
-            {renderTreeRows(entries, '', 0)}
-          </ul>
+          </>
         )}
       </div>
       {fileCtx
@@ -596,6 +1004,37 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
                   onClick={() => requestDelete(fileCtx.rel)}
                 >
                   {t('sticky.fileCtxDelete')}
+                </button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {launcherCtx
+        ? createPortal(
+            <div
+              className="cf-ctxMenu__backdrop"
+              onMouseDown={closeFileCtx}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                closeFileCtx();
+              }}
+            >
+              <div
+                className="cf-ctxMenu cf-stickyFiles__ctxMenu"
+                style={{ left: launcherCtx.x, top: launcherCtx.y, zIndex: 5000 }}
+                role="menu"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="cf-ctxMenu__item"
+                  onClick={() => {
+                    removeLauncher(launcherCtx.id);
+                    closeFileCtx();
+                  }}
+                >
+                  {t('sticky.launcherCtxRemove')}
                 </button>
               </div>
             </div>,

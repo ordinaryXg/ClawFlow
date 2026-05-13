@@ -11,6 +11,7 @@ import IntelligenceProfileButton from '../IntelligenceProfileButton';
 import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../workspace/WorkspaceCreateModal';
 import StickyFileStrip from './StickyFileStrip';
+import TodoTriggersPanel from '../chat/TodoTriggersPanel';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
 
@@ -18,6 +19,19 @@ import './stickyNoteShell.css';
 const STICKY_TEAR_MIME = 'application/x-clawflow-sticky-tear';
 /** 卫星便签：拖回主便签栏合并 */
 const STICKY_MERGE_MIME = 'application/x-clawflow-sticky-merge';
+
+const STICKY_CENTER_TAB_KEY = 'clawflow.stickyMainCenterTab.v1';
+type StickyCenterTab = 'chat' | 'todos' | 'kb';
+
+function readStickyCenterTab(): StickyCenterTab {
+  try {
+    const v = localStorage.getItem(STICKY_CENTER_TAB_KEY);
+    if (v === 'chat' || v === 'todos' || v === 'kb') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'chat';
+}
 
 function pushToast(type: 'success' | 'error', title: string, message?: string): void {
   const api = (window as unknown as { __cf_toast?: { success: (t: string, m?: string) => void; error: (t: string, m?: string) => void } })
@@ -74,11 +88,21 @@ const StickyNoteShell: FC = () => {
     gitRemoteUrl?: string | null;
   }>({ open: false, path: null, mode: 'create' });
   const [filePaneHeightPx, setFilePaneHeightPx] = useState(loadFilePaneHeight);
+  const [centerTab, setCenterTab] = useState<StickyCenterTab>(() => readStickyCenterTab());
   const filePaneHeightRef = useRef(filePaneHeightPx);
   filePaneHeightRef.current = filePaneHeightPx;
   const splitDragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   const setMode = useShellViewStore((s) => s.setMode);
+
+  const pickCenterTab = useCallback((tab: StickyCenterTab) => {
+    setCenterTab(tab);
+    try {
+      localStorage.setItem(STICKY_CENTER_TAB_KEY, tab);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const [stickyBootstrap, setStickyBootstrap] = useState<{
     role: 'main' | 'satellite';
@@ -567,7 +591,46 @@ const StickyNoteShell: FC = () => {
           />
 
           <section className="cf-stickyMain__chatPane">
-            <Outlet />
+            <div className="cf-stickyMain__centerTabs" role="tablist" aria-label={t('sticky.centerTabsAria')}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={centerTab === 'chat'}
+                className={`cf-stickyMain__centerTab${centerTab === 'chat' ? ' cf-stickyMain__centerTab--active' : ''}`}
+                onClick={() => pickCenterTab('chat')}
+              >
+                {t('sticky.centerTabChat')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={centerTab === 'todos'}
+                className={`cf-stickyMain__centerTab${centerTab === 'todos' ? ' cf-stickyMain__centerTab--active' : ''}`}
+                onClick={() => pickCenterTab('todos')}
+              >
+                {t('sticky.centerTabTodos')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={centerTab === 'kb'}
+                className={`cf-stickyMain__centerTab${centerTab === 'kb' ? ' cf-stickyMain__centerTab--active' : ''}`}
+                onClick={() => pickCenterTab('kb')}
+              >
+                {t('sticky.centerTabKb')}
+              </button>
+            </div>
+            <div className="cf-stickyMain__centerBody">
+              {centerTab === 'chat' ? (
+                <Outlet />
+              ) : centerTab === 'todos' ? (
+                <div className="cf-stickyTodosEmbed">
+                  <TodoTriggersPanel workspacePath={activeWorkspacePath} />
+                </div>
+              ) : (
+                <div className="cf-stickyKbPlaceholder">{t('sticky.kbPlaceholder')}</div>
+              )}
+            </div>
           </section>
         </div>
       </div>
