@@ -9,7 +9,7 @@ import {
   getDefaultWorkspacePath,
   globalOpenclawConfigPath,
   globalOpenclawStateDir,
-} from '../workspace-service';
+} from '../main/workspace/workspace-service';
 import { removeAuthProfile as removeBuiltinAuthProfile, upsertAuthProfile } from './auth-store';
 
 const execAsync = promisify(exec);

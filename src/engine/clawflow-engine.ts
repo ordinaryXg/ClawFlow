@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 import * as path from 'path';
 import EventEmitter from 'events';
-import { getDefaultWorkspacePath, readWorkspaceToolManifest } from '../workspace-service';
+import { getDefaultWorkspacePath, readWorkspaceToolManifest } from '../main/workspace/workspace-service';
 import { filterToolSchemasByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
 import { STREAM_REASONING_END, STREAM_REASONING_START } from '../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content';
@@ -32,14 +32,14 @@ import {
   type PublicWebSearchConfig,
   type ResolvedClawFlowWebSearch,
 } from './web-search';
-import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import { resolveWorkspaceRootForWebContents } from '../main/electron-workspace-context';
 import {
   mergeWebSearchBootstrapWithFile,
   readWebSearchPrefsFile,
   writeWebSearchPrefsFile,
   type WebSearchPrefsStored,
-} from '../web-search-prefs';
-import { maybeScheduleSkillEvolutionAfterMainTurn } from '../skill-evolution-scheduler';
+} from '../main/prefs/web-search-prefs';
+import { maybeScheduleSkillEvolutionAfterMainTurn } from '../main/skill/skill-evolution-scheduler';
 import { SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID } from '../shared/skill-agent-constants';
 
 export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-search';

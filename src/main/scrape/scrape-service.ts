@@ -4,8 +4,8 @@ import {
   SCRAPE_JOBS_FILE_VERSION,
   type ScrapeJobRecord,
   type ScrapeJobsFile,
-} from './shared/scrape-jobs';
-import * as workspaceService from './workspace-service';
+} from '../../shared/scrape-jobs';
+import * as workspaceService from '../workspace/workspace-service';
 
 const MAX_JOBS = 200;
 

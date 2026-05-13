@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
-import * as workspaceService from './workspace-service';
-import { resolveWorkspaceRootForWebContents } from './electron-workspace-context';
+import * as workspaceService from '../workspace/workspace-service';
+import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
 
 export function broadcastScrapeJobsUpdated(workspaceRoot: string): void {
   const resolved = path.resolve(workspaceRoot);

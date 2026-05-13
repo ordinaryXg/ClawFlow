@@ -18,7 +18,8 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@main/*": ["src/main/*"]
     },
     "ignoreDeprecations": "6.0"
   },

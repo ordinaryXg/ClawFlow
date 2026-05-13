@@ -7,6 +7,8 @@ module.exports = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   moduleNameMapper: {
     '^electron$': '<rootDir>/test/mocks/electron.cjs',
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@main/(.*)$': '<rootDir>/src/main/$1',
   },
   transform: {
     '^.+\\.tsx?$': [

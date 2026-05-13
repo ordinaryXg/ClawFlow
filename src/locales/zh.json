@@ -467,7 +467,7 @@
       "changeLogHint": "（占位）用于展示本工作空间的变更记录表。",
       "treeRoot": "工作区根目录",
       "treeTitle": "文件树",
-      "treeDropHint": "从系统资源管理器拖入文件或文件夹：松手在「根标签/空白」→ 工作区根目录；在文件夹行→ 移入该文件夹；在文件行→ 移入该文件所在目录（同盘 rename，跨盘则复制后删除源）。",
+      "treeDropHint": "可从资源管理器拖入文件或文件夹到树中目标位置。",
       "previewTitle": "文件预览",
       "mdPreview": "预览",
       "mdSource": "源码",

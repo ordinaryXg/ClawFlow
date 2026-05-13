@@ -6,26 +6,26 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import templateProgramAgents from './workspace-templates/subagent-roles/program/AGENTS.md';
-import templateProgramSoul from './workspace-templates/subagent-roles/program/SOUL.md';
-import templateProgramTools from './workspace-templates/subagent-roles/program/TOOLS.md';
+import templateProgramAgents from '../../workspace-templates/subagent-roles/program/AGENTS.md';
+import templateProgramSoul from '../../workspace-templates/subagent-roles/program/SOUL.md';
+import templateProgramTools from '../../workspace-templates/subagent-roles/program/TOOLS.md';
 
-import templateCreativeAgents from './workspace-templates/subagent-roles/creative/AGENTS.md';
-import templateCreativeSoul from './workspace-templates/subagent-roles/creative/SOUL.md';
-import templateCreativeTools from './workspace-templates/subagent-roles/creative/TOOLS.md';
+import templateCreativeAgents from '../../workspace-templates/subagent-roles/creative/AGENTS.md';
+import templateCreativeSoul from '../../workspace-templates/subagent-roles/creative/SOUL.md';
+import templateCreativeTools from '../../workspace-templates/subagent-roles/creative/TOOLS.md';
 
-import templateDataAgents from './workspace-templates/subagent-roles/data/AGENTS.md';
-import templateDataSoul from './workspace-templates/subagent-roles/data/SOUL.md';
-import templateDataTools from './workspace-templates/subagent-roles/data/TOOLS.md';
+import templateDataAgents from '../../workspace-templates/subagent-roles/data/AGENTS.md';
+import templateDataSoul from '../../workspace-templates/subagent-roles/data/SOUL.md';
+import templateDataTools from '../../workspace-templates/subagent-roles/data/TOOLS.md';
 
-import templateAssistantAgents from './workspace-templates/subagent-roles/assistant/AGENTS.md';
-import templateAssistantSoul from './workspace-templates/subagent-roles/assistant/SOUL.md';
-import templateAssistantTools from './workspace-templates/subagent-roles/assistant/TOOLS.md';
+import templateAssistantAgents from '../../workspace-templates/subagent-roles/assistant/AGENTS.md';
+import templateAssistantSoul from '../../workspace-templates/subagent-roles/assistant/SOUL.md';
+import templateAssistantTools from '../../workspace-templates/subagent-roles/assistant/TOOLS.md';
 
-import templateSkillsAgents from './workspace-templates/subagent-roles/skills/AGENTS.md';
-import templateSkillsSoul from './workspace-templates/subagent-roles/skills/SOUL.md';
-import templateSkillsTools from './workspace-templates/subagent-roles/skills/TOOLS.md';
-import type { SubAgentRoleTemplateId } from './shared/sub-agent-types';
+import templateSkillsAgents from '../../workspace-templates/subagent-roles/skills/AGENTS.md';
+import templateSkillsSoul from '../../workspace-templates/subagent-roles/skills/SOUL.md';
+import templateSkillsTools from '../../workspace-templates/subagent-roles/skills/TOOLS.md';
+import type { SubAgentRoleTemplateId } from '../../shared/sub-agent-types';
 import { WORKSPACE_SUBAGENT_ROLE_DIR, workspaceSubagentRolesDirAbs } from './workspace-agent-layout';
 
 type SubagentRoleMd = 'AGENTS.md' | 'SOUL.md' | 'TOOLS.md';

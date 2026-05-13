@@ -1,14 +1,14 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import type { WebContents } from 'electron';
-import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from './engine/clawflow-engine';
-import { buildSubAgentRoleSystemContent } from './engine/subagent-role-context';
+import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from '../../engine/clawflow-engine';
+import { buildSubAgentRoleSystemContent } from '../../engine/subagent-role-context';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
 import { writeRunSnapshot } from './sub-agent-run-snapshot';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
-import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
-import { isReservedSubAgentSlotId } from './shared/sub-agent-roster-constants';
-import { subclawflowSlotDirAbs, submemorySlotDirAbs } from './workspace-service';
+import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+import { isReservedSubAgentSlotId } from '../../shared/sub-agent-roster-constants';
+import { subclawflowSlotDirAbs, submemorySlotDirAbs } from '../workspace/workspace-service';
 
 export type SubAgentRunRequest = {
   workspaceRoot: string;

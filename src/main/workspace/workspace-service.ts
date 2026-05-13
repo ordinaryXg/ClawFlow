@@ -20,15 +20,15 @@ import {
   workspaceSubagentRolesDirAbs,
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
-import { ensureSkillAgentSlotForWorkspace } from './skill-agent-bootstrap';
+import { ensureSkillAgentSlotForWorkspace } from '../skill/skill-agent-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
   type WorkspaceToolId,
   type WorkspaceToolSelection,
   type WorkspaceToolSelectionInput,
-} from './shared/workspace-tools';
-import { ALL_SUBAGENT_SLOT_IDS_ORDERED } from './shared/sub-agent-roster-constants';
+} from '../../shared/workspace-tools';
+import { ALL_SUBAGENT_SLOT_IDS_ORDERED } from '../../shared/sub-agent-roster-constants';
 import {
   buildWorkspaceToolBrowserMd,
   buildWorkspaceToolDocsMd,
@@ -37,11 +37,11 @@ import {
   buildWorkspaceToolSkillsMd,
   buildWorkspaceToolSubagentsMd,
   buildWorkspaceToolTodosMd,
-} from './shared/workspace-tool-template-md';
+} from '../../shared/workspace-tool-template-md';
 
 const execFileAsync = promisify(execFile);
 
-export type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace-tools';
+export type { WorkspaceToolId, WorkspaceToolSelection } from '../../shared/workspace-tools';
 
 /** 工作区内主会话与调度等元数据（位于 `.agent/` 下） */
 export const CLAWFLOW_DIR = '.agent/.clawflow';

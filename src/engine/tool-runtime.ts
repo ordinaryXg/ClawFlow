@@ -1,7 +1,7 @@
 import { shell } from 'electron';
 import type { ToolSchema, ToolCall } from './providers/types';
 import { isSafeHttpUrl, normalizeHttpUrl } from '../utils/normalize-http-url';
-import * as workspaceExplorer from '../workspace-explorer';
+import * as workspaceExplorer from '../main/workspace/workspace-explorer';
 import { runClawFlowWebSearch, WEB_SEARCH_MAX_COUNT, type ResolvedClawFlowWebSearch } from './web-search';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -11,10 +11,10 @@ import { createHash, randomUUID } from 'crypto';
 import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './openclaw-apply-patch';
 import type { WorkspaceToolId } from '../shared/workspace-tools';
 import { toolNameAllowedByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
-import { runWebScrapeForTool } from '../scrape-runner';
-import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../todo-triggers-service';
-import { rescheduleTodoTriggersForWorkspace } from '../todo-triggers-scheduler';
-import { broadcastTodoTriggersUpdated } from '../todo-triggers-broadcast';
+import { runWebScrapeForTool } from '../main/scrape/scrape-runner';
+import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../main/todo/todo-triggers-service';
+import { rescheduleTodoTriggersForWorkspace } from '../main/todo/todo-triggers-scheduler';
+import { broadcastTodoTriggersUpdated } from '../main/todo/todo-triggers-broadcast';
 import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-triggers';
 import {
   EXCEL_PREVIEW_EXTENSIONS,
@@ -22,13 +22,13 @@ import {
   previewExcelBuffer,
   previewPdfBuffer,
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
-} from '../workspace-office-preview';
-import { readSubAgentSlots, writeSubAgentSlots } from '../sub-agent-service';
-import { broadcastSubAgentsUpdated } from '../sub-agent-broadcast';
-import { runSubAgentOnce } from '../sub-agent-runner';
+} from '../main/workspace/workspace-office-preview';
+import { readSubAgentSlots, writeSubAgentSlots } from '../main/sub-agent/sub-agent-service';
+import { broadcastSubAgentsUpdated } from '../main/sub-agent/sub-agent-broadcast';
+import { runSubAgentOnce } from '../main/sub-agent/sub-agent-runner';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
-import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../workspace-skills-read';
-import { readDisabledSkillRootsSync } from '../workspace-skills-ui-state';
+import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
+import { readDisabledSkillRootsSync } from '../main/workspace/workspace-skills-ui-state';
 import { atomicWriteUtf8File } from './atomic-write';
 import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
 import {
@@ -37,10 +37,10 @@ import {
   patchSummaryTouchesHermesSkillTree,
 } from './hermes-skill-index-hooks';
 import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillWorkspaceRel, normalizeWorkspaceRel } from './workspace-skill-paths';
-import { WORKSPACE_AGENT_SKILLS_REL } from '../workspace-agent-layout';
+import { WORKSPACE_AGENT_SKILLS_REL } from '../main/workspace/workspace-agent-layout';
 import { SKILL_AGENT_SLOT_ID } from '../shared/skill-agent-constants';
-import { ensureSubAgentRosterForWorkspace } from '../sub-agent-roster-bootstrap';
-import { clawflowDir, CLAWFLOW_DIR } from '../workspace-service';
+import { ensureSubAgentRosterForWorkspace } from '../main/sub-agent/sub-agent-roster-bootstrap';
+import { clawflowDir, CLAWFLOW_DIR } from '../main/workspace/workspace-service';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;

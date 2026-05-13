@@ -4,30 +4,39 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { StoredMessage } from './engine/session-store';
-import { SessionStore } from './engine/session-store';
-import { readWorkspaceToolManifest } from './workspace-service';
+import type { StoredMessage } from '../../engine/session-store';
+import { SessionStore } from '../../engine/session-store';
+import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
-import { runSubAgentOnce } from './sub-agent-runner';
+import { runSubAgentOnce } from '../sub-agent/sub-agent-runner';
 import {
   SKILL_AGENT_SLOT_ID,
   SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
   computeSkillEvolutionSpacing,
-} from './shared/skill-agent-constants';
-import { workspaceAgentDotMemoryDirAbs } from './workspace-agent-layout';
+} from '../../shared/skill-agent-constants';
+import { workspaceAgentDotMemoryDirAbs } from '../workspace/workspace-agent-layout';
 
+/**
+ * 轮次统计（totalUserManualRounds）约定：
+ * - 仅在主会话一次「用户有效提问 → 引擎落盘最终 assistant」完成后，由 ClawFlowEngine.fireSkillEvolutionHookIfNeeded
+ *   调用 maybeScheduleSkillEvolutionAfterMainTurn；子 Agent / 审计会话 / assistant_tool_summary 整段不落计数。
+ * - 一条「回合」对应：会话末尾为普通 assistant，且从末尾向前跳过 tool 与中间 assistant（含带 tool_calls 的片段）
+ *   后，遇到的最近一条 user 的渠道为 user_manual 或 user_feishu（无 channel 视为历史数据，仍计入）。
+ * - 含多轮工具调用时持久化形如：… user → assistant(tool_calls) → tool → … → assistant(最终正文)，旧逻辑在向前扫描时
+ *   会先碰到中间 assistant 并误判为 false，导致轮次几乎不增长；此处对中间 assistant 一律跳过。
+ */
 /** 计入技能进化轮次的用户消息渠道（与 UI 内手动输入同级） */
 const EVOLUTION_COUNTED_USER_CHANNELS = new Set<string>(['user_manual', 'user_feishu']);
 
-function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
+export function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
   if (m.role !== 'user') return false;
   const ch = m.channel;
   if (!ch) return true;
   return EVOLUTION_COUNTED_USER_CHANNELS.has(ch);
 }
 
-/** 当前会话最后一条为 assistant，且其前最近一条「非 tool」用户来自手动或通讯端 */
-function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boolean {
+/** 当前会话最后一条为可计数的 assistant，且向前跳过 tool / 中间 assistant 后，最近一条 user 为可计数渠道 */
+export function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boolean {
   if (messages.length < 2) return false;
   const last = messages[messages.length - 1];
   if (last.role !== 'assistant') return false;
@@ -35,6 +44,7 @@ function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boolean {
   for (let i = messages.length - 2; i >= 0; i--) {
     const m = messages[i];
     if (m.role === 'tool') continue;
+    if (m.role === 'assistant') continue;
     if (m.role === 'user') return isEvolutionCountedUserMessage(m);
     return false;
   }

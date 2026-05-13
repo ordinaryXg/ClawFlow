@@ -5,8 +5,8 @@ import {
   TODO_TRIGGERS_FILE_VERSION,
   type TodoTriggerRecord,
   type TodoTriggersFile,
-} from './shared/todo-triggers';
-import * as workspaceService from './workspace-service';
+} from '../../shared/todo-triggers';
+import * as workspaceService from '../workspace/workspace-service';
 
 function isRecord(x: unknown): x is TodoTriggerRecord {
   if (!x || typeof x !== 'object') return false;

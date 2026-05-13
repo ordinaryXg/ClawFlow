@@ -7,8 +7,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
-import { workspaceSkillsDirAbs } from '../workspace-agent-layout';
-import { clawflowDir } from '../workspace-service';
+import { workspaceSkillsDirAbs } from '../main/workspace/workspace-agent-layout';
+import { clawflowDir } from '../main/workspace/workspace-service';
 
 const requireSqlite = createRequire(__filename);
 

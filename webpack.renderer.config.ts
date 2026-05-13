@@ -29,6 +29,8 @@ export const rendererConfig: Configuration = {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
     // 避免解析到 pdf-parse 嵌套的旧版 pdfjs-dist，须与 CopyWebpackPlugin 复制的 worker 同版本
     alias: {
+      '@': path.resolve(__dirname, 'src'),
+      '@main': path.resolve(__dirname, 'src', 'main'),
       'pdfjs-dist': path.resolve(__dirname, 'node_modules', 'pdfjs-dist'),
     },
   },

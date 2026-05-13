@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WORKSPACE_ROLE_AGENT_DIR, WORKSPACE_ROLE_AGENT_FILES_ORDER } from '../workspace-agent-bootstrap';
+import { WORKSPACE_ROLE_AGENT_DIR, WORKSPACE_ROLE_AGENT_FILES_ORDER } from '../main/workspace/workspace-agent-bootstrap';
 
 const MAX_TOTAL_CHARS = 100_000;
 const MAX_FILE_CHARS = 24_000;

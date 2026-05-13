@@ -4,8 +4,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as workspaceService from './workspace-service';
-import type { SubAgentRunSnapshot, SubAgentRunSnapshotStatus } from './shared/sub-agent-types';
+import * as workspaceService from '../workspace/workspace-service';
+import type { SubAgentRunSnapshot, SubAgentRunSnapshotStatus } from '../../shared/sub-agent-types';
 
 const VERSION = 1 as const;
 

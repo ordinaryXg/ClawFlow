@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WORKSPACE_IMAGE_PREVIEW_MAX_BYTES } from './workspace-preview-limits';
+import { WORKSPACE_IMAGE_PREVIEW_MAX_BYTES } from '../../shared/workspace-preview-limits';
 import {
   EXCEL_PREVIEW_EXTENSIONS,
   PDF_PREVIEW_EXTENSIONS,

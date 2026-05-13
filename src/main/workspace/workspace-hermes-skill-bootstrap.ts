@@ -4,9 +4,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { refreshHermesSkillMemoryIndexBestEffort } from './engine/hermes-skill-index-hooks';
+import { refreshHermesSkillMemoryIndexBestEffort } from '../../engine/hermes-skill-index-hooks';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
-import templateDefaultSkillMd from './workspace-templates/hermes-skills/default/SKILL.md';
+import templateDefaultSkillMd from '../../workspace-templates/hermes-skills/default/SKILL.md';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 
 export const WORKSPACE_DEFAULT_HERMES_SKILL_DIR = '.agent/.skills/default';

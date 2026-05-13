@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { isSafeHttpUrl, normalizeHttpUrl } from './utils/normalize-http-url';
-import { classifyNetworkFailure, fetchWithProxyRetry } from './utils/net-fetch';
+import { isSafeHttpUrl, normalizeHttpUrl } from '../../utils/normalize-http-url';
+import { classifyNetworkFailure, fetchWithProxyRetry } from '../../utils/net-fetch';
 import { appendScrapeJob, ensureScrapeArtifactsDir, scrapeArtifactRelPath } from './scrape-service';
-import type { ScrapeJobRecord } from './shared/scrape-jobs';
+import type { ScrapeJobRecord } from '../../shared/scrape-jobs';
 import { broadcastScrapeJobsUpdated } from './scrape-broadcast';
 
 const FETCH_TIMEOUT_MS = 28_000;

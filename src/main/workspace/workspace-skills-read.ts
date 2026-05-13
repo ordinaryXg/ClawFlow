@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolvePathInsideWorkspace } from './workspace-explorer';
-import type { WorkspaceSkillListItem } from './shared/workspace-skills-types';
+import type { WorkspaceSkillListItem } from '../../shared/workspace-skills-types';
 import { normalizeHermesSkillWorkspaceRel, WORKSPACE_AGENT_SKILLS_REL } from './workspace-agent-layout';
 
 const REF_EXT = new Set(['.md', '.txt']);

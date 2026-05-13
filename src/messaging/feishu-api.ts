@@ -4,8 +4,8 @@
  */
 
 import { classifyNetworkFailure, fetchWithProxyRetry } from '../utils/net-fetch';
-import { readMessagingPrefsFile } from '../messaging-prefs';
-import type { FeishuReceiveIdType } from '../messaging-prefs';
+import { readMessagingPrefsFile } from '../main/prefs/messaging-prefs';
+import type { FeishuReceiveIdType } from '../main/prefs/messaging-prefs';
 
 const FEISHU_OPEN_API = 'https://open.feishu.cn/open-apis';
 

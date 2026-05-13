@@ -5,9 +5,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import templateAgents from './workspace-templates/role-agent/AGENTS.md';
-import templateSoul from './workspace-templates/role-agent/SOUL.md';
-import templateTools from './workspace-templates/role-agent/TOOLS.md';
+import templateAgents from '../../workspace-templates/role-agent/AGENTS.md';
+import templateSoul from '../../workspace-templates/role-agent/SOUL.md';
+import templateTools from '../../workspace-templates/role-agent/TOOLS.md';
 import { WORKSPACE_ROLE_AGENT_DIR, workspaceRoleAgentDirAbs } from './workspace-agent-layout';
 
 export { WORKSPACE_ROLE_AGENT_DIR };

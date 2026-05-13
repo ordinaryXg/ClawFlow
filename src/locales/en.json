@@ -467,7 +467,7 @@
       "changeLogHint": "(placeholder) Workspace change log table.",
       "treeRoot": "Workspace root",
       "treeTitle": "Files",
-      "treeDropHint": "Drag files/folders from Explorer: drop on the root label or empty area for workspace root; on a folder row to move into that folder; on a file row to move into that file’s parent folder (rename on same volume; copy+delete source across volumes).",
+      "treeDropHint": "Drag files or folders from Explorer onto the tree where you want them.",
       "previewTitle": "Preview",
       "mdPreview": "Preview",
       "mdSource": "Source",

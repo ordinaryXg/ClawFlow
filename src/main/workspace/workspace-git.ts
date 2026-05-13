@@ -6,11 +6,11 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
-import { deriveRepoFolderNameFromGitUrl } from './shared/workspace-git-url';
+import { deriveRepoFolderNameFromGitUrl } from '../../shared/workspace-git-url';
 
 const execFileAsync = promisify(execFile);
 
-export { deriveRepoFolderNameFromGitUrl } from './shared/workspace-git-url';
+export { deriveRepoFolderNameFromGitUrl } from '../../shared/workspace-git-url';
 
 export function validateGitRemoteUrl(url: string): { ok: true; normalized: string } | { ok: false; error: string } {
   const u = url.trim();

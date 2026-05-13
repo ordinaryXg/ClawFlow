@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SubAgentRoleTemplateId, SubAgentSlot } from './shared/sub-agent-types';
-import * as workspaceService from './workspace-service';
+import type { SubAgentRoleTemplateId, SubAgentSlot } from '../../shared/sub-agent-types';
+import * as workspaceService from '../workspace/workspace-service';
 
-export type { SubAgentSlot, SubAgentRunStatus } from './shared/sub-agent-types';
+export type { SubAgentSlot, SubAgentRunStatus } from '../../shared/sub-agent-types';
 
 const FILE_VERSION = 1 as const;
 

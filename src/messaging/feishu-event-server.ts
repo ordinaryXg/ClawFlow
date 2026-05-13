@@ -5,9 +5,9 @@
  */
 
 import * as path from 'path';
-import { readMessagingPrefsFile } from '../messaging-prefs';
-import type { FeishuReceiveIdType } from '../messaging-prefs';
-import * as workspaceService from '../workspace-service';
+import { readMessagingPrefsFile } from '../main/prefs/messaging-prefs';
+import type { FeishuReceiveIdType } from '../main/prefs/messaging-prefs';
+import * as workspaceService from '../main/workspace/workspace-service';
 import { getGlobalClawFlowEngine } from '../engine/clawflow-engine';
 import { SessionStore } from '../engine/session-store';
 import { feishuGetTenantAccessToken, feishuSendTextMessage, resolveFeishuAppCredentials } from './feishu-api';

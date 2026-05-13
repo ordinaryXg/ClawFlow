@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import type { ClawFlowWebSearchUserConfig } from './engine/web-search';
+import type { ClawFlowWebSearchUserConfig } from '../../engine/web-search';
 
 const FILENAME = 'cf.web-search-prefs.json';
 

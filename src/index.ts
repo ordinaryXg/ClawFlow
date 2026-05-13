@@ -1,4 +1,8 @@
-import { app, BrowserWindow, Menu, ipcMain, shell, clipboard, screen } from 'electron';
+/**
+ * Electron 主进程入口（Webpack `main` entry）。
+ * 职责与阅读顺序见仓库根目录 `AGENTS.md`；应用菜单与语言见 `src/main/application-menu.ts`。
+ */
+import { app, BrowserWindow, ipcMain, shell, clipboard, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
@@ -9,37 +13,38 @@ import {
 } from './engine/openclaw-engine';
 import { registerClawFlowIPC, syncClawFlowEngineWorkspaceRoot } from './engine/clawflow-engine';
 import { getGatewayDaemon, registerGatewayIPC } from './engine/gateway-daemon';
-import * as workspaceService from './workspace-service';
-import * as workspaceExplorer from './workspace-explorer';
-import * as workspaceChangeLog from './workspace-change-log';
+import * as workspaceService from './main/workspace/workspace-service';
+import * as workspaceExplorer from './main/workspace/workspace-explorer';
+import * as workspaceChangeLog from './main/workspace/workspace-change-log';
 import type { WorkspaceToolSelection } from './shared/workspace-tools';
-import { resolveWorkspaceRootForWebContents } from './electron-workspace-context';
-import { stickySatellitePathByWindowId } from './sticky-satellite-windows';
-import { getMainShellLastWorkspacePath, setMainShellLastWorkspacePath } from './main-shell-workspace';
-import { readTodoTriggers, writeTodoTriggers } from './todo-triggers-service';
-import { broadcastTodoTriggersUpdated } from './todo-triggers-broadcast';
-import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './sub-agent-service';
-import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
-import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './sub-agent-runner';
-import { mergeSubAgentSlotsAfterEditorSave, ensureSubAgentRosterForWorkspace } from './sub-agent-roster-bootstrap';
+import { resolveWorkspaceRootForWebContents } from './main/electron-workspace-context';
+import { stickySatellitePathByWindowId } from './main/sticky-satellite-windows';
+import { getMainShellLastWorkspacePath, setMainShellLastWorkspacePath } from './main/shell/main-shell-workspace';
+import { readTodoTriggers, writeTodoTriggers } from './main/todo/todo-triggers-service';
+import { broadcastTodoTriggersUpdated } from './main/todo/todo-triggers-broadcast';
+import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './main/sub-agent/sub-agent-service';
+import { broadcastSubAgentsUpdated } from './main/sub-agent/sub-agent-broadcast';
+import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './main/sub-agent/sub-agent-runner';
+import { mergeSubAgentSlotsAfterEditorSave, ensureSubAgentRosterForWorkspace } from './main/sub-agent/sub-agent-roster-bootstrap';
 import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
-import { readScrapeJobs } from './scrape-service';
-import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './todo-triggers-scheduler';
+import { readScrapeJobs } from './main/scrape/scrape-service';
+import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './main/todo/todo-triggers-scheduler';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './engine/hermes-memory-db';
-import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from './workspace-skills-read';
-import { readDisabledSkillRootsSync, setSkillRootEnabled } from './workspace-skills-ui-state';
-import { deleteHermesSkillDirectory } from './workspace-skills-delete';
-import { reconcileRunSnapshotsAfterRestart, readRunSnapshots } from './sub-agent-run-snapshot';
-import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './workspace-git';
-import { getLauncherIconDataUrl } from './launcher-icon-main';
-import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main-ui-prefs';
-import { destroyAppTray, ensureAppTray } from './app-tray';
+import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from './main/workspace/workspace-skills-read';
+import { readDisabledSkillRootsSync, setSkillRootEnabled } from './main/workspace/workspace-skills-ui-state';
+import { deleteHermesSkillDirectory } from './main/workspace/workspace-skills-delete';
+import { reconcileRunSnapshotsAfterRestart, readRunSnapshots } from './main/sub-agent/sub-agent-run-snapshot';
+import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './main/workspace/workspace-git';
+import { getLauncherIconDataUrl } from './main/shell/launcher-icon-main';
+import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main/shell/main-ui-prefs';
+import { destroyAppTray, ensureAppTray } from './main/shell/app-tray';
 import { registerMessagingIPC } from './messaging/register-messaging-ipc';
 import { stopFeishuEventServer, restartFeishuEventServerFromPrefs } from './messaging/feishu-event-server';
-import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './desktop-pin-hide-main';
+import { getAppLanguage, setAppLanguageFromRenderer, setupApplicationMenu } from './main/application-menu';
+import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './main/shell/desktop-pin-hide-main';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
-import { readSkillEvolutionState } from './skill-evolution-state';
-import { intelligenceLevelFromXp, intelligenceLevelProgress } from './intelligence-profile';
+import { readSkillEvolutionState } from './main/skill/skill-evolution-state';
+import { intelligenceLevelFromXp, intelligenceLevelProgress } from './shared/intelligence-profile';
 // This allows TypeScript to pick up the magic constants that's auto-generated by Forge's Webpack
 // plugin that tells the Electron app where to look for the Webpack-bundled app code (depending on
 // whether you're running in development or production).
@@ -70,9 +75,6 @@ if (require('electron-squirrel-startup')) {
 
 // 须在主进程启动时即注册，避免仅放在 app.whenReady 链后部时因前置步骤异常而未注册，导致渲染层报 “No handler registered”。
 registerMessagingIPC();
-
-type AppLang = 'zh' | 'en';
-let currentLang: AppLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
 
 /** 便签紧凑窗口：按 BrowserWindow 分别保存 bounds，支持多窗口 */
 type ShellCompactState = { restoreBounds: Electron.Rectangle; restoreMaximized: boolean };
@@ -446,203 +448,6 @@ function registerScrapeIPC(): void {
   });
 }
 registerScrapeIPC();
-
-const I18N: Record<AppLang, Record<string, string>> = {
-  zh: {
-    file: '文件',
-    edit: '编辑',
-    view: '视图',
-    window: '窗口',
-    help: '帮助',
-    about: '关于',
-    services: '服务',
-    hide: '隐藏',
-    hideOthers: '隐藏其他',
-    unhide: '显示全部',
-    quit: '退出',
-    undo: '撤销',
-    redo: '重做',
-    cut: '剪切',
-    copy: '复制',
-    paste: '粘贴',
-    pasteAndMatchStyle: '粘贴并匹配样式',
-    delete: '删除',
-    selectAll: '全选',
-    speech: '朗读',
-    reload: '重新加载',
-    forceReload: '强制重新加载',
-    toggleDevTools: '切换开发者工具',
-    resetZoom: '重置缩放',
-    zoomIn: '放大',
-    zoomOut: '缩小',
-    togglefullscreen: '切换全屏',
-    minimize: '最小化',
-    zoom: '缩放',
-    close: '关闭',
-    front: '全部置于前台',
-    learnMore: '了解更多',
-    navChat: '对话',
-    navSkills: '技能',
-    navConnectors: '连接器',
-    navSettings: '全局设置',
-  },
-  en: {
-    file: 'File',
-    edit: 'Edit',
-    view: 'View',
-    window: 'Window',
-    help: 'Help',
-    about: 'About',
-    services: 'Services',
-    hide: 'Hide',
-    hideOthers: 'Hide Others',
-    unhide: 'Show All',
-    quit: 'Quit',
-    undo: 'Undo',
-    redo: 'Redo',
-    cut: 'Cut',
-    copy: 'Copy',
-    paste: 'Paste',
-    pasteAndMatchStyle: 'Paste and Match Style',
-    delete: 'Delete',
-    selectAll: 'Select All',
-    speech: 'Speech',
-    reload: 'Reload',
-    forceReload: 'Force Reload',
-    toggleDevTools: 'Toggle DevTools',
-    resetZoom: 'Reset Zoom',
-    zoomIn: 'Zoom In',
-    zoomOut: 'Zoom Out',
-    togglefullscreen: 'Toggle Full Screen',
-    minimize: 'Minimize',
-    zoom: 'Zoom',
-    close: 'Close',
-    front: 'Bring All to Front',
-    learnMore: 'Learn More',
-    navChat: 'Chat',
-    navSkills: 'Skills',
-    navConnectors: 'Connectors',
-    navSettings: 'Global settings',
-  },
-};
-
-const setupApplicationMenu = () => {
-  const isMac = process.platform === 'darwin';
-  const nav = (path: string) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return;
-    win.webContents.send('app:navigate', path);
-  };
-  const t = (k: string) => I18N[currentLang][k] ?? k;
-
-  const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? ([
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about', label: `${t('about')} ${app.name}` },
-              { type: 'separator' },
-              { role: 'services', label: t('services') },
-              { type: 'separator' },
-              { role: 'hide', label: `${t('hide')} ${app.name}` },
-              { role: 'hideOthers', label: t('hideOthers') },
-              { role: 'unhide', label: t('unhide') },
-              { type: 'separator' },
-              { role: 'quit', label: `${t('quit')} ${app.name}` },
-            ],
-          },
-        ] as Electron.MenuItemConstructorOptions[])
-      : []),
-    {
-      label: t('file'),
-      submenu: [
-        ...(isMac
-          ? ([] as Electron.MenuItemConstructorOptions[])
-          : ([
-              { role: 'quit', label: t('quit') },
-            ] as Electron.MenuItemConstructorOptions[])),
-      ],
-    },
-    {
-      label: t('edit'),
-      submenu: [
-        { role: 'undo', label: t('undo') },
-        { role: 'redo', label: t('redo') },
-        { type: 'separator' },
-        { role: 'cut', label: t('cut') },
-        { role: 'copy', label: t('copy') },
-        { role: 'paste', label: t('paste') },
-        ...(isMac
-          ? ([
-              { role: 'pasteAndMatchStyle', label: t('pasteAndMatchStyle') },
-              { role: 'delete', label: t('delete') },
-              { role: 'selectAll', label: t('selectAll') },
-              { type: 'separator' },
-              { role: 'speech', label: t('speech') },
-            ] as Electron.MenuItemConstructorOptions[])
-          : ([
-              { role: 'delete', label: t('delete') },
-              { type: 'separator' },
-              { role: 'selectAll', label: t('selectAll') },
-            ] as Electron.MenuItemConstructorOptions[])),
-      ],
-    },
-    {
-      label: t('view'),
-      submenu: [
-        { label: t('navChat'), click: () => nav('/chat') },
-        { label: t('navSkills'), click: () => nav('/skills') },
-        { label: t('navConnectors'), click: () => nav('/connectors') },
-        { label: t('navSettings'), click: () => nav('/settings') },
-        { type: 'separator' },
-        { role: 'reload', label: t('reload') },
-        { role: 'forceReload', label: t('forceReload') },
-        { role: 'toggleDevTools', label: t('toggleDevTools') },
-        { type: 'separator' },
-        { role: 'resetZoom', label: t('resetZoom') },
-        { role: 'zoomIn', label: t('zoomIn') },
-        { role: 'zoomOut', label: t('zoomOut') },
-        { type: 'separator' },
-        { role: 'togglefullscreen', label: t('togglefullscreen') },
-      ],
-    },
-    {
-      label: t('window'),
-      role: 'window',
-      submenu: [
-        { role: 'minimize', label: t('minimize') },
-        { role: 'zoom', label: t('zoom') },
-        ...(isMac
-          ? ([
-              { type: 'separator' },
-              { role: 'front', label: t('front') },
-              { type: 'separator' },
-              { role: 'window', label: t('window') },
-            ] as Electron.MenuItemConstructorOptions[])
-          : ([
-              { role: 'close', label: t('close') },
-            ] as Electron.MenuItemConstructorOptions[])),
-      ],
-    },
-    {
-      label: t('help'),
-      role: 'help',
-      submenu: [
-        {
-          label: t('learnMore'),
-          click: async () => {
-            const { shell } = await import('electron');
-            await shell.openExternal('https://electronjs.org');
-          },
-        },
-      ],
-    },
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-};
 
 function registerWorkspaceIPC(): void {
   ipcMain.handle('workspace:getActive', async (event) => {
@@ -1103,7 +908,7 @@ function registerWindowControlIpcOnce(): void {
       if (process.platform === 'win32' || process.platform === 'linux') {
         try {
           ensureAppTray(
-            () => currentLang,
+            () => getAppLanguage(),
             () => {
               destroyAppTray();
               app.quit();
@@ -1344,8 +1149,7 @@ app.whenReady().then(async () => {
   }
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('app:setLanguage', (_event, lang: string) => {
-    currentLang = String(lang).toLowerCase().startsWith('en') ? 'en' : 'zh';
-    setupApplicationMenu();
+    setAppLanguageFromRenderer(lang);
     return { success: true };
   });
   setupApplicationMenu();

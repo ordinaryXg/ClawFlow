@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { safeStorage } from 'electron';
 import { randomUUID } from 'crypto';
-import { globalClawflowRoot } from '../workspace-service';
+import { globalClawflowRoot } from '../main/workspace/workspace-service';
 
 export type AuthProfile = {
   provider: string;

@@ -3,13 +3,13 @@
  * `tools.skills` 关闭时 Skill 槽位仍存在（`skillToolsEnabled: false`，状态 stopped），便于 UI 一览。
  */
 
-import type { SubAgentSlot } from './shared/sub-agent-types';
+import type { SubAgentSlot } from '../../shared/sub-agent-types';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
-import { readWorkspaceToolManifest } from './workspace-service';
+import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
-import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
-import { STANDARD_SUB_AGENT_ROSTER } from './shared/sub-agent-roster-constants';
-import { buildDefaultSkillAgentSlot } from './skill-agent-defaults';
+import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+import { STANDARD_SUB_AGENT_ROSTER } from '../../shared/sub-agent-roster-constants';
+import { buildDefaultSkillAgentSlot } from '../skill/skill-agent-defaults';
 
 function normalizeStatus(st: unknown): SubAgentSlot['status'] | undefined {
   if (st === 'stopped' || st === 'starting' || st === 'running' || st === 'error') return st;

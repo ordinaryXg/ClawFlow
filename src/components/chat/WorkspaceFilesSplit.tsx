@@ -15,7 +15,7 @@ import Markdown from 'markdown-to-jsx';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import { clampWidth, startShellColumnDrag } from '../../hooks/usePersistedShellWidth';
-import { WORKSPACE_IMAGE_PREVIEW_MAX_MB } from '../../workspace-preview-limits';
+import { WORKSPACE_IMAGE_PREVIEW_MAX_MB } from '../../shared/workspace-preview-limits';
 import { FilePreviewPdfCanvas } from './FilePreviewPdfCanvas';
 import { CsvPreviewTable } from './CsvPreviewTable';
 import { parseCsvForPreview } from './csvPreviewParse';

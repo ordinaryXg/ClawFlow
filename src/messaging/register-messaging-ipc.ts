@@ -5,7 +5,7 @@ import {
   writeMessagingPrefsFile,
   type FeishuReceiveIdType,
   type MessagingPrefsStored,
-} from '../messaging-prefs';
+} from '../main/prefs/messaging-prefs';
 import { feishuGetTenantAccessToken, feishuSendTextMessage, FeishuRequestError, resolveFeishuAppCredentials } from './feishu-api';
 import { restartFeishuEventServerFromPrefs } from './feishu-event-server';
 

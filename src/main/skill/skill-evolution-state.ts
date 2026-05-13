@@ -5,8 +5,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { clawflowDir } from './workspace-service';
-import { INTELLIGENCE_XP_PER_SUCCESSFUL_EVOLUTION } from './intelligence-profile';
+import { clawflowDir } from '../workspace/workspace-service';
+import { INTELLIGENCE_XP_PER_SUCCESSFUL_EVOLUTION } from '../../shared/intelligence-profile';
 
 const FILE_VERSION = 1 as const;
 

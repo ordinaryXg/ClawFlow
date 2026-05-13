@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SubAgentRoleTemplateId } from '../shared/sub-agent-types';
-import { workspaceSubagentRolesDirAbs } from '../workspace-agent-layout';
+import { workspaceSubagentRolesDirAbs } from '../main/workspace/workspace-agent-layout';
 
 /**
  * 子 Agent system 模板：优先读工作区可覆盖版本 `.subagent/.subroleAgent/<id>/`；

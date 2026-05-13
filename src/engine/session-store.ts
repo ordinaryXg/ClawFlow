@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { conversationsStorePath } from '../workspace-service';
+import { conversationsStorePath } from '../main/workspace/workspace-service';
 import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 
 export type StoredMessageRole = 'user' | 'assistant' | 'tool';

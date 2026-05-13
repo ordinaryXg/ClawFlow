@@ -655,6 +655,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
             }
           });
         }
+
+        // 内置 IPC 引擎路径不走 WS 流式分片，须在此统一通知右侧工作区文件树刷新（工具写入后等）
+        try {
+          window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+        } catch {
+          /* ignore */
+        }
       };
 
       const useBuiltinStream =
@@ -755,9 +762,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
               full || `这是对"${content}"的回复（模拟）`,
               { ipcMs: Math.round(t1 - t0), label: 'ws' },
               reasoningPersist
-            ).then(() => {
-              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
-            });
+            );
           },
         });
 

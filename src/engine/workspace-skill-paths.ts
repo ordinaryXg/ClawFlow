@@ -3,7 +3,7 @@
  */
 
 import * as path from 'path';
-import { normalizeHermesSkillWorkspaceRel } from '../workspace-agent-layout';
+import { normalizeHermesSkillWorkspaceRel } from '../main/workspace/workspace-agent-layout';
 
 export function normalizeWorkspaceRel(rel: string): string {
   return String(rel ?? '')

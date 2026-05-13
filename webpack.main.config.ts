@@ -39,6 +39,10 @@ export const mainConfig: Configuration = {
   ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      '@main': path.resolve(__dirname, 'src', 'main'),
+    },
   },
   // ws 含原生/双导出逻辑，打进 bundle 会导致 WebSocketServer is not a constructor
   // better-sqlite3 为原生模块，须从 node_modules 加载（与 AutoUnpackNatives 配合）

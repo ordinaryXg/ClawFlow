@@ -1,5 +1,5 @@
-import type { SubAgentSlot } from './shared/sub-agent-types';
-import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
+import type { SubAgentSlot } from '../../shared/sub-agent-types';
+import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
 
 const DEFAULT_SKILL_AGENT: Omit<SubAgentSlot, 'status'> & { status: SubAgentSlot['status'] } = {
   id: SKILL_AGENT_SLOT_ID,

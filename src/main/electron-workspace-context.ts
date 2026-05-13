@@ -1,9 +1,9 @@
 import { BrowserWindow, WebContents } from 'electron';
 import * as path from 'path';
-import { getActiveWorkspaceRoot } from './engine/openclaw-engine';
+import { getActiveWorkspaceRoot } from '../engine/openclaw-engine';
 import { stickySatellitePathByWindowId } from './sticky-satellite-windows';
-import { getMainShellLastWorkspacePath } from './main-shell-workspace';
-import * as workspaceService from './workspace-service';
+import { getMainShellLastWorkspacePath } from './shell/main-shell-workspace';
+import * as workspaceService from './workspace/workspace-service';
 
 function globalRootIsBoundToSomeSatellite(globalRoot: string): boolean {
   for (const p of stickySatellitePathByWindowId.values()) {

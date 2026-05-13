@@ -1,10 +1,10 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
-import * as workspaceService from './workspace-service';
-import { resolveWorkspaceRootForWebContents } from './electron-workspace-context';
+import * as workspaceService from '../workspace/workspace-service';
+import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
 import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from './todo-triggers-service';
-import type { TodoTriggerRecord } from './shared/todo-triggers';
-import { stickySatellitePathByWindowId } from './sticky-satellite-windows';
+import type { TodoTriggerRecord } from '../../shared/todo-triggers';
+import { stickySatellitePathByWindowId } from '../sticky-satellite-windows';
 
 const timeoutByKey = new Map<string, NodeJS.Timeout>();
 
