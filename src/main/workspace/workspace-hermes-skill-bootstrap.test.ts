@@ -18,6 +18,16 @@ describe('workspace-hermes-skill-bootstrap', () => {
   afterEach(() => {
     warnSpy.mockRestore();
     try {
+      fs.rmSync(path.join(dir, '.agent'), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmSync(path.join(dir, '.subagent'), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    try {
       fs.rmSync(workspaceBlobDirAbs(dir), { recursive: true, force: true });
     } catch {
       /* ignore */

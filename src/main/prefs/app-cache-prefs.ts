@@ -1,6 +1,6 @@
 /**
  * 应用级「工作区托管缓存根」偏好（userData JSON），与渲染层 localStorage 无关。
- * 实际落盘的工作区 `.agent` / `.subagent` / `.clawflow-launcher-stash` 位于该根下的 `workspaces/<hash>/`。
+ * 工作区 `.agent` / `.subagent` 在工作区根目录；仅 `.clawflow-launcher-stash` 等本机数据在该根下的 `workspaces/<hash>/`。
  */
 
 import * as fs from 'fs';

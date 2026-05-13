@@ -70,7 +70,7 @@ src/
 
 - Channel 多为 **`领域:动作`**（如 `workspace:listDir`、`subAgents:run`）。
 - 工作区相对路径类 API 通常先 `resolveWorkspaceRootForWebContents(event.sender)` 再操作磁盘。
-- 各工作区托管目录（`.agent`、`.subagent`、`.clawflow-launcher-stash`）物理位于应用缓存根下 `workspaces/<sha256>/`（默认根为 `userData/ClawFlowAppCache`，见 `workspace-blob-store.ts`），相对路径约定不变；启动或初始化时会从仓库根迁移遗留副本，并合并曾误放在 `userData` 根或 `%APPDATA%/ClawFlow` 等处的 `workspaces/`。
+- **`.agent/`**、**`.subagent/`** 物理位于**工作区根目录**（便于 `.gitignore` 与仓库迁移）；**`.clawflow-launcher-stash/`** 仅在应用缓存根下 `workspaces/<sha256>/`（默认 `userData/ClawFlowAppCache`，见 `workspace-blob-store.ts`），不随仓库同步。启动或初始化时会将根下遗留 stash 迁入缓存、将旧版留在缓存内的 `.agent`/`.subagent` 迁回工作区根；并合并曾误放在 `userData` 根等处的 `workspaces/` 子树。
 
 ## 常用命令
 

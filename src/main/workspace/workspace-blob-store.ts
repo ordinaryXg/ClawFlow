@@ -1,6 +1,9 @@
 /**
- * 每工作区托管数据目录：位于应用缓存根下 `workspaces/<stableHash>/`，不再占用用户仓库根下的 `.agent` 等。
- * 启动/初始化时从工作区根迁移遗留目录；`workspace-root.txt` 用于从 stash 路径反查工作区根。
+ * 每工作区在应用缓存根下 `workspaces/<stableHash>/` 仅托管 **本机** 数据：
+ * - **`.clawflow-launcher-stash/`**（收纳内容不同步、不随仓库迁移）
+ * - **`workspace-root.txt`**（从 stash 路径反查工作区根）
+ *
+ * **`.agent/`**、**`.subagent/`** 在工作区根目录下（便于 Git 忽略规则与仓库整体迁移）；若旧版曾写入 blob，启动时迁回工作区根。
  */
 
 import { createHash } from 'crypto';
@@ -69,7 +72,8 @@ function tryMovePathSync(from: string, to: string): void {
 }
 
 /**
- * 若工作区根下仍存在旧版 `.agent` / `.subagent` / `.clawflow-launcher-stash`，且 blob 侧对应项尚不存在，则迁入 blob（同卷 rename，跨卷 cp+rm）。
+ * 1) 工作区根下的 **`.clawflow-launcher-stash`** → 迁入 blob（本机缓存；若 blob 侧已存在则跳过）。
+ * 2) 旧版留在 blob 内的 **`.agent`** / **`.subagent`** → 迁回工作区根（若工作区根下尚不存在同名目录）。
  * 随后写入 `workspace-root.txt`。可重复调用。
  */
 export function migrateWorkspaceTriadFromLegacyRootsSync(workspaceRoot: string): void {
@@ -83,9 +87,9 @@ export function migrateWorkspaceTriadFromLegacyRootsSync(workspaceRoot: string):
     return;
   }
 
-  tryMovePathSync(path.join(root, LEGACY_AGENT), path.join(blob, LEGACY_AGENT));
-  tryMovePathSync(path.join(root, LEGACY_SUBAGENT), path.join(blob, LEGACY_SUBAGENT));
   tryMovePathSync(path.join(root, LAUNCHER_STASH_DIR), path.join(blob, LAUNCHER_STASH_DIR));
+  tryMovePathSync(path.join(blob, LEGACY_AGENT), path.join(root, LEGACY_AGENT));
+  tryMovePathSync(path.join(blob, LEGACY_SUBAGENT), path.join(root, LEGACY_SUBAGENT));
 
   ensureWorkspaceBlobPointerSync(workspaceRoot);
 }
@@ -318,7 +322,7 @@ export async function setAppCacheRootAndMigrate(
   return { ok: true, effectiveRoot: getEffectiveAppCacheRootSync() };
 }
 
-/** 启动时：注册表内各工作区若根下仍有遗留三目录则迁入当前有效缓存根 */
+/** 启动时：注册表内各工作区执行 stash 与 blob↔根目录的 `.agent` / `.subagent` 迁移（见 `migrateWorkspaceTriadFromLegacyRootsSync`）。 */
 export function migrateLegacyTriadForWorkspaceRootsSync(workspaceRoots: string[]): void {
   const uniq = new Set<string>();
   for (const w of workspaceRoots) {

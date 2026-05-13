@@ -1,12 +1,12 @@
 /**
- * 工作区布局（主进程约定，POSIX 风格相对路径；**物理根**在应用缓存 `workspaces/<hash>/` 下）：
- * - **`.agent/`**：主 Agent 角色、工具清单、技能、`.memory/`、以及主会话元数据目录 **`.clawflow/`**（实际路径为 **`.agent/.clawflow/`**：会话 JSON、待办、爬取、Hermes DB 等）。
- * - **`.subagent/`**：子 Agent 专用区——**`.subclawflow/`**（槽位工作缓存）、**`.submemory/`**（槽位记忆）、**`.subroleAgent/`**（各槽位角色模板），与主 `.agent/.memory/` 分离。
+ * 工作区布局（主进程约定，POSIX 风格相对路径；**物理根**在工作区目录下）：
+ * - **`.agent/`**：主 Agent 角色、工具清单、技能、`.memory/`、以及主会话元数据 **`.agent/.clawflow/`**（会话 JSON、待办、爬取、Hermes DB 等）。
+ * - **`.subagent/`**：子 Agent 专用区——**`.subclawflow/`**、**`.submemory/`**、**`.subroleAgent/`**，与主 `.agent/.memory/` 分离。
+ * 仅 **`.clawflow-launcher-stash/`** 留在应用缓存 `workspaces/<hash>/`（见 `workspace-blob-store`），不随 Git 工作区迁移。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { workspaceBlobDirAbs } from './workspace-blob-store';
 
 export const WORKSPACE_AGENT_DIR = '.agent';
 
@@ -20,12 +20,16 @@ export const WORKSPACE_SUBAGENT_ROLE_DIR = '.subagent/.subroleAgent';
 /** 片段/当日笔记等落盘目录（点目录，位于 `.agent/` 下，与角色、技能并列） */
 export const WORKSPACE_AGENT_DOT_MEMORY_REL = '.agent/.memory';
 
+function resolvedWorkspaceRoot(workspaceRoot: string): string {
+  return path.resolve(String(workspaceRoot ?? '').trim());
+}
+
 export function workspaceAgentRootAbs(workspaceRoot: string): string {
-  return path.join(workspaceBlobDirAbs(workspaceRoot), WORKSPACE_AGENT_DIR);
+  return path.join(resolvedWorkspaceRoot(workspaceRoot), WORKSPACE_AGENT_DIR);
 }
 
 export function workspaceSubagentRootAbs(workspaceRoot: string): string {
-  return path.join(workspaceBlobDirAbs(workspaceRoot), '.subagent');
+  return path.join(resolvedWorkspaceRoot(workspaceRoot), '.subagent');
 }
 
 export function workspaceToolDirAbs(workspaceRoot: string): string {

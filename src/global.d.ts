@@ -77,32 +77,41 @@ export interface IElectronAPI {
     searxngApiKey?: string;
     clearSearxngApiKey?: boolean;
   }) => Promise<{ ok: true }>;
-  messagingGetFeishuSettings: () => Promise<{
-    appId: string;
-    appSecretConfigured: boolean;
-    appSecretSavedInFile: boolean;
-    defaultReceiveId: string;
-    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
-    bridgeEnabled: boolean;
-    bridgeWorkspacePath: string;
-    bridgeConversationId: string;
-    bridgeSenderLabel: string;
+  messagingGetFeishuBots: () => Promise<{
+    bots: Array<{
+      id: string;
+      name: string;
+      appId: string;
+      appSecretConfigured: boolean;
+      appSecretSavedInFile: boolean;
+      defaultReceiveId: string;
+      receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+      bridgeEnabled: boolean;
+      bridgeWorkspacePath: string;
+      bridgeConversationId: string;
+      bridgeSenderLabel: string;
+    }>;
   }>;
-  messagingSaveFeishuSettings: (params: {
-    appId?: string;
-    appSecret?: string;
-    clearAppSecret?: boolean;
-    defaultReceiveId?: string;
-    receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
-    bridgeEnabled?: boolean;
-    bridgeWorkspacePath?: string;
-    bridgeConversationId?: string;
-    bridgeSenderLabel?: string;
-  }) => Promise<{ ok: true }>;
-  messagingTestFeishu: (params?: { appId?: string; appSecret?: string }) => Promise<
+  messagingSaveFeishuBots: (params: {
+    bots: Array<{
+      id: string;
+      name: string;
+      appId?: string;
+      appSecret?: string;
+      clearAppSecret?: boolean;
+      defaultReceiveId?: string;
+      receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
+      bridgeEnabled?: boolean;
+      bridgeWorkspacePath?: string;
+      bridgeConversationId?: string;
+      bridgeSenderLabel?: string;
+    }>;
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  messagingTestFeishu: (params?: { botId?: string; appId?: string; appSecret?: string }) => Promise<
     { ok: true; expireSeconds: number } | { ok: false; error: string; detail?: string }
   >;
   messagingSendFeishuTestMessage: (params: {
+    botId?: string;
     text: string;
     receiveId?: string;
     receiveIdType?: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';

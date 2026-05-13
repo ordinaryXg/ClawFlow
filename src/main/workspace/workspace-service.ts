@@ -1,7 +1,7 @@
 /**
  * Workspace 目录与注册表（主进程）。
- * 每个 workspace：**`.agent/`**、**`.subagent/`**、**`.clawflow-launcher-stash/`** 位于应用缓存根下 `workspaces/<hash>/`（见 `workspace-blob-store`）；工作区根仅保留 `workspace.json` 路径引用及用户项目文件。
- * 主会话元数据在 **`.agent/.clawflow/`**（通过 `clawflowDir()`）；子 Agent 缓存仍在 **`.subagent/...`** 逻辑路径下（物理在缓存 blob 内）。
+ * **`.agent/`**、**`.subagent/`** 位于工作区根目录（便于 Git 管理与迁移）；**`.clawflow-launcher-stash/`** 仅在应用缓存 `workspaces/<hash>/`（见 `workspace-blob-store`），不随仓库同步。
+ * 主会话元数据在 **`.agent/.clawflow/`**（`clawflowDir()`）；子 Agent 在 **`.subagent/...`**。
  */
 
 import { randomUUID } from 'crypto';
@@ -64,13 +64,15 @@ export const SUBMEMORY_DIR = '.subagent/.submemory';
 
 /**
  * 仅从工作区根及缓存 blob 删除 ClawFlow 管理的目录，不删除用户项目文件。
- * 含 blob 内整包、工作区根遗留 `.agent/`、`.subagent/`、`.clawflow-launcher-stash/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`、`.clawflow-data`（待办等）；各目录不存在时忽略。
+ * 含工作区根 `.agent/`、`.subagent/`、根下遗留 `.clawflow-launcher-stash/`、blob 内本机 stash 包、以及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`、`.clawflow-data` 等；各目录不存在时忽略。
  */
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
   const blob = workspaceBlobDirAbs(workspaceRoot);
   const dirs = [
     blob,
+    path.join(blob, WORKSPACE_AGENT_DIR),
+    path.join(blob, SUBAGENT_ROOT_DIR),
     path.join(root, WORKSPACE_AGENT_DIR),
     path.join(root, SUBAGENT_ROOT_DIR),
     path.join(root, '.clawflow-launcher-stash'),
@@ -744,10 +746,10 @@ export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Prom
 }
 
 /**
- * 创建当前工作区在应用缓存下的 `.agent/.clawflow/`、`.subagent/`（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 创建工作区根下 **`.agent/.clawflow/`**、**`.subagent/`**（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
  * 同时在 **`.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
- * 若已同时存在（缓存下的）`.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
- * 打开时会先将工作区根下遗留的 `.agent` / `.subagent` / `.clawflow-launcher-stash` 迁入缓存（若目标尚不存在）。
+ * 若工作区根下已同时存在 `.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
+ * 打开时会先迁移：**根下 `.clawflow-launcher-stash` → 应用缓存**；**缓存内旧版 `.agent` / `.subagent` → 工作区根**（若根下尚无对应目录）。
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
@@ -936,9 +938,7 @@ export async function resetWorkspaceCacheDirs(
   const agentDir = workspaceAgentRootAbs(root);
   const subagentDir = workspaceSubagentRootAbs(root);
   const stashDir = launcherStashDirAbs(root);
-  const legacyAgent = path.join(root, '.agent');
-  const legacySub = path.join(root, '.subagent');
-  const legacyStash = path.join(root, '.clawflow-launcher-stash');
+  const legacyStashAtRoot = path.join(root, '.clawflow-launcher-stash');
   const removed = { agent: false, subagent: false };
   try {
     const tryRm = async (p: string) => {
@@ -956,9 +956,7 @@ export async function resetWorkspaceCacheDirs(
     if (await tryRm(agentDir)) removed.agent = true;
     if (await tryRm(subagentDir)) removed.subagent = true;
     await tryRm(stashDir);
-    await tryRm(legacyAgent);
-    await tryRm(legacySub);
-    await tryRm(legacyStash);
+    await tryRm(legacyStashAtRoot);
     return { ok: true, removed };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

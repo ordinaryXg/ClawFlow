@@ -116,21 +116,26 @@ const SettingsPage: FC = () => {
   const [connectorCount, setConnectorCount] = useState(0);
 
   type FeishuRecvUi = 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
-  const [feishuAppId, setFeishuAppId] = useState('');
-  const [feishuSecretDraft, setFeishuSecretDraft] = useState('');
-  const [feishuClearSecretOnSave, setFeishuClearSecretOnSave] = useState(false);
-  const [feishuDefaultReceiveId, setFeishuDefaultReceiveId] = useState('');
-  const [feishuReceiveIdType, setFeishuReceiveIdType] = useState<FeishuRecvUi>('chat_id');
-  const [feishuAppSecretConfigured, setFeishuAppSecretConfigured] = useState(false);
-  const [feishuAppSecretSavedInFile, setFeishuAppSecretSavedInFile] = useState(false);
+  type FeishuBotUiRow = {
+    id: string;
+    name: string;
+    appId: string;
+    secretDraft: string;
+    clearSecretOnSave: boolean;
+    defaultReceiveId: string;
+    receiveIdType: FeishuRecvUi;
+    appSecretConfigured: boolean;
+    appSecretSavedInFile: boolean;
+    bridgeEnabled: boolean;
+    bridgeWorkspacePath: string;
+    bridgeConversationId: string;
+    bridgeSenderLabel: string;
+  };
+  const [feishuBots, setFeishuBots] = useState<FeishuBotUiRow[]>([]);
   const [feishuSaving, setFeishuSaving] = useState(false);
-  const [feishuTesting, setFeishuTesting] = useState(false);
-  const [feishuSendingTest, setFeishuSendingTest] = useState(false);
   const [feishuTestText, setFeishuTestText] = useState('');
-  const [feishuBridgeEnabled, setFeishuBridgeEnabled] = useState(false);
-  const [feishuBridgeWorkspace, setFeishuBridgeWorkspace] = useState('');
-  const [feishuBridgeConvId, setFeishuBridgeConvId] = useState('');
-  const [feishuBridgeSenderLabel, setFeishuBridgeSenderLabel] = useState('');
+  const [feishuTestingBotId, setFeishuTestingBotId] = useState<string | null>(null);
+  const [feishuSendingBotId, setFeishuSendingBotId] = useState<string | null>(null);
 
   const [appVersion, setAppVersion] = useState<string>('');
   const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai' | 'anthropic'>('deepseek');
@@ -210,22 +215,72 @@ const SettingsPage: FC = () => {
 
   const reloadFeishuMessaging = useCallback(async () => {
     try {
-      const s = await window.electronAPI?.messagingGetFeishuSettings?.();
-      if (!s) return;
-      setFeishuAppId(s.appId ?? '');
-      setFeishuReceiveIdType(s.receiveIdType);
-      setFeishuDefaultReceiveId(s.defaultReceiveId ?? '');
-      setFeishuSecretDraft('');
-      setFeishuClearSecretOnSave(false);
-      setFeishuAppSecretConfigured(s.appSecretConfigured);
-      setFeishuAppSecretSavedInFile(s.appSecretSavedInFile);
-      setFeishuBridgeEnabled(Boolean(s.bridgeEnabled));
-      setFeishuBridgeWorkspace(s.bridgeWorkspacePath ?? '');
-      setFeishuBridgeConvId(s.bridgeConversationId ?? '');
-      setFeishuBridgeSenderLabel(s.bridgeSenderLabel ?? '');
+      const res = await window.electronAPI?.messagingGetFeishuBots?.();
+      const bots = res?.bots;
+      if (!Array.isArray(bots)) return;
+      const rows: FeishuBotUiRow[] = [];
+      for (const b of bots) {
+        const id = String(b.id ?? '').trim();
+        if (!id) continue;
+        const rt = b.receiveIdType;
+        const receiveIdType: FeishuRecvUi =
+          rt === 'open_id' || rt === 'user_id' || rt === 'union_id' || rt === 'email' || rt === 'chat_id' ? rt : 'chat_id';
+        rows.push({
+          id,
+          name: String(b.name ?? '').trim() || t('settings.messagingFeishuDefaultBotName'),
+          appId: String(b.appId ?? ''),
+          secretDraft: '',
+          clearSecretOnSave: false,
+          defaultReceiveId: String(b.defaultReceiveId ?? ''),
+          receiveIdType,
+          appSecretConfigured: Boolean(b.appSecretConfigured),
+          appSecretSavedInFile: Boolean(b.appSecretSavedInFile),
+          bridgeEnabled: Boolean(b.bridgeEnabled),
+          bridgeWorkspacePath: String(b.bridgeWorkspacePath ?? ''),
+          bridgeConversationId: String(b.bridgeConversationId ?? ''),
+          bridgeSenderLabel: String(b.bridgeSenderLabel ?? ''),
+        });
+      }
+      setFeishuBots(rows);
     } catch {
       /* ignore */
     }
+  }, [t]);
+
+  const patchFeishuBotRow = useCallback((id: string, patch: Partial<FeishuBotUiRow>) => {
+    setFeishuBots((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }, []);
+
+  const addFeishuBot = useCallback(() => {
+    setFeishuBots((prev) => {
+      const n = prev.length + 1;
+      const id =
+        typeof globalThis !== 'undefined' &&
+        globalThis.crypto &&
+        typeof globalThis.crypto.randomUUID === 'function'
+          ? globalThis.crypto.randomUUID()
+          : `feishu-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const row: FeishuBotUiRow = {
+        id,
+        name: t('settings.messagingFeishuNewBotName', { n }),
+        appId: '',
+        secretDraft: '',
+        clearSecretOnSave: false,
+        defaultReceiveId: '',
+        receiveIdType: 'chat_id',
+        appSecretConfigured: false,
+        appSecretSavedInFile: false,
+        bridgeEnabled: false,
+        bridgeWorkspacePath: '',
+        bridgeConversationId: '',
+        bridgeSenderLabel: '',
+      };
+      return [...prev, row];
+    });
+  }, [t]);
+
+  const removeFeishuBot = useCallback((id: string) => {
+    setFeishuBots((prev) => (prev.length <= 1 ? prev : prev.filter((b) => b.id !== id)));
   }, []);
 
   useEffect(() => {
@@ -552,19 +607,41 @@ const SettingsPage: FC = () => {
   );
 
   const onSaveFeishuMessaging = async () => {
+    if (feishuBots.length === 0) {
+      (window as any).__cf_toast?.error?.(
+        t('settings.messagingFeishuSaveFail'),
+        t('settings.messagingFeishuSaveErr_invalid_bots'),
+      );
+      return;
+    }
     setFeishuSaving(true);
     try {
-      await window.electronAPI?.messagingSaveFeishuSettings?.({
-        appId: feishuAppId,
-        defaultReceiveId: feishuDefaultReceiveId,
-        receiveIdType: feishuReceiveIdType,
-        clearAppSecret: feishuClearSecretOnSave,
-        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
-        bridgeEnabled: feishuBridgeEnabled,
-        bridgeWorkspacePath: feishuBridgeWorkspace,
-        bridgeConversationId: feishuBridgeConvId,
-        bridgeSenderLabel: feishuBridgeSenderLabel,
+      const res = await window.electronAPI?.messagingSaveFeishuBots?.({
+        bots: feishuBots.map((row) => ({
+          id: row.id,
+          name: row.name.trim() || t('settings.messagingFeishuDefaultBotName'),
+          ...(row.appId.trim() ? { appId: row.appId.trim() } : {}),
+          ...(row.secretDraft.trim() ? { appSecret: row.secretDraft.trim() } : {}),
+          clearAppSecret: row.clearSecretOnSave,
+          ...(row.defaultReceiveId.trim() ? { defaultReceiveId: row.defaultReceiveId.trim() } : {}),
+          receiveIdType: row.receiveIdType,
+          bridgeEnabled: row.bridgeEnabled,
+          ...(row.bridgeWorkspacePath.trim() ? { bridgeWorkspacePath: row.bridgeWorkspacePath.trim() } : {}),
+          ...(row.bridgeConversationId.trim() ? { bridgeConversationId: row.bridgeConversationId.trim() } : {}),
+          ...(row.bridgeSenderLabel.trim() ? { bridgeSenderLabel: row.bridgeSenderLabel.trim() } : {}),
+        })),
       });
+      if (res && typeof res === 'object' && 'ok' in res && (res as { ok?: boolean }).ok === false) {
+        const err = String((res as { error?: string }).error ?? '');
+        const errMap: Record<string, string> = {
+          invalid_bots: t('settings.messagingFeishuSaveErr_invalid_bots'),
+        };
+        (window as any).__cf_toast?.error?.(
+          t('settings.messagingFeishuSaveFail'),
+          (errMap[err] ?? err) || t('common.sampleOpFailBody'),
+        );
+        return;
+      }
       await reloadFeishuMessaging();
       (window as any).__cf_toast?.success?.(t('settings.messagingFeishuSavedTitle'), t('settings.messagingFeishuSavedBody'));
     } catch (e: any) {
@@ -574,12 +651,15 @@ const SettingsPage: FC = () => {
     }
   };
 
-  const onTestFeishuConnection = async () => {
-    setFeishuTesting(true);
+  const onTestFeishuConnection = async (botId: string) => {
+    const row = feishuBots.find((b) => b.id === botId);
+    if (!row) return;
+    setFeishuTestingBotId(botId);
     try {
       const r = await window.electronAPI?.messagingTestFeishu?.({
-        ...(feishuAppId.trim() ? { appId: feishuAppId.trim() } : {}),
-        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
+        botId,
+        ...(row.appId.trim() ? { appId: row.appId.trim() } : {}),
+        ...(row.secretDraft.trim() ? { appSecret: row.secretDraft.trim() } : {}),
       });
       if (r?.ok) {
         (window as any).__cf_toast?.success?.(
@@ -601,24 +681,27 @@ const SettingsPage: FC = () => {
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestFailTitle'), e?.message || t('common.sampleOpFailBody'));
     } finally {
-      setFeishuTesting(false);
+      setFeishuTestingBotId(null);
     }
   };
 
-  const onSendFeishuTestMessage = async () => {
+  const onSendFeishuTestMessage = async (botId: string) => {
     const text = feishuTestText.trim();
     if (!text) {
       (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestMsgEmptyTitle'), t('settings.messagingFeishuTestMsgEmptyBody'));
       return;
     }
-    setFeishuSendingTest(true);
+    const row = feishuBots.find((b) => b.id === botId);
+    if (!row) return;
+    setFeishuSendingBotId(botId);
     try {
       const r = await window.electronAPI?.messagingSendFeishuTestMessage?.({
+        botId,
         text,
-        receiveId: feishuDefaultReceiveId.trim() || undefined,
-        receiveIdType: feishuReceiveIdType,
-        ...(feishuAppId.trim() ? { appId: feishuAppId.trim() } : {}),
-        ...(feishuSecretDraft.trim() ? { appSecret: feishuSecretDraft.trim() } : {}),
+        receiveId: row.defaultReceiveId.trim() || undefined,
+        receiveIdType: row.receiveIdType,
+        ...(row.appId.trim() ? { appId: row.appId.trim() } : {}),
+        ...(row.secretDraft.trim() ? { appSecret: row.secretDraft.trim() } : {}),
       });
       if (r?.ok) {
         (window as any).__cf_toast?.success?.(t('settings.messagingFeishuSendOkTitle'), t('settings.messagingFeishuSendOkBody'));
@@ -639,7 +722,7 @@ const SettingsPage: FC = () => {
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.messagingFeishuSendFailTitle'), e?.message || t('common.sampleOpFailBody'));
     } finally {
-      setFeishuSendingTest(false);
+      setFeishuSendingBotId(null);
     }
   };
 
@@ -1561,7 +1644,7 @@ const SettingsPage: FC = () => {
         <div className="cf-card">
           <h3>{t('settings.messagingFeishuTitle')}</h3>
           <div className="cf-divider" />
-          <div className="cf-help" style={{ marginBottom: 12 }}>
+          <div className="cf-help" style={{ marginBottom: 8 }}>
             {t('settings.messagingFeishuLead')}{' '}
             <a href="https://open.feishu.cn/document/server-docs/im-v1/message/create" target="_blank" rel="noreferrer">
               {t('settings.messagingFeishuDocIm')}
@@ -1575,137 +1658,223 @@ const SettingsPage: FC = () => {
               {t('settings.messagingFeishuDocToken')}
             </a>
           </div>
+          <div className="cf-help" style={{ marginBottom: 14 }}>
+            {t('settings.messagingFeishuMultiHint')}
+          </div>
+
           <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuAppId')}
+            {t('settings.messagingFeishuTestMsgLabel')}
           </div>
           <input
             className="cf-input"
-            style={{ width: '100%', marginBottom: 10 }}
-            value={feishuAppId}
-            onChange={(e) => setFeishuAppId(e.target.value)}
-            placeholder={t('settings.messagingFeishuAppIdPh')}
-            autoComplete="off"
-          />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuAppSecret')}
-          </div>
-          <input
-            className="cf-input"
-            type="password"
             style={{ width: '100%', marginBottom: 6 }}
-            value={feishuSecretDraft}
-            onChange={(e) => setFeishuSecretDraft(e.target.value)}
-            placeholder={t('settings.messagingFeishuAppSecretPh')}
-            autoComplete="new-password"
+            value={feishuTestText}
+            onChange={(e) => setFeishuTestText(e.target.value)}
+            placeholder={t('settings.messagingFeishuTestMsgPh')}
           />
-          <div className="cf-help" style={{ marginBottom: 8 }}>
-            {feishuAppSecretConfigured
-              ? t('settings.messagingFeishuSecretStatus_ok')
-              : t('settings.messagingFeishuSecretStatus_none')}
-            {feishuAppSecretSavedInFile ? ` · ${t('settings.messagingFeishuSecretStatus_file')}` : ''}
+          <div className="cf-help" style={{ marginBottom: 16 }}>
+            {t('settings.messagingFeishuSharedTestMsgHelp')}
           </div>
-          {feishuAppSecretSavedInFile ? (
-            <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-              {feishuClearSecretOnSave ? (
-                <>
-                  <span className="cf-help" style={{ color: 'var(--warning, #c9a227)' }}>{t('settings.messagingFeishuClearPending')}</span>
-                  <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setFeishuClearSecretOnSave(false)}>
-                    {t('settings.messagingFeishuClearCancel')}
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setFeishuClearSecretOnSave(true)}>
-                  {t('settings.messagingFeishuClearSecret')}
+
+          {feishuBots.map((r, idx) => (
+            <div
+              key={r.id}
+              style={{
+                marginBottom: 16,
+                padding: 12,
+                borderRadius: 8,
+                border: '1px solid var(--border, rgba(127, 127, 127, 0.35))',
+              }}
+            >
+              <div
+                className="cf-row"
+                style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}
+              >
+                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                  <div className="cf-sub" style={{ marginBottom: 4 }}>
+                    {t('settings.messagingFeishuBotCardTitle', { index: idx + 1 })}
+                  </div>
+                  <input
+                    className="cf-input"
+                    style={{ width: '100%' }}
+                    value={r.name}
+                    onChange={(e) => patchFeishuBotRow(r.id, { name: e.target.value })}
+                    placeholder={t('settings.messagingFeishuDefaultBotName')}
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="cf-btn cf-btnGhost cf-btnSmall"
+                  disabled={feishuBots.length <= 1}
+                  onClick={() => removeFeishuBot(r.id)}
+                >
+                  {t('settings.messagingFeishuRemoveBot')}
                 </button>
+              </div>
+
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuAppId')}
+              </div>
+              <input
+                className="cf-input"
+                style={{ width: '100%', marginBottom: 10 }}
+                value={r.appId}
+                onChange={(e) => patchFeishuBotRow(r.id, { appId: e.target.value })}
+                placeholder={t('settings.messagingFeishuAppIdPh')}
+                autoComplete="off"
+              />
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuAppSecret')}
+              </div>
+              <input
+                className="cf-input"
+                type="password"
+                style={{ width: '100%', marginBottom: 6 }}
+                value={r.secretDraft}
+                onChange={(e) => patchFeishuBotRow(r.id, { secretDraft: e.target.value })}
+                placeholder={t('settings.messagingFeishuAppSecretPh')}
+                autoComplete="new-password"
+              />
+              <div className="cf-help" style={{ marginBottom: 8 }}>
+                {r.appSecretConfigured
+                  ? t('settings.messagingFeishuSecretStatus_ok')
+                  : t('settings.messagingFeishuSecretStatus_none')}
+                {r.appSecretSavedInFile ? ` · ${t('settings.messagingFeishuSecretStatus_file')}` : ''}
+              </div>
+              {r.appSecretSavedInFile ? (
+                <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+                  {r.clearSecretOnSave ? (
+                    <>
+                      <span className="cf-help" style={{ color: 'var(--warning, #c9a227)' }}>
+                        {t('settings.messagingFeishuClearPending')}
+                      </span>
+                      <button
+                        type="button"
+                        className="cf-btn cf-btnGhost cf-btnSmall"
+                        onClick={() => patchFeishuBotRow(r.id, { clearSecretOnSave: false })}
+                      >
+                        {t('settings.messagingFeishuClearCancel')}
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => patchFeishuBotRow(r.id, { clearSecretOnSave: true })}>
+                      {t('settings.messagingFeishuClearSecret')}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ height: 4, marginBottom: 10 }} />
               )}
-            </div>
-          ) : (
-            <div style={{ height: 4, marginBottom: 10 }} />
-          )}
-          <div className="cf-row cf-settingsPage__row" style={{ marginBottom: 12 }}>
-            <div>
-              <div className="cf-sub">
-                <strong style={{ color: 'var(--text)' }}>{t('settings.messagingFeishuReceiveIdType')}</strong>
+
+              <div className="cf-row cf-settingsPage__row" style={{ marginBottom: 12 }}>
+                <div>
+                  <div className="cf-sub">
+                    <strong style={{ color: 'var(--text)' }}>{t('settings.messagingFeishuReceiveIdType')}</strong>
+                  </div>
+                </div>
+                <div style={{ minWidth: 220, flex: '1 1 200px' }}>
+                  <CfSelectWithHints
+                    className="cf-selectHint--wide"
+                    value={r.receiveIdType}
+                    onChange={(v) => patchFeishuBotRow(r.id, { receiveIdType: v as FeishuRecvUi })}
+                    options={feishuReceiveIdSelectOptions}
+                    hintIconAriaBase={t('common.selectOptionHintAria')}
+                    aria-label={t('settings.messagingFeishuReceiveIdType')}
+                  />
+                </div>
+              </div>
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuDefaultReceiveId')}
+              </div>
+              <input
+                className="cf-input"
+                style={{ width: '100%', marginBottom: 10 }}
+                value={r.defaultReceiveId}
+                onChange={(e) => patchFeishuBotRow(r.id, { defaultReceiveId: e.target.value })}
+                placeholder={t('settings.messagingFeishuDefaultReceiveIdPh')}
+                autoComplete="off"
+              />
+
+              <div className="cf-divider" style={{ margin: '12px 0' }} />
+              <h4 style={{ margin: '0 0 8px', fontSize: 15, color: 'var(--text)' }}>{t('settings.messagingFeishuBridgeTitle')}</h4>
+              <div className="cf-help" style={{ marginBottom: 12, color: 'var(--muted)' }}>
+                {t('settings.messagingFeishuBridgeHelp')}
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <Checkbox checked={r.bridgeEnabled} onChange={(e) => patchFeishuBotRow(r.id, { bridgeEnabled: e.target.checked })}>
+                  {t('settings.messagingFeishuBridgeEnabled')}
+                </Checkbox>
+              </div>
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuBridgeWorkspace')}
+              </div>
+              <div className="cf-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                <input
+                  className="cf-input"
+                  style={{ flex: '1 1 200px', minWidth: 0 }}
+                  value={r.bridgeWorkspacePath}
+                  onChange={(e) => patchFeishuBotRow(r.id, { bridgeWorkspacePath: e.target.value })}
+                  placeholder={t('settings.messagingFeishuBridgeWorkspacePh')}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="cf-btn cf-btnGhost cf-btnSmall"
+                  disabled={!activeWorkspacePath?.trim()}
+                  onClick={() => patchFeishuBotRow(r.id, { bridgeWorkspacePath: activeWorkspacePath?.trim() ?? '' })}
+                >
+                  {t('settings.messagingFeishuBridgeFillActive')}
+                </button>
+              </div>
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuBridgeConvId')}
+              </div>
+              <input
+                className="cf-input"
+                style={{ width: '100%', marginBottom: 10 }}
+                value={r.bridgeConversationId}
+                onChange={(e) => patchFeishuBotRow(r.id, { bridgeConversationId: e.target.value })}
+                placeholder={t('settings.messagingFeishuBridgeConvIdPh')}
+                autoComplete="off"
+              />
+              <div className="cf-sub" style={{ marginBottom: 6 }}>
+                {t('settings.messagingFeishuBridgeSenderLabel')}
+              </div>
+              <input
+                className="cf-input"
+                style={{ width: '100%', marginBottom: 10 }}
+                value={r.bridgeSenderLabel}
+                onChange={(e) => patchFeishuBotRow(r.id, { bridgeSenderLabel: e.target.value })}
+                placeholder={t('settings.messagingFeishuBridgeSenderLabelPh')}
+                autoComplete="off"
+              />
+
+              <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  className="cf-btn cf-btnSmall"
+                  disabled={feishuTestingBotId === r.id}
+                  onClick={() => void onTestFeishuConnection(r.id)}
+                >
+                  {feishuTestingBotId === r.id ? t('settings.messagingFeishuTesting') : t('settings.messagingFeishuTest')}
+                </button>
+                <button
+                  type="button"
+                  className="cf-btn cf-btnGhost cf-btnSmall"
+                  disabled={feishuSendingBotId === r.id}
+                  onClick={() => void onSendFeishuTestMessage(r.id)}
+                >
+                  {feishuSendingBotId === r.id ? t('settings.messagingFeishuSendingTest') : t('settings.messagingFeishuSendTest')}
+                </button>
               </div>
             </div>
-            <div style={{ minWidth: 220, flex: '1 1 200px' }}>
-              <CfSelectWithHints
-                className="cf-selectHint--wide"
-                value={feishuReceiveIdType}
-                onChange={(v) => setFeishuReceiveIdType(v as FeishuRecvUi)}
-                options={feishuReceiveIdSelectOptions}
-                hintIconAriaBase={t('common.selectOptionHintAria')}
-                aria-label={t('settings.messagingFeishuReceiveIdType')}
-              />
-            </div>
-          </div>
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuDefaultReceiveId')}
-          </div>
-          <input
-            className="cf-input"
-            style={{ width: '100%', marginBottom: 10 }}
-            value={feishuDefaultReceiveId}
-            onChange={(e) => setFeishuDefaultReceiveId(e.target.value)}
-            placeholder={t('settings.messagingFeishuDefaultReceiveIdPh')}
-            autoComplete="off"
-          />
+          ))}
 
-          <div className="cf-divider" style={{ margin: '16px 0' }} />
-          <h4 style={{ margin: '0 0 8px', fontSize: 15, color: 'var(--text)' }}>{t('settings.messagingFeishuBridgeTitle')}</h4>
-          <div className="cf-help" style={{ marginBottom: 12, color: 'var(--muted)' }}>
-            {t('settings.messagingFeishuBridgeHelp')}
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <Checkbox checked={feishuBridgeEnabled} onChange={(e) => setFeishuBridgeEnabled(e.target.checked)}>
-              {t('settings.messagingFeishuBridgeEnabled')}
-            </Checkbox>
-          </div>
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuBridgeWorkspace')}
-          </div>
-          <div className="cf-row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-            <input
-              className="cf-input"
-              style={{ flex: '1 1 200px', minWidth: 0 }}
-              value={feishuBridgeWorkspace}
-              onChange={(e) => setFeishuBridgeWorkspace(e.target.value)}
-              placeholder={t('settings.messagingFeishuBridgeWorkspacePh')}
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="cf-btn cf-btnGhost cf-btnSmall"
-              disabled={!activeWorkspacePath?.trim()}
-              onClick={() => setFeishuBridgeWorkspace(activeWorkspacePath?.trim() ?? '')}
-            >
-              {t('settings.messagingFeishuBridgeFillActive')}
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={addFeishuBot}>
+              {t('settings.messagingFeishuAddBot')}
             </button>
-          </div>
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuBridgeConvId')}
-          </div>
-          <input
-            className="cf-input"
-            style={{ width: '100%', marginBottom: 10 }}
-            value={feishuBridgeConvId}
-            onChange={(e) => setFeishuBridgeConvId(e.target.value)}
-            placeholder={t('settings.messagingFeishuBridgeConvIdPh')}
-            autoComplete="off"
-          />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuBridgeSenderLabel')}
-          </div>
-          <input
-            className="cf-input"
-            style={{ width: '100%', marginBottom: 12 }}
-            value={feishuBridgeSenderLabel}
-            onChange={(e) => setFeishuBridgeSenderLabel(e.target.value)}
-            placeholder={t('settings.messagingFeishuBridgeSenderLabelPh')}
-            autoComplete="off"
-          />
-
-          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             <button
               type="button"
               className="cf-btn cf-btnPrimary cf-btnSmall"
@@ -1714,33 +1883,7 @@ const SettingsPage: FC = () => {
             >
               {feishuSaving ? t('settings.messagingFeishuSaving') : t('settings.messagingFeishuSave')}
             </button>
-            <button
-              type="button"
-              className="cf-btn cf-btnSmall"
-              disabled={feishuTesting}
-              onClick={() => void onTestFeishuConnection()}
-            >
-              {feishuTesting ? t('settings.messagingFeishuTesting') : t('settings.messagingFeishuTest')}
-            </button>
           </div>
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {t('settings.messagingFeishuTestMsgLabel')}
-          </div>
-          <input
-            className="cf-input"
-            style={{ width: '100%', marginBottom: 10 }}
-            value={feishuTestText}
-            onChange={(e) => setFeishuTestText(e.target.value)}
-            placeholder={t('settings.messagingFeishuTestMsgPh')}
-          />
-          <button
-            type="button"
-            className="cf-btn cf-btnGhost cf-btnSmall"
-            disabled={feishuSendingTest}
-            onClick={() => void onSendFeishuTestMessage()}
-          >
-            {feishuSendingTest ? t('settings.messagingFeishuSendingTest') : t('settings.messagingFeishuSendTest')}
-          </button>
         </div>
 
         {PLACEHOLDER_MESSAGING_CHANNELS.map((ch) => (

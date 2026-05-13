@@ -1,12 +1,15 @@
 /**
  * 飞书「长连接」接收 im.message.receive_v1（@larksuiteoapi/node-sdk WSClient）。
- * 收到消息后写入绑定工作区会话并触发模型，仅将最终正文经 HTTP API 回发飞书。
- * 需在开放平台将订阅方式设为「使用长连接接收事件」。
+ * 支持多自建应用：每个启用桥接的机器人独立 WSClient，事件与回执按 botId 隔离。
  */
 
 import * as path from 'path';
-import { readMessagingPrefsFile } from '../main/prefs/messaging-prefs';
-import type { FeishuReceiveIdType } from '../main/prefs/messaging-prefs';
+import {
+  readMessagingPrefsFile,
+  getNormalizedFeishuBots,
+  type FeishuBotConfig,
+  type FeishuReceiveIdType,
+} from '../main/prefs/messaging-prefs';
 import * as workspaceService from '../main/workspace/workspace-service';
 import { getGlobalClawFlowEngine } from '../engine/clawflow-engine';
 import { SessionStore } from '../engine/session-store';
@@ -30,18 +33,19 @@ function loadLarkSdk(): any {
 
 type FeishuWsClient = { close: (opts?: { force?: boolean }) => void; start: (opts: unknown) => Promise<void> };
 
-let wsClient: FeishuWsClient | null = null;
+const wsClients = new Map<string, FeishuWsClient>();
 
-const recentMessageIds = new Set<string>();
-const RECENT_CAP = 800;
+const recentDedupeKeys = new Set<string>();
+const RECENT_CAP = 2000;
 
-function rememberMessageId(id: string): boolean {
-  if (!id) return false;
-  if (recentMessageIds.has(id)) return true;
-  recentMessageIds.add(id);
-  if (recentMessageIds.size > RECENT_CAP) {
-    const it = recentMessageIds.values().next();
-    if (!it.done) recentMessageIds.delete(it.value as string);
+function rememberDedupeKey(botId: string, messageId: string): boolean {
+  const key = `${botId}::${messageId}`;
+  if (!messageId) return false;
+  if (recentDedupeKeys.has(key)) return true;
+  recentDedupeKeys.add(key);
+  if (recentDedupeKeys.size > RECENT_CAP) {
+    const firstKey = recentDedupeKeys.keys().next().value;
+    if (firstKey !== undefined) recentDedupeKeys.delete(firstKey);
   }
   return false;
 }
@@ -134,8 +138,8 @@ function extractInboundText(payload: unknown): {
   };
 }
 
-async function resolveBridgeWorkspacePath(prefs: ReturnType<typeof readMessagingPrefsFile>): Promise<string> {
-  const raw = String(prefs?.feishu?.bridgeWorkspacePath ?? '').trim();
+async function resolveBridgeWorkspacePathForBot(bot: FeishuBotConfig): Promise<string> {
+  const raw = String(bot.bridgeWorkspacePath ?? '').trim();
   if (raw) return path.resolve(raw);
   const reg = workspaceService.loadRegistry();
   const active = reg.activeWorkspacePath?.trim();
@@ -161,45 +165,47 @@ function enqueueFeishuInbound(job: () => Promise<void>): void {
   });
 }
 
-async function handleImText(params: {
-  text: string;
-  messageId: string;
-  replyReceiveId: string;
-  replyReceiveIdType: FeishuReceiveIdType;
-}): Promise<void> {
-  const prefs = readMessagingPrefsFile();
-  if (!prefs?.feishu?.bridgeEnabled) return;
+async function handleImText(
+  params: {
+    text: string;
+    messageId: string;
+    replyReceiveId: string;
+    replyReceiveIdType: FeishuReceiveIdType;
+  },
+  bot: FeishuBotConfig
+): Promise<void> {
+  if (!bot.bridgeEnabled) return;
 
-  const wsRoot = await resolveBridgeWorkspacePath(prefs);
+  const wsRoot = await resolveBridgeWorkspacePathForBot(bot);
   const engine = getGlobalClawFlowEngine();
   const store = new SessionStore(wsRoot);
-  const conversationId = await resolveConversationId(store, prefs.feishu?.bridgeConversationId);
+  const conversationId = await resolveConversationId(store, bot.bridgeConversationId);
   if (!conversationId) {
-    console.warn('[feishu-ws] no conversation id');
+    console.warn(`[feishu-ws] bot=${bot.id} no conversation id`);
     return;
   }
 
-  if (params.messageId && rememberMessageId(params.messageId)) {
+  if (params.messageId && rememberDedupeKey(bot.id, params.messageId)) {
     return;
   }
 
-  const senderLabel = String(prefs.feishu?.bridgeSenderLabel ?? 'Feishu').trim() || 'Feishu';
+  const senderLabel = String(bot.bridgeSenderLabel ?? 'Feishu').trim() || 'Feishu';
 
   await engine.appendPersistedUserMessage({
     workspaceRoot: wsRoot,
     conversationId,
     content: params.text,
     channel: 'user_feishu',
-    meta: { source: 'feishu', senderLabel },
+    meta: { source: 'feishu', senderLabel, feishuBotId: bot.id },
   });
   console.log(
-    `[feishu-ws] persisted inbound user_feishu workspace=${wsRoot} conversation=${conversationId} preview=${params.text.slice(0, 80)}`,
+    `[feishu-ws] inbound bot=${bot.id} workspace=${wsRoot} conversation=${conversationId} preview=${params.text.slice(0, 80)}`,
   );
   broadcastChatConversationsDirty({ workspaceRoot: wsRoot });
 
-  const { appId, appSecret } = resolveFeishuAppCredentials();
+  const { appId, appSecret } = resolveFeishuAppCredentials({ botId: bot.id });
   if (!appId || !appSecret) {
-    console.warn('[feishu-ws] missing app credentials, skip AI + reply');
+    console.warn(`[feishu-ws] bot=${bot.id} missing app credentials, skip AI + reply`);
     return;
   }
 
@@ -210,11 +216,11 @@ async function handleImText(params: {
       userText: params.text,
       mode: 'multitask',
       workspaceRoot: wsRoot,
-      assistantMessageMeta: { source: 'feishu_bridge' },
+      assistantMessageMeta: { source: 'feishu_bridge', feishuBotId: bot.id },
     });
     replyText = formatAssistantReplyForFeishu(res.message ?? '');
   } catch (e: unknown) {
-    console.error('[feishu-ws] sendMessage failed:', e instanceof Error ? e.message : e);
+    console.error(`[feishu-ws] bot=${bot.id} sendMessage failed:`, e instanceof Error ? e.message : e);
     replyText = `【ClawFlow】处理失败：${e instanceof Error ? e.message : String(e)}`;
   }
 
@@ -229,59 +235,58 @@ async function handleImText(params: {
       text: replyText,
     });
   } catch (e: unknown) {
-    console.error('[feishu-ws] reply to Feishu failed:', e instanceof Error ? e.message : e);
+    console.error(`[feishu-ws] bot=${bot.id} reply to Feishu failed:`, e instanceof Error ? e.message : e);
   }
 
   broadcastChatConversationsDirty({ workspaceRoot: wsRoot });
 }
 
-function onSdkImMessageReceive(data: unknown): void {
+function onSdkImMessageReceive(data: unknown, bot: FeishuBotConfig): void {
   try {
     const extracted = extractFromSdkImReceive(data);
     if (!extracted) {
-      console.warn('[feishu-ws] im.message.receive_v1: could not parse payload (check IM scopes / message shape)');
+      console.warn(`[feishu-ws] bot=${bot.id} im.message.receive_v1: could not parse payload`);
       return;
     }
     if (extracted.skipReason) {
-      console.log(`[feishu-ws] skipped: ${extracted.skipReason}`);
+      console.log(`[feishu-ws] bot=${bot.id} skipped: ${extracted.skipReason}`);
       return;
     }
-    console.log(`[feishu-ws] enqueue inbound message_id=${extracted.messageId} len=${extracted.text.length}`);
+    console.log(`[feishu-ws] bot=${bot.id} enqueue inbound message_id=${extracted.messageId} len=${extracted.text.length}`);
     enqueueFeishuInbound(() =>
-      handleImText({
-        text: extracted.text,
-        messageId: extracted.messageId,
-        replyReceiveId: extracted.replyReceiveId,
-        replyReceiveIdType: extracted.replyReceiveIdType,
-      }),
+      handleImText(
+        {
+          text: extracted.text,
+          messageId: extracted.messageId,
+          replyReceiveId: extracted.replyReceiveId,
+          replyReceiveIdType: extracted.replyReceiveIdType,
+        },
+        bot
+      )
     );
   } catch (e: unknown) {
-    console.error('[feishu-ws] handler error:', e instanceof Error ? e.message : e);
+    console.error(`[feishu-ws] bot=${bot.id} handler error:`, e instanceof Error ? e.message : e);
   }
 }
 
 export function stopFeishuEventServer(): void {
-  if (!wsClient) return;
-  try {
-    wsClient.close({ force: true });
-  } catch {
-    /* ignore */
+  for (const [id, c] of [...wsClients.entries()]) {
+    try {
+      c.close({ force: true });
+    } catch {
+      /* ignore */
+    }
+    wsClients.delete(id);
   }
-  wsClient = null;
 }
 
 export function restartFeishuEventServerFromPrefs(): void {
   stopFeishuEventServer();
   const prefs = readMessagingPrefsFile();
-  const fe = prefs?.feishu;
-  if (!fe?.bridgeEnabled) {
-    console.log('[feishu-ws] long connection not started: bridge disabled (Settings → Feishu → 消息桥接).');
-    return;
-  }
-
-  const { appId, appSecret } = resolveFeishuAppCredentials();
-  if (!appId || !appSecret) {
-    console.warn('[feishu-ws] long connection not started: missing App ID / App Secret (or env FEISHU_*).');
+  const bots = getNormalizedFeishuBots(prefs);
+  const toStart = bots.filter((b) => b.bridgeEnabled);
+  if (toStart.length === 0) {
+    console.log('[feishu-ws] 无启用桥接的飞书机器人，长连接未启动。');
     return;
   }
 
@@ -290,32 +295,51 @@ export function restartFeishuEventServerFromPrefs(): void {
     return;
   }
 
-  const client = new Lark.WSClient({
-    appId,
-    appSecret,
-    domain: Lark.Domain.Feishu,
-    loggerLevel: Lark.LoggerLevel.info,
-    onError: (e: unknown) => {
-      console.error('[feishu-ws] client onError:', e instanceof Error ? e.message : e);
-    },
-  });
-
-  const dispatcher = new Lark.EventDispatcher({}).register({
-    'im.message.receive_v1': async (data: unknown) => {
-      onSdkImMessageReceive(data);
-    },
-  });
-
-  wsClient = client;
-  void (async () => {
-    try {
-      await client.start({ eventDispatcher: dispatcher });
-      console.log(
-        '[feishu-ws] WSClient started. Ensure Feishu app → 事件与回调 → 订阅方式 is「使用长连接接收事件」；日志见本终端。',
-      );
-    } catch (e: unknown) {
-      console.error('[feishu-ws] WSClient.start failed:', e instanceof Error ? e.message : e);
-      wsClient = null;
+  let scheduled = 0;
+  for (const bot of toStart) {
+    const { appId, appSecret } = resolveFeishuAppCredentials({ botId: bot.id });
+    if (!appId || !appSecret) {
+      console.warn(`[feishu-ws] 跳过机器人「${bot.name}」(${bot.id})：缺少 App ID / Secret。`);
+      continue;
     }
-  })();
+
+    const client = new Lark.WSClient({
+      appId,
+      appSecret,
+      domain: Lark.Domain.Feishu,
+      loggerLevel: Lark.LoggerLevel.info,
+      onError: (e: unknown) => {
+        console.error(`[feishu-ws] bot=${bot.id} client onError:`, e instanceof Error ? e.message : e);
+      },
+    });
+
+    const dispatcher = new Lark.EventDispatcher({}).register({
+      'im.message.receive_v1': async (data: unknown) => {
+        onSdkImMessageReceive(data, bot);
+      },
+    });
+
+    wsClients.set(bot.id, client);
+    scheduled++;
+    void (async () => {
+      try {
+        await client.start({ eventDispatcher: dispatcher });
+        console.log(
+          `[feishu-ws] 已连接：${bot.name}（${bot.id}）。请在开放平台将该应用订阅设为「使用长连接接收事件」。`,
+        );
+      } catch (e: unknown) {
+        console.error(`[feishu-ws] WSClient.start 失败 bot=${bot.id}:`, e instanceof Error ? e.message : e);
+        try {
+          client.close({ force: true });
+        } catch {
+          /* ignore */
+        }
+        wsClients.delete(bot.id);
+      }
+    })();
+  }
+
+  if (scheduled === 0) {
+    console.warn('[feishu-ws] 已勾选桥接的机器人均未配置有效凭证，长连接未建立。');
+  }
 }

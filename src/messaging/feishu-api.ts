@@ -4,8 +4,7 @@
  */
 
 import { classifyNetworkFailure, fetchWithProxyRetry } from '../utils/net-fetch';
-import { readMessagingPrefsFile } from '../main/prefs/messaging-prefs';
-import type { FeishuReceiveIdType } from '../main/prefs/messaging-prefs';
+import { readMessagingPrefsFile, findFeishuBotById, getNormalizedFeishuBots, type FeishuReceiveIdType } from '../main/prefs/messaging-prefs';
 
 const FEISHU_OPEN_API = 'https://open.feishu.cn/open-apis';
 
@@ -188,14 +187,38 @@ export async function feishuSendTextMessage(params: {
   }
 }
 
-/** 解析本地/环境变量中的自建应用凭证（供 IPC 与飞书长连接共用） */
-export function resolveFeishuAppCredentials(override?: { appId?: string; appSecret?: string }): { appId: string; appSecret: string } {
+/** 解析本地/环境变量中的自建应用凭证；可按 botId 选择机器人，或由调用方覆盖 appId/appSecret（未保存草稿测试）。 */
+export function resolveFeishuAppCredentials(override?: {
+  botId?: string;
+  appId?: string;
+  appSecret?: string;
+}): { appId: string; appSecret: string } {
   const file = readMessagingPrefsFile();
-  const appId = String(
-    (override?.appId !== undefined ? override.appId : undefined) ?? file?.feishu?.appId ?? process.env.FEISHU_APP_ID ?? ''
-  ).trim();
-  const appSecret = String(
-    (override?.appSecret !== undefined ? override.appSecret : undefined) ?? file?.feishu?.appSecret ?? process.env.FEISHU_APP_SECRET ?? ''
-  ).trim();
+  let appId = '';
+  let appSecret = '';
+
+  if (override?.appId !== undefined) {
+    appId = String(override.appId ?? '').trim();
+  } else if (override?.botId) {
+    const bot = findFeishuBotById(file, override.botId);
+    appId = String(bot?.appId ?? '').trim();
+  } else {
+    const first = getNormalizedFeishuBots(file).find((b) => String(b.appId ?? '').trim());
+    appId = String(first?.appId ?? file?.feishu?.appId ?? process.env.FEISHU_APP_ID ?? '').trim();
+  }
+
+  if (override?.appSecret !== undefined) {
+    appSecret = String(override.appSecret ?? '').trim();
+  } else if (override?.botId) {
+    const bot = findFeishuBotById(file, override.botId);
+    appSecret = String(bot?.appSecret ?? '').trim();
+  } else {
+    const first = getNormalizedFeishuBots(file).find((b) => String(b.appSecret ?? '').trim());
+    appSecret = String(first?.appSecret ?? file?.feishu?.appSecret ?? process.env.FEISHU_APP_SECRET ?? '').trim();
+  }
+
+  if (!appId) appId = String(process.env.FEISHU_APP_ID ?? '').trim();
+  if (!appSecret) appSecret = String(process.env.FEISHU_APP_SECRET ?? '').trim();
+
   return { appId, appSecret };
 }
