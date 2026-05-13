@@ -1,6 +1,6 @@
 /**
- * Multitask / Plan 网络搜索：行为与 OpenClaw 的 web_search 工具对齐（Brave API + 无密钥 DuckDuckGo 回退）。
- * 参考：openclaw/src/agents/tools/web-search.ts、extensions/brave、extensions/duckduckgo
+ * Multitask / Plan 网络搜索：Brave Search API、SearXNG JSON API（自建实例）、无密钥 DuckDuckGo HTML 回退。
+ * 参考：openclaw/src/agents/tools/web-search.ts；SearXNG：`GET /search?format=json`
  */
 
 import { classifyNetworkFailure, fetchWithProxyRetry } from '../utils/net-fetch';
@@ -10,27 +10,38 @@ export const WEB_SEARCH_DEFAULT_COUNT = 5;
 
 export type ClawFlowWebSearchUserConfig = {
   enabled?: boolean;
-  /** auto：有 Brave Key 时优先 Brave，否则 DuckDuckGo */
-  provider?: 'auto' | 'brave' | 'duckduckgo';
+  /**
+   * auto：有 Brave Key 时优先 Brave；否则若配置了 searxngBaseUrl 则 SearXNG；否则 DuckDuckGo HTML。
+   */
+  provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
   braveApiKey?: string;
   braveBaseUrl?: string;
+  /** SearXNG 实例根 URL，如 https://search.example.org（不要尾斜杠） */
+  searxngBaseUrl?: string;
+  /** 可选；部分私有实例使用 Bearer Token */
+  searxngApiKey?: string;
   timeoutSeconds?: number;
 };
 
 export type ResolvedClawFlowWebSearch = {
   enabled: boolean;
-  provider: 'auto' | 'brave' | 'duckduckgo';
+  provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
   braveApiKey: string;
   braveBaseUrl: string;
+  searxngBaseUrl: string;
+  searxngApiKey: string;
   timeoutSeconds: number;
 };
 
 export type PublicWebSearchConfig = {
   enabled: boolean;
-  provider: 'auto' | 'brave' | 'duckduckgo';
+  provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
   braveBaseUrl: string;
+  searxngBaseUrl: string;
   timeoutSeconds: number;
   braveApiKeyConfigured: boolean;
+  searxngConfigured: boolean;
+  searxngApiKeyConfigured: boolean;
 };
 
 const DEFAULT_BRAVE_BASE = 'https://api.search.brave.com';
@@ -45,13 +56,17 @@ export function resolveWebSearchConfig(
   const braveApiKey = keyFromCfg || keyFromEnv;
   const rawProvider = String(input?.provider ?? 'auto').toLowerCase();
   const provider: ResolvedClawFlowWebSearch['provider'] =
-    rawProvider === 'brave' || rawProvider === 'duckduckgo' ? rawProvider : 'auto';
+    rawProvider === 'brave' || rawProvider === 'duckduckgo' || rawProvider === 'searxng' ? rawProvider : 'auto';
   const base = String(input?.braveBaseUrl ?? DEFAULT_BRAVE_BASE).replace(/\/+$/, '') || DEFAULT_BRAVE_BASE;
+  const searxBase = String(input?.searxngBaseUrl ?? '').trim().replace(/\/+$/, '');
+  const searxKey = String(input?.searxngApiKey ?? '').trim();
   return {
     enabled: input?.enabled !== false,
     provider,
     braveApiKey,
     braveBaseUrl: base,
+    searxngBaseUrl: searxBase,
+    searxngApiKey: searxKey,
     timeoutSeconds:
       typeof input?.timeoutSeconds === 'number' && Number.isFinite(input.timeoutSeconds)
         ? Math.max(5, Math.min(120, input.timeoutSeconds))
@@ -64,8 +79,11 @@ export function sanitizeWebSearchForPublic(ws: ResolvedClawFlowWebSearch): Publi
     enabled: ws.enabled,
     provider: ws.provider,
     braveBaseUrl: ws.braveBaseUrl,
+    searxngBaseUrl: ws.searxngBaseUrl,
     timeoutSeconds: ws.timeoutSeconds,
     braveApiKeyConfigured: Boolean(ws.braveApiKey),
+    searxngConfigured: Boolean(ws.searxngBaseUrl?.trim()),
+    searxngApiKeyConfigured: Boolean(ws.searxngApiKey?.trim()),
   };
 }
 
@@ -288,6 +306,84 @@ async function fetchDuckDuckGoSearch(params: {
   }
 }
 
+/** SearXNG time_range：day / week / month / year */
+function normalizeSearxngTimeRange(raw: string | undefined): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const v = raw.trim().toLowerCase();
+  const map: Record<string, string> = {
+    day: 'day',
+    week: 'week',
+    month: 'month',
+    year: 'year',
+    pd: 'day',
+    pw: 'week',
+    pm: 'month',
+    py: 'year',
+  };
+  return map[v];
+}
+
+type SearxngResultRow = { title?: string; url?: string; content?: string; engine?: string };
+
+async function fetchSearxngSearch(params: {
+  baseUrl: string;
+  apiKey: string;
+  query: string;
+  count: number;
+  language?: string;
+  timeRange?: string;
+  signal?: AbortSignal;
+  timeoutMs: number;
+}): Promise<Array<Record<string, unknown>>> {
+  const url = new URL(`${params.baseUrl}/search`);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('q', params.query);
+  const lang = (params.language ?? '').trim().toLowerCase();
+  if (lang.length >= 2) {
+    url.searchParams.set('language', lang.slice(0, 2));
+  }
+  if (params.timeRange && /^(day|week|month|year)$/.test(params.timeRange)) {
+    url.searchParams.set('time_range', params.timeRange);
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'Mozilla/5.0 (compatible; ClawFlow/1.0)',
+  };
+  if (params.apiKey) {
+    headers.Authorization = `Bearer ${params.apiKey}`;
+  }
+
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), params.timeoutMs);
+  const signal = params.signal ? mergeAbortSignals(params.signal, ac.signal) : ac.signal;
+  try {
+    const res = await fetchWithProxyRetry(url.toString(), { method: 'GET', headers }, { timeoutMs: params.timeoutMs, retries: 1, signal });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`SearXNG error (${res.status}): ${detail.slice(0, 400) || res.statusText}`);
+    }
+    const data = (await res.json()) as { results?: SearxngResultRow[] };
+    const rows = Array.isArray(data.results) ? data.results : [];
+    const lim = Math.max(1, Math.min(WEB_SEARCH_MAX_COUNT, params.count));
+    return rows.slice(0, lim).map((entry) => {
+      const title = String(entry.title ?? '').trim();
+      const u = String(entry.url ?? '').trim();
+      const snippet = String(entry.content ?? '').trim();
+      return {
+        title,
+        url: u,
+        snippet,
+        description: snippet,
+        siteName: siteNameFromUrl(u) || undefined,
+        ...(entry.engine ? { engine: entry.engine } : {}),
+      };
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** 将 ISO 国家码粗映射为 DDG kl（与 OpenClaw 行为接近，非精确） */
 function guessDdgKl(country: string | undefined, language: string | undefined): string | undefined {
   const c = String(country ?? '')
@@ -353,16 +449,30 @@ export async function runClawFlowWebSearch(
   const domainFilter = Array.isArray(args.domain_filter) ? args.domain_filter : [];
 
   const timeoutMs = Math.max(5000, (ws.timeoutSeconds ?? 25) * 1000);
+  const hasSearxng = Boolean(ws.searxngBaseUrl?.trim());
   const preferBrave =
     ws.provider === 'brave' || (ws.provider === 'auto' && Boolean(ws.braveApiKey?.trim()));
 
   const notes: string[] = [];
   if (domainFilter.length) {
-    notes.push('domain_filter is not applied in ClawFlow web_search (use Brave native search or a dedicated provider in OpenClaw).');
+    notes.push(
+      'domain_filter is not applied in ClawFlow web_search (Brave API / SearXNG / DDG HTML paths do not map this field).'
+    );
   }
   if (typeof args.max_tokens === 'number' && args.max_tokens > 0) {
     notes.push('max_tokens / max_tokens_per_page are Perplexity-specific; ignored in ClawFlow.');
   }
+
+  const searxTime = normalizeSearxngTimeRange(freshnessRaw);
+  const searxngIgnored = collectIgnoredForDdg({
+    freshness: searxTime ? undefined : freshnessRaw,
+    date_after: dateAfter,
+    date_before: dateBefore,
+    ui_lang: ui_lang,
+    domain_filter: domainFilter,
+    max_tokens: args.max_tokens,
+    max_tokens_per_page: args.max_tokens_per_page,
+  });
 
   const runBrave = async () => {
     const apiKey = ws.braveApiKey?.trim();
@@ -430,8 +540,42 @@ export async function runClawFlowWebSearch(
     };
   };
 
-  const wrapFailure = (provider: 'brave' | 'duckduckgo', e: unknown) => {
-    const nf = classifyNetworkFailure(e, provider === 'brave' ? ws.braveBaseUrl : DDG_HTML);
+  const runSearxng = async () => {
+    const base = ws.searxngBaseUrl.trim();
+    const timeRange = searxTime;
+    const rows = await fetchSearxngSearch({
+      baseUrl: base,
+      apiKey: ws.searxngApiKey?.trim() ?? '',
+      query,
+      count,
+      language: search_lang || language,
+      timeRange,
+      signal: ctx.abortSignal,
+      timeoutMs,
+    });
+    return {
+      ok: true as const,
+      provider: 'searxng' as const,
+      payload: {
+        query,
+        provider: 'searxng',
+        count: rows.length,
+        results: rows,
+        ...(searxngIgnored.length ? { ignoredFilters: searxngIgnored } : {}),
+        ...(notes.length ? { notes } : {}),
+        externalContent: { untrusted: true, source: 'web_search' },
+      },
+    };
+  };
+
+  const failureBaseUrl = (provider: 'brave' | 'duckduckgo' | 'searxng') => {
+    if (provider === 'brave') return ws.braveBaseUrl;
+    if (provider === 'searxng') return ws.searxngBaseUrl || 'searxng';
+    return DDG_HTML;
+  };
+
+  const wrapFailure = (provider: 'brave' | 'duckduckgo' | 'searxng', e: unknown) => {
+    const nf = classifyNetworkFailure(e, failureBaseUrl(provider));
     return {
       ok: false,
       provider,
@@ -440,9 +584,26 @@ export async function runClawFlowWebSearch(
       details: nf.details ?? null,
       note: '如在公司/校园网，请优先设置 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量；ClawFlow 已支持代理与轻量重试。',
       clawflow_search_readme_zh:
-        '本应用 web_search：优先使用 Brave Search API（需环境变量 BRAVE_API_KEY 或引擎配置）；未配置时回退到 DuckDuckGo 的 HTML 聚合接口（无密钥，可能被限流或超时）。与「百度搜索首页」无关；抓取百度 SPA 页面请用内嵌浏览器或 web_scrape 对具体文章 URL，而非依赖本工具解析百度首页。',
+        '本应用 web_search：可在系统设置中选择搜索源。支持 Brave Search API、自建 SearXNG（/search?format=json）、以及无密钥 DuckDuckGo HTML（易限流）。抓取具体站点请用 web_scrape 或内嵌浏览器。',
     } as Record<string, unknown>;
   };
+
+  if (ws.provider === 'searxng') {
+    if (!hasSearxng) {
+      return {
+        ok: false,
+        provider: 'searxng',
+        errorCode: 'missing_config',
+        hint: 'Configure searxngBaseUrl in Settings → System → Web search, or set CLAWFLOW_SEARXNG_URL.',
+      } as Record<string, unknown>;
+    }
+    try {
+      const out = await runSearxng();
+      return out.payload;
+    } catch (e: unknown) {
+      return wrapFailure('searxng', e);
+    }
+  }
 
   if (ws.provider === 'duckduckgo') {
     try {
@@ -457,15 +618,21 @@ export async function runClawFlowWebSearch(
     try {
       const b = await runBrave();
       if (b.ok) return b.payload;
-      // missing_brave_api_key：继续走原有逻辑
     } catch (e: unknown) {
       if (ws.provider === 'brave') return wrapFailure('brave', e);
-      // auto：Brave 失败则回退 DDG
     }
     if (ws.provider === 'brave') {
       throw new Error(
-        'web_search (brave) needs a Brave Search API key. Set BRAVE_API_KEY in the environment or configure webSearch.braveApiKey when creating the engine. If you do not want to use Brave, set webSearch.provider to "duckduckgo".'
+        'web_search (brave) needs a Brave Search API key. Set BRAVE_API_KEY in the environment or configure webSearch.braveApiKey when creating the engine. If you do not want to use Brave, set webSearch.provider to "duckduckgo" or "searxng".'
       );
+    }
+    if (hasSearxng) {
+      try {
+        const sx = await runSearxng();
+        return { ...sx.payload, fallbackFrom: 'brave_unconfigured_or_failed' };
+      } catch {
+        /* chain to DDG */
+      }
     }
     try {
       const ddg = await runDdg();
@@ -475,6 +642,20 @@ export async function runClawFlowWebSearch(
       };
     } catch (e: unknown) {
       return wrapFailure('duckduckgo', e);
+    }
+  }
+
+  if (hasSearxng) {
+    try {
+      const sx = await runSearxng();
+      return sx.payload;
+    } catch (e: unknown) {
+      try {
+        const ddg = await runDdg();
+        return { ...ddg.payload, fallbackFrom: 'searxng_failed' };
+      } catch (e2: unknown) {
+        return wrapFailure('duckduckgo', e2);
+      }
     }
   }
 

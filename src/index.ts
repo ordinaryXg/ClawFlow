@@ -32,6 +32,8 @@ import { deleteHermesSkillDirectory } from './workspace-skills-delete';
 import { reconcileRunSnapshotsAfterRestart, readRunSnapshots } from './sub-agent-run-snapshot';
 import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './workspace-git';
 import { getLauncherIconDataUrl } from './launcher-icon-main';
+import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main-ui-prefs';
+import { destroyAppTray, ensureAppTray } from './app-tray';
 import { registerDesktopPinSessionRestoreOnQuit, setDesktopEntryHidden, sweepLauncherStashForWorkspace } from './desktop-pin-hide-main';
 import type { TodoTriggerRecord } from './shared/todo-triggers';
 import { readSkillEvolutionState } from './skill-evolution-state';
@@ -675,6 +677,9 @@ function registerWorkspaceIPC(): void {
   });
 
   ipcMain.handle('workspace:getDefaultPath', async () => workspaceService.getDefaultWorkspacePath());
+  ipcMain.handle('workspace:setDefaultRoot', async (_e, folderPath: string | null) =>
+    workspaceService.setDefaultWorkspaceRootOverride(folderPath == null ? null : String(folderPath))
+  );
 
   ipcMain.handle('workspace:remove', async (_event, folderPath: string) => {
     const res = await workspaceService.removeWorkspaceForUser(String(folderPath || ''));
@@ -1084,7 +1089,29 @@ function registerWindowControlIpcOnce(): void {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
-  ipcMain.handle('window:close', (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+  ipcMain.handle('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+    const prefs = getMainUiPrefs();
+    if (prefs.closeButtonAction === 'minimizeToTray') {
+      win.hide();
+      if (process.platform === 'win32' || process.platform === 'linux') {
+        try {
+          ensureAppTray(
+            () => currentLang,
+            () => {
+              destroyAppTray();
+              app.quit();
+            }
+          );
+        } catch (e) {
+          console.warn('[app-tray] ensure failed:', e);
+        }
+      }
+      return;
+    }
+    win.close();
+  });
   ipcMain.handle('window:reload', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.reload());
   ipcMain.handle('window:toggleDevTools', (event) => {
     const wc = BrowserWindow.fromWebContents(event.sender)?.webContents;
@@ -1098,6 +1125,12 @@ function registerWindowControlIpcOnce(): void {
   ipcMain.handle('window:copy', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.copy());
   ipcMain.handle('window:paste', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.paste());
   ipcMain.handle('window:selectAll', (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.selectAll());
+  ipcMain.handle('app:syncMainUiPrefs', (_e, payload: unknown) => {
+    const o = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+    const a = o.closeButtonAction === 'minimizeToTray' ? 'minimizeToTray' : 'quit';
+    saveMainUiPrefs({ closeButtonAction: a });
+    return { ok: true as const };
+  });
   ipcMain.handle('app:quit', () => app.quit());
   ipcMain.handle('app:relaunch', () => {
     app.relaunch();
@@ -1258,6 +1291,7 @@ const createWindow = (): void => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  readMainUiPrefsFromDisk();
   const reg = workspaceService.loadRegistry();
   // 如果刚执行了“取消置顶 active”的一次性迁移，这里需要写回磁盘
   if (!reg.unpinActiveMigrated && reg.activeWorkspacePath) {
@@ -1285,10 +1319,15 @@ app.whenReady().then(async () => {
     webSearch: {
       enabled: process.env.CLAWFLOW_WEB_SEARCH_DISABLED === '1' ? false : undefined,
       provider:
-        webSearchProvider === 'brave' || webSearchProvider === 'duckduckgo'
+        webSearchProvider === 'brave' ||
+        webSearchProvider === 'duckduckgo' ||
+        webSearchProvider === 'searxng'
           ? webSearchProvider
           : 'auto',
       braveApiKey: process.env.BRAVE_API_KEY,
+      braveBaseUrl: process.env.BRAVE_BASE_URL,
+      searxngBaseUrl: process.env.CLAWFLOW_SEARXNG_URL,
+      searxngApiKey: process.env.CLAWFLOW_SEARXNG_API_KEY,
     },
   });
   registerGatewayIPC();
@@ -1309,13 +1348,19 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
+app.on('before-quit', () => {
+  destroyAppTray();
+});
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+  if (process.platform === 'darwin') return;
+  if (getMainUiPrefs().closeButtonAction === 'minimizeToTray') {
+    return;
   }
+  app.quit();
 });
 
 app.on('activate', () => {

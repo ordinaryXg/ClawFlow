@@ -505,8 +505,11 @@ export function createDefaultToolRuntime(): ToolRuntime {
               type: 'string',
               description: 'Only results published before this date (YYYY-MM-DD).',
             },
-            search_lang: { type: 'string', description: 'Brave search result language code.' },
-            ui_lang: { type: 'string', description: 'Brave UI locale code in language-region format.' },
+            search_lang: {
+              type: 'string',
+              description: 'Result language hint (Brave: search_lang; SearXNG: language param, ISO 639-1).',
+            },
+            ui_lang: { type: 'string', description: 'Brave UI locale (language-region); ignored for SearXNG/DDG.' },
             domain_filter: {
               type: 'array',
               items: { type: 'string' },

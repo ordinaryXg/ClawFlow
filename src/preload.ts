@@ -54,6 +54,29 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
+  engineGetWebSearchSettings: () => Promise<{
+    enabled: boolean;
+    provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    braveBaseUrl: string;
+    searxngBaseUrl: string;
+    timeoutSeconds: number;
+    braveApiKeyConfigured: boolean;
+    searxngConfigured: boolean;
+    searxngApiKeyConfigured: boolean;
+    braveApiKeySavedInFile: boolean;
+    searxngApiKeySavedInFile: boolean;
+  }>;
+  engineSaveWebSearchSettings: (params: {
+    enabled?: boolean;
+    provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    braveBaseUrl?: string;
+    searxngBaseUrl?: string;
+    timeoutSeconds?: number;
+    braveApiKey?: string;
+    clearBraveApiKey?: boolean;
+    searxngApiKey?: string;
+    clearSearxngApiKey?: boolean;
+  }) => Promise<{ ok: true }>;
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -333,6 +356,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) =>
     ipcRenderer.invoke('engineAuth:testConnection', params),
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
+  engineGetWebSearchSettings: () => ipcRenderer.invoke('engine:getWebSearchSettings'),
+  engineSaveWebSearchSettings: (params) => ipcRenderer.invoke('engine:saveWebSearchSettings', params),
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -391,10 +416,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSelectAll: () => ipcRenderer.invoke('window:selectAll'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   appRelaunch: () => ipcRenderer.invoke('app:relaunch'),
+  syncMainUiPrefs: (prefs: { closeButtonAction: 'quit' | 'minimizeToTray' }) =>
+    ipcRenderer.invoke('app:syncMainUiPrefs', prefs) as Promise<{ ok: true }>,
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
   intelligenceGetProfile: () => ipcRenderer.invoke('intelligence:getProfile'),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
+  workspaceSetDefaultRoot: (folderPath: string | null) =>
+    ipcRenderer.invoke('workspace:setDefaultRoot', folderPath) as Promise<{ ok: true } | { ok: false; error: string }>,
   workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),
   workspaceSetActive: (folderPath: string, opts?: { fromMainShell?: boolean }) =>
     ipcRenderer.invoke('workspace:setActive', folderPath, opts ?? {}),

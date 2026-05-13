@@ -33,6 +33,12 @@ import {
   type ResolvedClawFlowWebSearch,
 } from './web-search';
 import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import {
+  mergeWebSearchBootstrapWithFile,
+  readWebSearchPrefsFile,
+  writeWebSearchPrefsFile,
+  type WebSearchPrefsStored,
+} from '../web-search-prefs';
 import { maybeScheduleSkillEvolutionAfterMainTurn } from '../skill-evolution-scheduler';
 import { SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID } from '../shared/skill-agent-constants';
 
@@ -55,7 +61,7 @@ export type InteractionMode = 'ask' | 'plan' | 'multitask';
 export interface ClawFlowEngineConfig {
   workspaceRoot?: string;
   verbose?: boolean;
-  /** 与 OpenClaw `tools.web.search` 类似：Brave API + 无密钥 DuckDuckGo 回退 */
+  /** Brave API、SearXNG、DuckDuckGo HTML；用户偏好见 userData cf.web-search-prefs.json */
   webSearch?: ClawFlowWebSearchUserConfig;
 }
 
@@ -89,6 +95,10 @@ export type ToolApprovalNeededPayload = {
 export interface ClawFlowEngine {
   getConfig(): Readonly<ClawFlowEnginePublicConfig>;
   setWorkspaceRoot(workspaceRoot: string): void;
+  /** 启动时环境/bootstrap 中的 webSearch（不含仅磁盘覆盖项的语义：合并由内部完成） */
+  getWebSearchBootstrap(): ClawFlowWebSearchUserConfig;
+  /** 重读 cf.web-search-prefs.json 并合并 */
+  refreshWebSearchFromDisk(): void;
 
   listConversations(workspaceRoot?: string): Promise<StoredConversation[]>;
   upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void>;
@@ -137,6 +147,7 @@ export interface ClawFlowEngine {
 }
 
 class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
+  private webSearchBootstrap: ClawFlowWebSearchUserConfig = {};
   private config: {
     workspaceRoot: string;
     verbose: boolean;
@@ -174,10 +185,14 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   constructor(cfg: ClawFlowEngineConfig = {}) {
     super();
     const workspaceRoot = path.resolve(cfg.workspaceRoot ?? getDefaultWorkspacePath());
+    this.webSearchBootstrap = { ...(cfg.webSearch ?? {}) };
     this.config = {
       workspaceRoot,
       verbose: cfg.verbose ?? true,
-      webSearch: resolveWebSearchConfig(cfg.webSearch, process.env),
+      webSearch: resolveWebSearchConfig(
+        mergeWebSearchBootstrapWithFile(this.webSearchBootstrap, readWebSearchPrefsFile()),
+        process.env
+      ),
     };
     this.store = this.getSessionStore(workspaceRoot);
     this.router = new ProviderRouter();
@@ -203,7 +218,27 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           (await getAuthToken('anthropic')) || process.env.ANTHROPIC_API_KEY || '',
       })
     );
-    if (this.config.verbose) console.log('[ClawFlowEngine] init', this.config);
+    if (this.config.verbose) {
+      console.log('[ClawFlowEngine] init', {
+        workspaceRoot: this.config.workspaceRoot,
+        verbose: this.config.verbose,
+        webSearch: sanitizeWebSearchForPublic(this.config.webSearch),
+      });
+    }
+  }
+
+  getWebSearchBootstrap(): ClawFlowWebSearchUserConfig {
+    return { ...this.webSearchBootstrap };
+  }
+
+  refreshWebSearchFromDisk(): void {
+    this.config.webSearch = resolveWebSearchConfig(
+      mergeWebSearchBootstrapWithFile(this.webSearchBootstrap, readWebSearchPrefsFile()),
+      process.env
+    );
+    if (this.config.verbose) {
+      console.log('[ClawFlowEngine] webSearch refreshed', sanitizeWebSearchForPublic(this.config.webSearch));
+    }
   }
 
   getConfig(): Readonly<ClawFlowEnginePublicConfig> {
@@ -1003,6 +1038,54 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
   getGlobalClawFlowEngine(config);
 
   ipcMain.handle('engine:getConfig', async () => getGlobalClawFlowEngine().getConfig());
+
+  ipcMain.handle('engine:getWebSearchSettings', async () => {
+    const eng = getGlobalClawFlowEngine();
+    const file = readWebSearchPrefsFile();
+    const merged = mergeWebSearchBootstrapWithFile(eng.getWebSearchBootstrap(), file);
+    const resolved = resolveWebSearchConfig(merged, process.env);
+    return {
+      ...sanitizeWebSearchForPublic(resolved),
+      braveApiKeySavedInFile: Boolean(file && Object.prototype.hasOwnProperty.call(file, 'braveApiKey')),
+      searxngApiKeySavedInFile: Boolean(file && Object.prototype.hasOwnProperty.call(file, 'searxngApiKey')),
+    };
+  });
+
+  ipcMain.handle('engine:saveWebSearchSettings', async (_e, payload: unknown) => {
+    const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+    const cur = readWebSearchPrefsFile() ?? {};
+    const next: WebSearchPrefsStored = { ...cur };
+    if (typeof p.enabled === 'boolean') next.enabled = p.enabled;
+    if (p.provider === 'auto' || p.provider === 'brave' || p.provider === 'duckduckgo' || p.provider === 'searxng') {
+      next.provider = p.provider;
+    }
+    if (typeof p.braveBaseUrl === 'string') {
+      const bt = p.braveBaseUrl.trim();
+      if (bt) next.braveBaseUrl = bt;
+      else delete next.braveBaseUrl;
+    }
+    if (typeof p.searxngBaseUrl === 'string') {
+      const st = p.searxngBaseUrl.trim();
+      if (st) next.searxngBaseUrl = st;
+      else delete next.searxngBaseUrl;
+    }
+    if (typeof p.braveApiKey === 'string' && p.braveApiKey.trim()) {
+      next.braveApiKey = p.braveApiKey.trim();
+    } else if (p.clearBraveApiKey === true) {
+      delete next.braveApiKey;
+    }
+    if (typeof p.searxngApiKey === 'string' && p.searxngApiKey.trim()) {
+      next.searxngApiKey = p.searxngApiKey.trim();
+    } else if (p.clearSearxngApiKey === true) {
+      delete next.searxngApiKey;
+    }
+    if (typeof p.timeoutSeconds === 'number' && Number.isFinite(p.timeoutSeconds)) {
+      next.timeoutSeconds = Math.max(5, Math.min(120, p.timeoutSeconds));
+    }
+    writeWebSearchPrefsFile(next);
+    getGlobalClawFlowEngine().refreshWebSearchFromDisk();
+    return { ok: true as const };
+  });
   ipcMain.handle('engine:setWorkspaceRoot', async (_e, workspaceRoot: string) => {
     getGlobalClawFlowEngine().setWorkspaceRoot(workspaceRoot);
     return { success: true };

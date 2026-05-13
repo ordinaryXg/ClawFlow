@@ -54,6 +54,29 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
+  engineGetWebSearchSettings: () => Promise<{
+    enabled: boolean;
+    provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    braveBaseUrl: string;
+    searxngBaseUrl: string;
+    timeoutSeconds: number;
+    braveApiKeyConfigured: boolean;
+    searxngConfigured: boolean;
+    searxngApiKeyConfigured: boolean;
+    braveApiKeySavedInFile: boolean;
+    searxngApiKeySavedInFile: boolean;
+  }>;
+  engineSaveWebSearchSettings: (params: {
+    enabled?: boolean;
+    provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    braveBaseUrl?: string;
+    searxngBaseUrl?: string;
+    timeoutSeconds?: number;
+    braveApiKey?: string;
+    clearBraveApiKey?: boolean;
+    searxngApiKey?: string;
+    clearSearxngApiKey?: boolean;
+  }) => Promise<{ ok: true }>;
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -85,6 +108,7 @@ export interface IElectronAPI {
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
   appRelaunch: () => Promise<void>;
+  syncMainUiPrefs: (prefs: { closeButtonAction: 'quit' | 'minimizeToTray' }) => Promise<{ ok: true }>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   intelligenceGetProfile: () => Promise<
     | {
@@ -101,6 +125,7 @@ export interface IElectronAPI {
   >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceGetDefaultPath: () => Promise<string>;
+  workspaceSetDefaultRoot: (folderPath: string | null) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceRemove: (
     folderPath: string
   ) => Promise<

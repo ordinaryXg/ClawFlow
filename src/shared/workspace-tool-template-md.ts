@@ -106,7 +106,7 @@ export function buildWorkspaceToolBrowserMd(): string {
     `## 网页搜索（tools.web_search）`,
     bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.web_search),
     ``,
-    `实现说明（与 OpenClaw 对齐）：**已配置 \`BRAVE_API_KEY\`（或引擎 \`webSearch.braveApiKey\`）时优先走 Brave Search API**；否则回退 **DuckDuckGo HTML 聚合**（\`html.duckduckgo.com\`，无需密钥，易受网络/限流影响）。**不是**百度站内搜索；若超时或失败，可配置代理或改用 Brave API。`,
+    `实现说明（与 OpenClaw 对齐）：**Brave Search API**（\`BRAVE_API_KEY\` 或系统设置）、**自建 SearXNG**（\`/search?format=json\`）与 **DuckDuckGo HTML** 回退的组合可在 **全局设置 → 系统设置** 中选择；亦可用环境变量 \`CLAWFLOW_SEARXNG_URL\` 等。**不是**百度站内搜索；若超时或失败可配置代理。`,
     ``,
     `## 网络数据爬取（tools.web_scrape）`,
     bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.web_scrape),

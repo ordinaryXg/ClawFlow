@@ -201,6 +201,11 @@ export interface WorkspaceRegistry {
   recentWorkspacePaths: string[];
   /** 兼容迁移标记：旧版本会把 active 置顶到 recent[0] */
   unpinActiveMigrated?: boolean;
+  /**
+   * 内置「默认工作区」根目录的绝对路径覆盖；未设置时使用 userData/WorkSpace。
+   * 用于在系统设置中指定默认工作区落盘位置。
+   */
+  defaultWorkspaceRootOverride?: string | null;
 }
 
 const REGISTRY_FILENAME = 'cf.workspace.v1.json';
@@ -209,9 +214,37 @@ export function getRegistryPath(): string {
   return path.join(app.getPath('userData'), REGISTRY_FILENAME);
 }
 
-/** 默认 workspace：位于 userData 下的固定文件夹名 `WorkSpace`（旧版曾为 `Default Workspace`，可手动删除遗留目录）。 */
+/** 默认 workspace：优先注册表 `defaultWorkspaceRootOverride`，否则为 userData/WorkSpace。 */
 export function getDefaultWorkspacePath(): string {
+  try {
+    const reg = loadRegistry();
+    const ov = reg.defaultWorkspaceRootOverride;
+    if (typeof ov === 'string' && ov.trim()) {
+      return path.resolve(ov.trim());
+    }
+  } catch {
+    /* fall through */
+  }
   return path.join(app.getPath('userData'), 'WorkSpace');
+}
+
+/** 设置默认工作区根路径（绝对路径）；传 null 或空字符串恢复为 userData/WorkSpace。 */
+export function setDefaultWorkspaceRootOverride(resolvedPath: string | null): { ok: true } | { ok: false; error: string } {
+  const reg = loadRegistry();
+  if (resolvedPath == null || !String(resolvedPath).trim()) {
+    const next: WorkspaceRegistry = { ...reg, defaultWorkspaceRootOverride: null };
+    saveRegistry(next);
+    return { ok: true };
+  }
+  const abs = path.resolve(String(resolvedPath).trim());
+  try {
+    fs.mkdirSync(abs, { recursive: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+  saveRegistry({ ...reg, defaultWorkspaceRootOverride: abs });
+  return { ok: true };
 }
 
 /** 比较两个 workspace 根路径是否相同（Windows 忽略大小写）。 */
@@ -489,7 +522,16 @@ export function loadRegistry(): WorkspaceRegistry {
       uniq = [...uniq.slice(1), uniq[0]];
     }
 
-    return { activeWorkspacePath: active, recentWorkspacePaths: uniq, unpinActiveMigrated: migratedFlag };
+    const ovRaw = j?.defaultWorkspaceRootOverride;
+    const defaultWorkspaceRootOverride =
+      typeof ovRaw === 'string' && ovRaw.trim() ? path.resolve(ovRaw.trim()) : null;
+
+    return {
+      activeWorkspacePath: active,
+      recentWorkspacePaths: uniq,
+      unpinActiveMigrated: migratedFlag,
+      defaultWorkspaceRootOverride,
+    };
   } catch {
     return { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
   }
@@ -503,6 +545,9 @@ export function saveRegistry(reg: WorkspaceRegistry): void {
       activeWorkspacePath: reg.activeWorkspacePath,
       recentWorkspacePaths: reg.recentWorkspacePaths.slice(0, 12),
       unpinActiveMigrated: reg.unpinActiveMigrated ?? true,
+      ...(reg.defaultWorkspaceRootOverride != null && String(reg.defaultWorkspaceRootOverride).trim()
+        ? { defaultWorkspaceRootOverride: path.resolve(String(reg.defaultWorkspaceRootOverride).trim()) }
+        : {}),
     },
     null,
     2
@@ -517,6 +562,7 @@ function bumpRecent(reg: WorkspaceRegistry, workspacePath: string): WorkspaceReg
   // 关键：切换 workspace 不置顶（保持原顺序）。仅当首次出现时追加到末尾。
   const nextRecent = (exists ? list : [...list, abs]).slice(-12);
   return {
+    ...reg,
     activeWorkspacePath: abs,
     recentWorkspacePaths: nextRecent,
   };
@@ -866,6 +912,7 @@ export function detachWorkspaceFromRegistry(workspacePath: string): { newActiveP
   const uniq = Array.from(new Set(recent)).slice(-12);
 
   saveRegistry({
+    ...reg,
     activeWorkspacePath: newActive,
     recentWorkspacePaths: uniq,
     unpinActiveMigrated: true,

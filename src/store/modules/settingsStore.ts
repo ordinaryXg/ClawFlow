@@ -3,11 +3,18 @@
 
 import { create } from 'zustand';
 
+export type CloseButtonAction = 'quit' | 'minimizeToTray';
+export type UiFontSizePreset = 'sm' | 'md' | 'lg' | 'xl';
+
 export interface SettingsState {
   theme: 'light' | 'dark';
   language: 'zh' | 'en';
   autoStartGateway: boolean;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /** 标题栏 ❌：退出应用 / 最小化到系统托盘（Windows/Linux 托盘；macOS 为隐藏窗口） */
+  closeButtonAction: CloseButtonAction;
+  /** 界面基础字号档位 */
+  uiFontSize: UiFontSizePreset;
   /** 对话页默认选中的模型 ID（如 `deepseek/deepseek-chat`） */
   builtinDefaultModelId: string | null;
   /** 对话策略意图：更快/更强/更省钱 */
@@ -33,6 +40,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   language: 'zh',
   autoStartGateway: true,
   logLevel: 'info',
+  closeButtonAction: 'quit',
+  uiFontSize: 'md',
   builtinDefaultModelId: null,
   chatIntent: 'strong',
   chatModePolicyOverridesJson: '',
@@ -44,6 +53,8 @@ function persistSlice(state: SettingsState) {
     language: state.language,
     autoStartGateway: state.autoStartGateway,
     logLevel: state.logLevel,
+    closeButtonAction: state.closeButtonAction,
+    uiFontSize: state.uiFontSize,
     builtinDefaultModelId: state.builtinDefaultModelId,
     chatIntent: state.chatIntent,
     chatModePolicyOverridesJson: state.chatModePolicyOverridesJson,
@@ -84,6 +95,11 @@ try {
       logLevel: ['debug', 'info', 'warn', 'error'].includes(String(p.logLevel))
         ? (p.logLevel as SettingsState['logLevel'])
         : 'info',
+      closeButtonAction:
+        p.closeButtonAction === 'minimizeToTray' ? 'minimizeToTray' : DEFAULT_SETTINGS.closeButtonAction,
+      uiFontSize: ['sm', 'md', 'lg', 'xl'].includes(String((p as any).uiFontSize))
+        ? ((p as any).uiFontSize as UiFontSizePreset)
+        : DEFAULT_SETTINGS.uiFontSize,
       builtinDefaultModelId:
         typeof p.builtinDefaultModelId === 'string' && p.builtinDefaultModelId.trim()
           ? p.builtinDefaultModelId.trim()
