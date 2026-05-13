@@ -391,7 +391,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     this.emit('engine:message', params.conversationId, assistantMsg);
   }
 
-  /** 主会话 assistant 落盘后：按轮次调度 Skill Agent（子 Agent / 审计会话不计入）。 */
+  /** 主会话 assistant 落盘后：按轮次调度 Skill Agent（手动与通讯端轮次均计入；子 Agent / 审计会话不计入）。 */
   private fireSkillEvolutionHookIfNeeded(
     effRoot: string,
     conversationId: string,

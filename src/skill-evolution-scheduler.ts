@@ -1,5 +1,5 @@
 /**
- * 主对话满足「用户手动」轮次阈值后，触发 Skill Agent（进化）异步任务。
+ * 主对话满足「用户手动或通讯端（飞书等）」完整轮次阈值后，触发 Skill Agent（进化）异步任务。
  */
 
 import * as fs from 'fs';
@@ -16,15 +16,18 @@ import {
 } from './shared/skill-agent-constants';
 import { workspaceAgentDotMemoryDirAbs } from './workspace-agent-layout';
 
-function isUserManualStoredMessage(m: StoredMessage): boolean {
+/** 计入技能进化轮次的用户消息渠道（与 UI 内手动输入同级） */
+const EVOLUTION_COUNTED_USER_CHANNELS = new Set<string>(['user_manual', 'user_feishu']);
+
+function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
   if (m.role !== 'user') return false;
   const ch = m.channel;
-  if (!ch || ch === 'user_manual') return true;
-  return false;
+  if (!ch) return true;
+  return EVOLUTION_COUNTED_USER_CHANNELS.has(ch);
 }
 
-/** 当前会话最后一条为 assistant，且其前最近一条「非 tool」用户为手动渠道 */
-function lastRoundIsUserManual(messages: StoredMessage[]): boolean {
+/** 当前会话最后一条为 assistant，且其前最近一条「非 tool」用户来自手动或通讯端 */
+function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boolean {
   if (messages.length < 2) return false;
   const last = messages[messages.length - 1];
   if (last.role !== 'assistant') return false;
@@ -32,7 +35,7 @@ function lastRoundIsUserManual(messages: StoredMessage[]): boolean {
   for (let i = messages.length - 2; i >= 0; i--) {
     const m = messages[i];
     if (m.role === 'tool') continue;
-    if (m.role === 'user') return isUserManualStoredMessage(m);
+    if (m.role === 'user') return isEvolutionCountedUserMessage(m);
     return false;
   }
   return false;
@@ -101,7 +104,7 @@ function buildSkillEvolutionTask(params: { chatExcerpt: string; memoryExcerpt: s
     '',
     '## 一、搜集与整合',
     '合并以下两类材料，形成你内部的「工作区上下文快照」（不要逐字复述给用户）：',
-    '1) 自**上次成功进化**以来，主 Agent 与用户的对话摘录（见下方「对话摘录」）。',
+    '1) 自**上次成功进化**以来，主 Agent 与用户（含应用内与飞书等通讯端）的对话摘录（见下方「对话摘录」）。',
     '2) 旧有主 Agent 记忆库：`.agent/.memory/` 下已有 Markdown（见「记忆库摘录」）。',
     '',
     '### 对话摘录',
@@ -144,7 +147,7 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
   const convs = await store.readAll();
   const c = convs.find((x) => x.id === convId);
   const messages = (c?.messages ?? []) as StoredMessage[];
-  if (!lastRoundIsUserManual(messages)) return;
+  if (!lastRoundCountsTowardEvolution(messages)) return;
 
   const before = await readSkillEvolutionState(root);
   const total = before.totalUserManualRounds + 1;

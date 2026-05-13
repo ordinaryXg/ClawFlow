@@ -228,12 +228,16 @@ const SettingsPage: FC = () => {
   }, [activeSection, activeWorkspacePath, reloadBuiltinCatalog]);
 
   useEffect(() => {
+    if (activeSection !== 'integrations' && activeSection !== 'system') return;
+    void reloadConnectorsCount();
+  }, [activeSection, reloadConnectorsCount]);
+
+  useEffect(() => {
     if (activeSection !== 'integrations') return;
     void fetchStatus();
-    void reloadConnectorsCount();
     void fetchLogs(80);
     void reloadFeishuMessaging();
-  }, [activeSection, fetchStatus, reloadConnectorsCount, reloadFeishuMessaging, fetchLogs]);
+  }, [activeSection, fetchStatus, reloadFeishuMessaging, fetchLogs]);
 
   useEffect(() => {
     if (activeSection !== 'account') return;
@@ -1158,6 +1162,22 @@ const SettingsPage: FC = () => {
         </div>
 
         <div className="cf-card">
+          <h3>{t('settings.connectorsCount')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-help" style={{ marginBottom: 12 }}>
+            {t('settings.connectorsCountHint', { count: connectorCount })}
+          </div>
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={() => void reloadConnectorsCount()}>
+              {t('settings.refreshIntegrationStatus')}
+            </button>
+            <button className="cf-btn cf-btnPrimary cf-btnSmall" type="button" onClick={() => navigate('/connectors')}>
+              {t('settings.openConnectors')}
+            </button>
+          </div>
+        </div>
+
+        <div className="cf-card">
           <h3>{t('settings.closeButtonTitle')}</h3>
           <div className="cf-divider" />
           <div className="cf-help" style={{ marginBottom: 12 }}>
@@ -1418,13 +1438,7 @@ const SettingsPage: FC = () => {
             {t('settings.gatewayPort')}：{typeof gatewayPort === 'number' ? gatewayPort : '—'} · {t('settings.gatewayUptime')}：
             {gatewayStatus === 'running' ? `${Math.round((gatewayUptimeMs ?? 0) / 1000)}s` : '—'}
           </div>
-          <div className="cf-help" style={{ marginBottom: 12 }}>
-            {t('settings.connectorsCountHint', { count: connectorCount })}
-          </div>
-          <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void reloadConnectorsCount()}>
-            {t('settings.refreshIntegrationStatus')}
-          </button>
-          <button className="cf-btn cf-btnGhost" type="button" onClick={() => void fetchLogs(120)}>
+          <button className="cf-btn cf-btnGhost" style={{ marginRight: 8 }} type="button" onClick={() => void fetchLogs(120)}>
             {t('settings.gatewayViewLogs')}
           </button>
           {Array.isArray(gatewayLogs) && gatewayLogs.length ? (
@@ -1440,14 +1454,6 @@ const SettingsPage: FC = () => {
             </div>
           )}
           <div style={{ height: 12 }} />
-          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <button className="cf-btn cf-btnPrimary" type="button" onClick={() => navigate('/connectors')}>
-              {t('settings.openConnectors')}
-            </button>
-            <button className="cf-btn" type="button" onClick={() => navigate('/skills')}>
-              {t('settings.openSkills')}
-            </button>
-          </div>
         </div>
 
         <div className="cf-card">
@@ -1519,7 +1525,6 @@ const SettingsPage: FC = () => {
               <div className="cf-sub">
                 <strong style={{ color: 'var(--text)' }}>{t('settings.messagingFeishuReceiveIdType')}</strong>
               </div>
-              <div className="cf-help">{t('settings.messagingFeishuReceiveIdTypeHelp')}</div>
             </div>
             <div style={{ minWidth: 220, flex: '1 1 200px' }}>
               <CfSelectWithHints
@@ -1543,20 +1548,11 @@ const SettingsPage: FC = () => {
             placeholder={t('settings.messagingFeishuDefaultReceiveIdPh')}
             autoComplete="off"
           />
-          <div className="cf-help" style={{ marginBottom: 10 }}>
-            {t('settings.messagingFeishuScopeNote')}
-          </div>
-          <div className="cf-help" style={{ marginBottom: 12 }}>
-            {t('settings.messagingFeishuEnvHint')}
-          </div>
 
           <div className="cf-divider" style={{ margin: '16px 0' }} />
           <h4 style={{ margin: '0 0 8px', fontSize: 15, color: 'var(--text)' }}>{t('settings.messagingFeishuBridgeTitle')}</h4>
-          <div className="cf-help" style={{ marginBottom: 12 }}>
-            {t('settings.messagingFeishuBridgeHelp')}
-          </div>
           <div className="cf-help" style={{ marginBottom: 12, color: 'var(--muted)' }}>
-            {t('settings.messagingFeishuBridgeLogsHint')}
+            {t('settings.messagingFeishuBridgeHelp')}
           </div>
           <div style={{ marginBottom: 10 }}>
             <Checkbox checked={feishuBridgeEnabled} onChange={(e) => setFeishuBridgeEnabled(e.target.checked)}>

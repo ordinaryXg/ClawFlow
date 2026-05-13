@@ -1,5 +1,5 @@
 /**
- * 主对话「用户手动」轮次累计 + 进化调度状态 + 智能经验。
+ * 主对话「手动与通讯端」轮次累计 + 进化调度状态 + 智能经验。
  * 存于 `.agent/.clawflow/skill-evolution-state.v1.json`。
  */
 
@@ -12,7 +12,7 @@ const FILE_VERSION = 1 as const;
 
 export type SkillEvolutionPersistedState = {
   version: typeof FILE_VERSION;
-  /** 累计：用户手动发起且本轮已落盘 assistant 的完整问答次数（工作区内单调递增） */
+  /** 累计：用户手动或通讯端发起、且本轮已落盘 assistant 的完整问答次数（工作区内单调递增） */
   totalUserManualRounds: number;
   /** 智能经验（每次有效进化 +100） */
   intelligenceXp: number;

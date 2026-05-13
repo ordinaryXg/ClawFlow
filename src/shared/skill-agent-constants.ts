@@ -6,7 +6,7 @@ export const SKILL_AGENT_SLOT_ID = 'cf-skill-agent';
 export const SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID = '__cf_skill_audit__';
 
 /**
- * 工作区内「用户手动发起」的完整问答累计次数 total 对应的进化触发间隔（每满 interval 轮触发一次）。
+ * 工作区内「用户手动或通讯端」完整问答累计次数 total 对应的进化触发间隔（每满 interval 轮触发一次）。
  * - total < 100：每 10 轮
  * - 100 ≤ total < 1000：每 floor(total/10) 轮（十分之一量级）
  * - 1000 ≤ total < 10000：每 100 轮
