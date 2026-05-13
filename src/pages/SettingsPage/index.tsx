@@ -79,6 +79,12 @@ const SettingsPage: FC = () => {
   const fetchConversations = useChatStore((s) => s.fetchConversations);
 
   const [defaultWorkspacePathDisplay, setDefaultWorkspacePathDisplay] = useState<string>('');
+  const [appCacheSettings, setAppCacheSettings] = useState<{
+    effectiveRoot: string;
+    defaultRoot: string;
+    configuredRoot: string | null;
+  } | null>(null);
+  const [appCacheBusy, setAppCacheBusy] = useState(false);
 
   type WebSearchProviderUi = 'auto' | 'brave' | 'duckduckgo' | 'searxng';
   const [wsEnabled, setWsEnabled] = useState(true);
@@ -273,6 +279,16 @@ const SettingsPage: FC = () => {
       } catch {
         /* ignore */
       }
+      try {
+        if (window.electronAPI?.appGetAppCacheSettings) {
+          const r = await window.electronAPI.appGetAppCacheSettings();
+          setAppCacheSettings(r);
+        } else {
+          setAppCacheSettings(null);
+        }
+      } catch {
+        setAppCacheSettings(null);
+      }
     })();
   }, [activeSection]);
 
@@ -388,6 +404,55 @@ const SettingsPage: FC = () => {
         t('settings.defaultWorkspaceSaveFail'),
         res && 'error' in res ? res.error : undefined
       );
+    }
+  };
+
+  const reloadAppCacheSettings = useCallback(async () => {
+    if (!window.electronAPI?.appGetAppCacheSettings) {
+      setAppCacheSettings(null);
+      return;
+    }
+    try {
+      const r = await window.electronAPI.appGetAppCacheSettings();
+      setAppCacheSettings(r);
+    } catch {
+      setAppCacheSettings(null);
+    }
+  }, []);
+
+  const onPickAppCacheRoot = async () => {
+    const picked = await window.electronAPI?.workspacePickFolder?.({ title: t('settings.appCachePickTitle') });
+    if (!picked?.trim()) return;
+    if (!window.confirm(t('settings.appCachePickConfirm', { path: picked.trim() }))) return;
+    if (!window.electronAPI?.appSetAppCacheRoot) return;
+    setAppCacheBusy(true);
+    try {
+      const res = await window.electronAPI.appSetAppCacheRoot(picked.trim());
+      if (res.ok) {
+        await reloadAppCacheSettings();
+        (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.appCacheSaved'));
+      } else {
+        (window as any).__cf_toast?.error?.(t('settings.appCacheSaveFail'), res.error);
+      }
+    } finally {
+      setAppCacheBusy(false);
+    }
+  };
+
+  const onResetAppCacheRoot = async () => {
+    if (!window.confirm(t('settings.appCacheResetConfirm'))) return;
+    if (!window.electronAPI?.appSetAppCacheRoot) return;
+    setAppCacheBusy(true);
+    try {
+      const res = await window.electronAPI.appSetAppCacheRoot(null);
+      if (res.ok) {
+        await reloadAppCacheSettings();
+        (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.appCacheSaved'));
+      } else {
+        (window as any).__cf_toast?.error?.(t('settings.appCacheSaveFail'), res.error);
+      }
+    } finally {
+      setAppCacheBusy(false);
     }
   };
 
@@ -1208,6 +1273,43 @@ const SettingsPage: FC = () => {
             </button>
             <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={() => void onResetDefaultWorkspaceRoot()}>
               {t('settings.defaultWorkspaceResetBuiltIn')}
+            </button>
+          </div>
+        </div>
+
+        <div className="cf-card">
+          <h3>{t('settings.appCacheTitle')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-help" style={{ marginBottom: 10 }}>
+            {t('settings.appCacheHelp')}
+          </div>
+          <div className="cf-help" style={{ marginBottom: 8 }}>
+            {t('settings.appCacheBuiltInHint', { path: appCacheSettings?.defaultRoot ?? '—' })}
+          </div>
+          <div className="cf-settingsModels__mono" style={{ wordBreak: 'break-all', marginBottom: 8 }}>
+            {appCacheSettings?.effectiveRoot ?? '—'}
+          </div>
+          {appCacheSettings?.configuredRoot ? (
+            <div className="cf-sub" style={{ marginBottom: 12, wordBreak: 'break-all' }}>
+              {t('settings.appCacheConfiguredLabel')} {appCacheSettings.configuredRoot}
+            </div>
+          ) : null}
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button
+              className="cf-btn cf-btnPrimary cf-btnSmall"
+              type="button"
+              disabled={appCacheBusy || !window.electronAPI?.appSetAppCacheRoot}
+              onClick={() => void onPickAppCacheRoot()}
+            >
+              {t('settings.appCachePick')}
+            </button>
+            <button
+              className="cf-btn cf-btnGhost cf-btnSmall"
+              type="button"
+              disabled={appCacheBusy || !window.electronAPI?.appSetAppCacheRoot}
+              onClick={() => void onResetAppCacheRoot()}
+            >
+              {t('settings.appCacheResetBuiltIn')}
             </button>
           </div>
         </div>

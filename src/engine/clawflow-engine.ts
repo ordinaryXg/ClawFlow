@@ -9,6 +9,7 @@ import { STREAM_REASONING_END, STREAM_REASONING_START } from '../utils/reasoning
 import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content';
 import { createStreamReasoningPhaseEmitter } from '../utils/reasoning-stream-phase-emitter';
 import { SessionStore, StoredConversation, StoredMessage } from './session-store';
+import { broadcastChatConversationsDirty } from '../messaging/chat-broadcast';
 import { ProviderRouter } from './provider-router';
 import { DeepSeekProvider } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
@@ -181,6 +182,15 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return s;
   }
 
+  /** 会话落盘后广播，便于侧栏「未读汇总」等从磁盘重算 */
+  private notifyConversationsPersisted(store: SessionStore): void {
+    try {
+      broadcastChatConversationsDirty({ workspaceRoot: store.resolvedWorkspaceRoot() });
+    } catch {
+      /* ignore */
+    }
+  }
+
   resolveToolApproval(approvalId: string, approved: boolean): void {
     const fn = this.toolApprovalResolvers.get(approvalId);
     if (fn) fn(approved);
@@ -297,11 +307,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   async upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void> {
     const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
     await store.upsertConversation(conversation);
+    this.notifyConversationsPersisted(store);
   }
 
   async deleteConversation(conversationId: string, workspaceRoot?: string): Promise<void> {
     const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
     await store.deleteConversation(conversationId);
+    this.notifyConversationsPersisted(store);
   }
 
   private async buildHistoryMessages(
@@ -387,6 +399,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       };
       convs[idx] = next;
       await store.writeAll(convs);
+      this.notifyConversationsPersisted(store);
     }
     this.emit('engine:message', params.conversationId, assistantMsg);
   }
@@ -422,6 +435,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       };
       convs[idx] = next;
       await store.writeAll(convs);
+      this.notifyConversationsPersisted(store);
       for (const m of msgs) {
         this.emit('engine:message', conversationId, m);
       }
@@ -463,6 +477,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     };
     convs[idx] = next;
     await store.writeAll(convs);
+    this.notifyConversationsPersisted(store);
     for (const m of msgs) {
       this.emit('engine:message', conversationId, m);
     }

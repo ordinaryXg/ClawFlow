@@ -41,6 +41,11 @@ type StorePayload = { conversations: StoredConversation[] };
 export class SessionStore {
   constructor(private readonly workspaceRoot: string) {}
 
+  /** 落盘路径对应的工作区根（解析后绝对路径） */
+  resolvedWorkspaceRoot(): string {
+    return path.resolve(this.workspaceRoot);
+  }
+
   private get storePath(): string {
     return conversationsStorePath(this.workspaceRoot);
   }

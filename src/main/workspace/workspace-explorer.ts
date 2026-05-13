@@ -114,6 +114,21 @@ function decodePreviewBuffer(slice: Buffer): { text: string; isBinary: boolean }
   return { text: '', isBinary: true };
 }
 
+import {
+  LAUNCHER_STASH_DIR,
+  launcherStashDirAbs,
+} from './workspace-blob-store';
+import {
+  WORKSPACE_AGENT_DIR,
+  workspaceAgentRootAbs,
+  workspaceSubagentRootAbs,
+} from './workspace-agent-layout';
+
+function isPathUnderOrEqualDir(absChild: string, absParent: string): boolean {
+  const rel = path.relative(absParent, absChild);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 export function resolvePathInsideWorkspace(workspaceRoot: string, relativePath: string): string {
   const root = path.resolve(workspaceRoot);
   const parts = String(relativePath || '')
@@ -123,6 +138,34 @@ export function resolvePathInsideWorkspace(workspaceRoot: string, relativePath: 
   if (parts.some((p) => p === '..')) {
     throw new Error('Invalid path');
   }
+  const first = parts[0] ?? '';
+  const tail = parts.slice(1);
+
+  if (first === WORKSPACE_AGENT_DIR) {
+    const base = workspaceAgentRootAbs(root);
+    const full = path.resolve(base, ...tail);
+    if (!isPathUnderOrEqualDir(full, base)) {
+      throw new Error('Path escapes workspace');
+    }
+    return full;
+  }
+  if (first === '.subagent') {
+    const base = workspaceSubagentRootAbs(root);
+    const full = path.resolve(base, ...tail);
+    if (!isPathUnderOrEqualDir(full, base)) {
+      throw new Error('Path escapes workspace');
+    }
+    return full;
+  }
+  if (first === LAUNCHER_STASH_DIR) {
+    const base = launcherStashDirAbs(root);
+    const full = path.resolve(base, ...tail);
+    if (!isPathUnderOrEqualDir(full, base)) {
+      throw new Error('Path escapes workspace');
+    }
+    return full;
+  }
+
   const full = path.resolve(root, ...parts);
   const relToRoot = path.relative(root, full);
   if (relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) {

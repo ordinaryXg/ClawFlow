@@ -1,7 +1,7 @@
 /**
- * 主进程：收纳时将「桌面」上的快捷方式移入当前工作区下的隐藏目录
- * `{workspaceRoot}/.clawflow-launcher-stash/`（子目录内项不会作为桌面图标展示），
- * 退出或取消收纳时再移回；manifest 与 stash 同属该工作区，便于备份与权限一致。
+ * 主进程：收纳时将「桌面」上的快捷方式移入应用缓存下该工作区 blob 内的隐藏目录
+ * `…/workspaces/<hash>/.clawflow-launcher-stash/`（子目录内项不会作为桌面图标展示），
+ * 退出或取消收纳时再移回；manifest 与 stash 随工作区绑定（`workspace-root.txt` 反查工作区根）。
  */
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
@@ -11,10 +11,13 @@ import * as os from 'os';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { app } from 'electron';
+import {
+  LAUNCHER_STASH_DIR,
+  WORKSPACE_ROOT_POINTER_FILE,
+  launcherStashDirAbs,
+} from '../workspace/workspace-blob-store';
 
 const execFileAsync = promisify(execFile);
-
-export const LAUNCHER_STASH_DIR = '.clawflow-launcher-stash';
 
 export type SetDesktopEntryHiddenResult =
   | { ok: true; mode: 'stashed'; stashedPath: string; originalPath: string; leftSourceInPlace?: boolean }
@@ -77,19 +80,29 @@ function collectDesktopRoots(): string[] {
   return [...roots].filter((x) => Boolean(x && x.trim()));
 }
 
-/** 工作区根下的 stash 目录（绝对路径） */
+/** 工作区对应的 stash 目录（绝对路径，位于应用缓存 blob 内） */
 export function getLauncherStashDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot.trim()), LAUNCHER_STASH_DIR);
+  return launcherStashDirAbs(workspaceRoot);
 }
 
-/** 从位于 stash 内的任意路径解析工作区根（如 `…/ws/.clawflow-launcher-stash/foo.lnk` → `…/ws`） */
+/** 从位于 stash 内的任意路径解析工作区根；新布局通过 `workspace-root.txt`，旧布局为 stash 父目录即工作区根 */
 export function workspaceRootFromStashPath(stashedOrInside: string): string | null {
   const resolved = path.resolve(String(stashedOrInside ?? '').trim());
   let cur = resolved;
-  for (let depth = 0; depth < 16; depth++) {
+  for (let depth = 0; depth < 32; depth++) {
     const base = path.basename(cur);
     if (normalizeLauncherPathKey(base) === normalizeLauncherPathKey(LAUNCHER_STASH_DIR)) {
-      return path.dirname(cur);
+      const container = path.dirname(cur);
+      const marker = path.join(container, WORKSPACE_ROOT_POINTER_FILE);
+      try {
+        if (fsSync.existsSync(marker)) {
+          const text = fsSync.readFileSync(marker, 'utf8').trim().split(/\r?\n/)[0] ?? '';
+          if (text) return path.resolve(text);
+        }
+      } catch {
+        /* ignore */
+      }
+      return container;
     }
     const parent = path.dirname(cur);
     if (parent === cur) break;

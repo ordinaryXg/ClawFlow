@@ -1,5 +1,5 @@
 import type { StoredMessage } from '../../engine/session-store';
-import { isEvolutionCountedUserMessage, lastRoundCountsTowardEvolution } from './skill-evolution-scheduler';
+import { classifyEvolutionOutcomeMarkdown, isEvolutionCountedUserMessage, lastRoundCountsTowardEvolution } from './skill-evolution-scheduler';
 
 function u(content: string, channel?: string): StoredMessage {
   return { id: 'u', role: 'user', content, timestamp: 1, ...(channel ? { channel } : {}) };
@@ -59,5 +59,20 @@ describe('lastRoundCountsTowardEvolution', () => {
 describe('isEvolutionCountedUserMessage', () => {
   it('legacy user without channel counts', () => {
     expect(isEvolutionCountedUserMessage(u('x'))).toBe(true);
+  });
+});
+
+describe('classifyEvolutionOutcomeMarkdown', () => {
+  it('detects memory and skills aspects', () => {
+    const text = 'Updated `.agent/.memory/notes.md` and added `.agent/.skills/foo/SKILL.md` for Hermes.';
+    const r = classifyEvolutionOutcomeMarkdown(text);
+    expect(r.aspectKeys).toEqual(['memory', 'skills']);
+    expect(r.titleZh).toContain('记忆库');
+    expect(r.titleZh).toContain('技能');
+  });
+
+  it('detects role doc aspect', () => {
+    const r = classifyEvolutionOutcomeMarkdown('扩写 .agent/.roleAgent/AGENTS.md 与 SOUL.md');
+    expect(r.aspectKeys).toContain('role_doc');
   });
 });

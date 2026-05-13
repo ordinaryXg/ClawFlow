@@ -9,6 +9,7 @@ import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
 import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
 import { isReservedSubAgentSlotId } from '../../shared/sub-agent-roster-constants';
 import { subclawflowSlotDirAbs, submemorySlotDirAbs } from '../workspace/workspace-service';
+import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 
 export type SubAgentRunRequest = {
   workspaceRoot: string;
@@ -159,6 +160,16 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
       logTail,
       updatedAt: Date.now(),
     });
+    if (slotId !== SKILL_AGENT_SLOT_ID) {
+      void appendWorkspaceChangeLog(ws, {
+        kind: 'agent_dispatch',
+        title: `Agent 调度：${label}`,
+        conversationId,
+        userPreview: `槽位 \`${slotId}\`\n\n任务：\n${taskText.slice(0, 1200)}`,
+        assistantExcerpt: String(out.message ?? '').slice(0, 3500),
+        meta: { slotId, runId, subAgentOk: true, oneOff: Boolean(req.oneOff) },
+      }).catch(() => undefined);
+    }
     if (req.oneOff && !isReservedSubAgentSlotId(slotId)) {
       try {
         const latest = await readSubAgentSlots(ws);
@@ -185,6 +196,19 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
           logTail,
           updatedAt: Date.now(),
         });
+        if (slotId !== SKILL_AGENT_SLOT_ID) {
+          const slotsErr = await readSubAgentSlots(ws);
+          const lab = slotsErr.find((s) => s.id === slotId)?.label?.trim() || slotId;
+          const msg = e instanceof Error ? e.message : String(e);
+          void appendWorkspaceChangeLog(ws, {
+            kind: 'agent_dispatch',
+            title: `Agent 调度失败：${lab}`,
+            conversationId,
+            userPreview: `槽位 \`${slotId}\`\n\n任务：\n${taskText.slice(0, 1200)}`,
+            assistantExcerpt: msg.slice(0, 3500),
+            meta: { slotId, runId, subAgentOk: false },
+          }).catch(() => undefined);
+        }
       }
     } catch {
       /* ignore */

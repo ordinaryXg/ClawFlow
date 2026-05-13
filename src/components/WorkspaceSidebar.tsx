@@ -1,4 +1,4 @@
-import { FC, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
@@ -22,6 +22,7 @@ import WorkspaceCreateModal from './workspace/WorkspaceCreateModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
 import { countTodoTriggersForWorkspaceHub } from '../shared/todo-triggers';
 import { skillsForHermesDiscoveryUi } from '../shared/workspace-skills-discovery-filter';
+import { normalizeWorkspacePathForCompare } from '../shared/workspace-path-compare';
 
 type Props = {
   sidebarWidthPx: number;
@@ -143,6 +144,46 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     }
     return r;
   }, [recentEntries, activeWorkspacePath]);
+
+  const [unreadByNorm, setUnreadByNorm] = useState<Record<string, number>>({});
+
+  const refreshWorkspaceUnreadSummaries = useCallback(async (paths: string[]) => {
+    const api = window.electronAPI;
+    if (!api?.workspaceListUnreadSummaries || paths.length === 0) {
+      setUnreadByNorm({});
+      return;
+    }
+    try {
+      const { summaries } = await api.workspaceListUnreadSummaries({ paths });
+      const next: Record<string, number> = {};
+      for (const s of summaries) {
+        next[normalizeWorkspacePathForCompare(s.workspaceRoot)] = s.total;
+      }
+      setUnreadByNorm(next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWorkspaceUnreadSummaries(workspaceRows);
+  }, [workspaceRows, activeWorkspacePath, refreshWorkspaceUnreadSummaries]);
+
+  useEffect(() => {
+    const pull = () => void refreshWorkspaceUnreadSummaries(workspaceRows);
+    const offDirty = window.electronAPI?.onChatConversationsDirty?.((p) => {
+      const wr = typeof p?.workspaceRoot === 'string' ? p.workspaceRoot.trim() : '';
+      if (wr && !workspaceRows.some((x) => workspacePathsLikelyEqual(x, wr))) return;
+      pull();
+    });
+    const offTodo = window.electronAPI?.onTodoTriggersUpdated?.(() => pull());
+    const offSub = window.electronAPI?.onSubAgentsUpdated?.(() => pull());
+    return () => {
+      offDirty?.();
+      offTodo?.();
+      offSub?.();
+    };
+  }, [workspaceRows, activeWorkspacePath, refreshWorkspaceUnreadSummaries]);
 
   const gitRemoteForRow = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -325,6 +366,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                     const gitBusyHere = gitBusyPath != null && workspacePathsLikelyEqual(gitBusyPath, p);
                     const resetBusyHere = resetBusyPath != null && workspacePathsLikelyEqual(resetBusyPath, p);
                     const menuOpen = wsActionMenuFor != null && workspacePathsLikelyEqual(wsActionMenuFor, p);
+                    const rowUnread = unreadByNorm[normalizeWorkspacePathForCompare(p)] ?? 0;
 
                     return (
                       <li key={p} className="cf-sideTree__wsLi" role="none">
@@ -352,6 +394,15 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                           >
                             {workspaceFolderLabel(p)}
                           </button>
+                          {rowUnread > 0 ? (
+                            <span
+                              className="cf-sideTree__wsUnreadBadge"
+                              title={t('workspace.unreadBadgeTitle')}
+                              aria-label={t('workspace.unreadBadgeAria', { count: rowUnread })}
+                            >
+                              {rowUnread > 99 ? '99+' : rowUnread}
+                            </span>
+                          ) : null}
                           <div className="cf-sideTree__wsRowActions">
                             <button
                               type="button"

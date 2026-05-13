@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { workspaceBlobDirAbs } from './workspace-blob-store';
+import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from './workspace-skills-read';
 
 describe('workspace-skills-read', () => {
@@ -8,13 +10,19 @@ describe('workspace-skills-read', () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-ws-skills-'));
-    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'SKILL.md'), '# Alpha\n', 'utf8');
-    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha', 'references'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'references', 'r.txt'), 'hello', 'utf8');
+    const skills = workspaceSkillsDirAbs(dir);
+    fs.mkdirSync(path.join(skills, 'alpha'), { recursive: true });
+    fs.writeFileSync(path.join(skills, 'alpha', 'SKILL.md'), '# Alpha\n', 'utf8');
+    fs.mkdirSync(path.join(skills, 'alpha', 'references'), { recursive: true });
+    fs.writeFileSync(path.join(skills, 'alpha', 'references', 'r.txt'), 'hello', 'utf8');
   });
 
   afterEach(() => {
+    try {
+      fs.rmSync(workspaceBlobDirAbs(dir), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

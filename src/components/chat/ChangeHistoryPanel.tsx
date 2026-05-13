@@ -1,14 +1,45 @@
 import { FC, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+export type ChangeLogKind =
+  | 'conversation_round'
+  | 'file_change'
+  | 'evolution'
+  | 'todo_added'
+  | 'todo_triggered'
+  | 'agent_dispatch'
+  | 'skill_enabled'
+  | 'skill_disabled'
+  | 'skill_deleted';
+
+const KINDS = new Set<string>([
+  'conversation_round',
+  'file_change',
+  'evolution',
+  'todo_added',
+  'todo_triggered',
+  'agent_dispatch',
+  'skill_enabled',
+  'skill_disabled',
+  'skill_deleted',
+]);
+
 type Entry = {
   id: string;
   at: number;
+  kind?: string;
   conversationId: string;
   title: string;
   userPreview: string;
   assistantExcerpt: string;
+  meta?: Record<string, unknown>;
 };
+
+function coerceKind(raw: string | undefined): ChangeLogKind {
+  const s = String(raw ?? '').trim();
+  if (s && KINDS.has(s)) return s as ChangeLogKind;
+  return 'conversation_round';
+}
 
 const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePath }) => {
   const { t, i18n } = useTranslation();
@@ -41,7 +72,11 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
   useEffect(() => {
     const onUpd = () => void load();
     window.addEventListener('cf-workspace-changelog-updated', onUpd);
-    return () => window.removeEventListener('cf-workspace-changelog-updated', onUpd);
+    const offIpc = window.electronAPI?.onWorkspaceChangelogUpdated?.(() => void load());
+    return () => {
+      window.removeEventListener('cf-workspace-changelog-updated', onUpd);
+      offIpc?.();
+    };
   }, [load]);
 
   if (!workspacePath) {
@@ -72,6 +107,12 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
       <ul className="cf-changeLog__list">
         {entries.map((e) => {
           const open = openId === e.id;
+          const kind = coerceKind(e.kind);
+          const kindKey = `chat.rightTabs.changeLogKind.${kind}`;
+          const kindLabel = i18n.exists(kindKey) ? t(kindKey) : kind;
+          const isChat = kind === 'conversation_round';
+          const primaryLabel = isChat ? t('chat.rightTabs.changeUser') : t('chat.rightTabs.changeDetailPrimary');
+          const secondaryLabel = isChat ? t('chat.rightTabs.changeAssistant') : t('chat.rightTabs.changeDetailSecondary');
           return (
             <li key={e.id} className="cf-changeLog__item">
               <button
@@ -84,16 +125,19 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
                 <time className="cf-changeLog__time" dateTime={new Date(e.at).toISOString()}>
                   {new Date(e.at).toLocaleString(locale)}
                 </time>
+                <span className={`cf-changeLog__kind cf-changeLog__kind--${kind}`} title={kindLabel}>
+                  {kindLabel}
+                </span>
                 <span className="cf-changeLog__title">{e.title}</span>
               </button>
               {open ? (
                 <div className="cf-changeLog__body">
-                  <div className="cf-changeLog__label">{t('chat.rightTabs.changeUser')}</div>
+                  <div className="cf-changeLog__label">{primaryLabel}</div>
                   <pre className="cf-changeLog__pre">{e.userPreview || '—'}</pre>
-                  <div className="cf-changeLog__label">{t('chat.rightTabs.changeAssistant')}</div>
+                  <div className="cf-changeLog__label">{secondaryLabel}</div>
                   <pre className="cf-changeLog__pre">{e.assistantExcerpt || '—'}</pre>
                   <div className="cf-changeLog__meta cf-sub">
-                    {t('chat.rightTabs.changeConvId')}: {e.conversationId}
+                    {t('chat.rightTabs.changeConvId')}: {e.conversationId || '—'}
                   </div>
                 </div>
               ) : null}

@@ -15,6 +15,31 @@ import {
   computeSkillEvolutionSpacing,
 } from '../../shared/skill-agent-constants';
 import { workspaceAgentDotMemoryDirAbs } from '../workspace/workspace-agent-layout';
+import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
+
+export type EvolutionAspectKey = 'memory' | 'skills' | 'role_doc';
+
+/** 从进化 Agent 最终输出中粗分类涉及的工作区维度（用于变更记录标题与 meta）。 */
+export function classifyEvolutionOutcomeMarkdown(text: string): {
+  aspectKeys: EvolutionAspectKey[];
+  titleZh: string;
+} {
+  const sample = text.slice(0, 24_000);
+  const keys = new Set<EvolutionAspectKey>();
+  if (/[\\/]\.agent[\\/]\.memory|记忆库|记忆瘦身|\.memory[\\/]/i.test(sample)) keys.add('memory');
+  if (/[\\/]\.agent[\\/]\.skills|Hermes|SKILL\.md|技能/i.test(sample)) keys.add('skills');
+  if (/AGENTS\.md|SOUL\.md|角色文档|[\\/]\.roleAgent[\\/]/i.test(sample)) keys.add('role_doc');
+  const order: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
+  const aspectKeys = order.filter((k) => keys.has(k));
+  const label: Record<EvolutionAspectKey, string> = {
+    memory: '记忆库',
+    skills: '技能（Hermes）',
+    role_doc: '角色文档',
+  };
+  const titleZh =
+    aspectKeys.length > 0 ? `进化完成 · ${aspectKeys.map((k) => label[k]).join('、')}` : '进化完成 · 综合更新';
+  return { aspectKeys, titleZh };
+}
 
 /**
  * 轮次统计（totalUserManualRounds）约定：
@@ -180,6 +205,16 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
   const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
   const taskText = buildSkillEvolutionTask({ chatExcerpt, memoryExcerpt });
 
+  void appendWorkspaceChangeLog(root, {
+    kind: 'agent_dispatch',
+    title: 'Agent 调度：进化（Skill Agent）',
+    conversationId: convId,
+    userPreview: `主会话轮次累计至 ${total}，已达进化间隔（每 ${spacing} 轮），已启动 Skill Agent（槽位 ${SKILL_AGENT_SLOT_ID}）。`,
+    assistantExcerpt:
+      '本轮任务覆盖：合并近期对话与 .agent/.memory 摘录、记忆瘦身、在 .agent/.skills 下维护 Hermes 技能、扩写 .agent/.roleAgent 下 AGENTS.md / SOUL.md。',
+    meta: { dispatch: 'skill_evolution', totalUserManualRounds: total, spacing },
+  }).catch(() => undefined);
+
   void runSubAgentOnce({
     workspaceRoot: root,
     slotId: SKILL_AGENT_SLOT_ID,
@@ -188,8 +223,30 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
   }).then((res) => {
     if (!res.ok) {
       console.warn('[skill-agent] evolution run failed:', res.error);
+      void appendWorkspaceChangeLog(root, {
+        kind: 'evolution',
+        title: '进化失败',
+        conversationId: convId,
+        userPreview: `第 ${total} 轮触发后执行失败，未应用进化奖励（经验/轮次标记）。`,
+        assistantExcerpt: String(res.error ?? '').slice(0, 3500),
+        meta: { evolutionOk: false, totalUserManualRounds: total, runId: res.runId },
+      }).catch(() => undefined);
       return;
     }
+    const { aspectKeys, titleZh } = classifyEvolutionOutcomeMarkdown(res.message || '');
+    void appendWorkspaceChangeLog(root, {
+      kind: 'evolution',
+      title: titleZh,
+      conversationId: convId,
+      userPreview: `触发轮次：${total}。解析维度：${aspectKeys.length ? aspectKeys.join('、') : '（输出中未匹配到明确关键词，可能为概述性总结）'}`,
+      assistantExcerpt: (res.message || '').slice(0, 4000),
+      meta: {
+        evolutionOk: true,
+        aspects: aspectKeys,
+        totalUserManualRounds: total,
+        runId: res.runId,
+      },
+    }).catch(() => undefined);
     void applySuccessfulEvolutionRewards(root, total).catch((e) =>
       console.warn('[skill-agent] apply evolution rewards failed:', e)
     );

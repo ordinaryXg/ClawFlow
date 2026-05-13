@@ -13,7 +13,15 @@ import {
 } from './engine/openclaw-engine';
 import { registerClawFlowIPC, syncClawFlowEngineWorkspaceRoot } from './engine/clawflow-engine';
 import { getGatewayDaemon, registerGatewayIPC } from './engine/gateway-daemon';
+import { sanitizeAppCachePrefsOnStartupSync } from './main/prefs/app-cache-prefs';
 import * as workspaceService from './main/workspace/workspace-service';
+import { summarizeWorkspacesUnread } from './main/workspace/workspace-unread-summary';
+import {
+  migrateLegacyTriadForWorkspaceRootsSync,
+  mergeLegacyWorkspacesTreesIntoEffectiveSync,
+  setAppCacheRootAndMigrate,
+} from './main/workspace/workspace-blob-store';
+import { getDefaultAppCacheRootSync, getEffectiveAppCacheRootSync, readAppCachePrefsFile } from './main/prefs/app-cache-prefs';
 import * as workspaceExplorer from './main/workspace/workspace-explorer';
 import * as workspaceChangeLog from './main/workspace/workspace-change-log';
 import type { WorkspaceToolSelection } from './shared/workspace-tools';
@@ -329,6 +337,24 @@ function registerTodoTriggersIPC(): void {
     await writeTodoTriggers(root, merged);
     rescheduleTodoTriggersForWorkspace(root);
     broadcastTodoTriggersUpdated(root);
+    const diskIds = new Set(disk.map((x) => x.id));
+    for (const t of merged) {
+      if (!diskIds.has(t.id)) {
+        const trig = t.trigger;
+        const rep = trig.kind === 'schedule' ? trig.repeat : '';
+        void workspaceChangeLog
+          .appendWorkspaceChangeLog(root, {
+            kind: 'todo_added',
+            title: `待办新增：${(t.title || '未命名').slice(0, 80)}`,
+            userPreview: `ID：${t.id}\n标题：${t.title}\n计划：${rep}${
+              rep === 'interval' && trig.kind === 'schedule' ? ` / 间隔 ${trig.intervalMinutes ?? '?'} 分钟` : ''
+            }${rep === 'cron' && trig.kind === 'schedule' ? ` / cron：${trig.cron ?? ''}` : ''}`,
+            assistantExcerpt: `执行文案：\n${String(t.action?.text ?? '').slice(0, 1500)}\n提交模型：${t.action?.submitToModel ? '是' : '否'}`,
+            meta: { triggerId: t.id },
+          })
+          .catch(() => undefined);
+      }
+    }
     return { ok: true as const };
   });
   ipcMain.handle('todoTriggers:setAiReceipt', async (event, payload: unknown) => {
@@ -484,6 +510,15 @@ function registerWorkspaceIPC(): void {
 
   ipcMain.handle('workspace:listRecent', async () => {
     return workspaceService.listRecentWorkspaceEntries();
+  });
+
+  ipcMain.handle('workspace:listUnreadSummaries', async (_e, payload: unknown) => {
+    const paths =
+      payload && typeof payload === 'object' && Array.isArray((payload as { paths?: unknown }).paths)
+        ? (payload as { paths: unknown[] }).paths.map((x) => String(x ?? '').trim()).filter(Boolean)
+        : [];
+    const summaries = await summarizeWorkspacesUnread(paths);
+    return { summaries };
   });
 
   ipcMain.handle('workspace:getDefaultPath', async () => workspaceService.getDefaultWorkspacePath());
@@ -708,6 +743,15 @@ function registerWorkspaceIPC(): void {
     const abs = resolveAbs(root, rel);
     try {
       await fs.promises.mkdir(abs, { recursive: true });
+      void workspaceChangeLog
+        .appendWorkspaceChangeLog(root, {
+          kind: 'file_change',
+          title: `新建目录：${rel}`,
+          userPreview: rel,
+          assistantExcerpt: '操作：mkdir（recursive）',
+          meta: { op: 'mkdir', relativePath: rel },
+        })
+        .catch(() => undefined);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -731,6 +775,15 @@ function registerWorkspaceIPC(): void {
           .catch(() => false);
         if (exists && !overwrite) return { ok: false as const, error: 'File exists (overwrite=false)' };
         await fs.promises.writeFile(abs, content, 'utf8');
+        void workspaceChangeLog
+          .appendWorkspaceChangeLog(root, {
+            kind: 'file_change',
+            title: `${exists ? '文件更新' : '文件创建'}：${rel}`,
+            userPreview: rel,
+            assistantExcerpt: `操作：write_text · overwrite=${overwrite} · 约 ${Buffer.byteLength(content, 'utf8')} 字节`,
+            meta: { op: 'write_text', relativePath: rel, existed: exists },
+          })
+          .catch(() => undefined);
         return { ok: true as const };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -755,6 +808,15 @@ function registerWorkspaceIPC(): void {
       if (toExists && !overwrite) return { ok: false as const, error: 'Destination exists (overwrite=false)' };
       if (toExists && overwrite) await fs.promises.rm(toAbs, { recursive: true, force: true });
       await fs.promises.rename(fromAbs, toAbs);
+      void workspaceChangeLog
+        .appendWorkspaceChangeLog(root, {
+          kind: 'file_change',
+          title: `重命名：${fromRel} → ${toRel}`,
+          userPreview: `${fromRel}\n→\n${toRel}`,
+          assistantExcerpt: `overwrite=${overwrite}`,
+          meta: { op: 'rename', from: fromRel, to: toRel },
+        })
+        .catch(() => undefined);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -777,6 +839,15 @@ function registerWorkspaceIPC(): void {
     }
     try {
       await fs.promises.rm(abs, { recursive: true, force: true });
+      void workspaceChangeLog
+        .appendWorkspaceChangeLog(root, {
+          kind: 'file_change',
+          title: `删除：${rel}`,
+          userPreview: rel,
+          assistantExcerpt: '操作：delete_path（recursive）',
+          meta: { op: 'delete', relativePath: rel },
+        })
+        .catch(() => undefined);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -800,6 +871,7 @@ function registerWorkspaceIPC(): void {
           conversationId: String(payload?.conversationId ?? ''),
           userPreview: String(payload?.userPreview ?? ''),
           assistantExcerpt: String(payload?.assistantExcerpt ?? ''),
+          kind: 'conversation_round',
         });
         return { ok: true as const, entry };
       } catch (e: unknown) {
@@ -855,6 +927,15 @@ function registerWorkspaceIPC(): void {
     if (!skillRootRel) return { ok: false as const, error: 'missing skillRootRel' };
     try {
       await setSkillRootEnabled(root, skillRootRel, enabled);
+      void workspaceChangeLog
+        .appendWorkspaceChangeLog(root, {
+          kind: enabled ? 'skill_enabled' : 'skill_disabled',
+          title: `${enabled ? '技能启用' : '技能禁用'}：${skillRootRel}`,
+          userPreview: skillRootRel,
+          assistantExcerpt: enabled ? '该技能将参与 Hermes 列举与相关能力。' : '该技能已从启用列表排除（数据仍在工作区内）。',
+          meta: { skillRootRel, enabled },
+        })
+        .catch(() => undefined);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -874,6 +955,15 @@ function registerWorkspaceIPC(): void {
     } catch {
       /* ignore */
     }
+    void workspaceChangeLog
+      .appendWorkspaceChangeLog(root, {
+        kind: 'skill_deleted',
+        title: `技能删除：${skillRootRel}`,
+        userPreview: skillRootRel,
+        assistantExcerpt: '已从工作区移除 Hermes 技能目录。',
+        meta: { skillRootRel },
+      })
+      .catch(() => undefined);
     return { ok: true as const };
   });
 
@@ -1102,7 +1192,21 @@ const createWindow = (): void => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   readMainUiPrefsFromDisk();
+  sanitizeAppCachePrefsOnStartupSync();
+  workspaceService.migrateLegacyWorkspaceRegistryIfEmptySync();
+  mergeLegacyWorkspacesTreesIntoEffectiveSync();
   const reg = workspaceService.loadRegistry();
+  const rootsForTriad = new Set<string>();
+  for (const p of reg.recentWorkspacePaths ?? []) {
+    const r = path.resolve(String(p ?? '').trim());
+    if (r) rootsForTriad.add(r);
+  }
+  if (reg.activeWorkspacePath) {
+    const r = path.resolve(String(reg.activeWorkspacePath).trim());
+    if (r) rootsForTriad.add(r);
+  }
+  rootsForTriad.add(path.resolve(workspaceService.getDefaultWorkspacePath()));
+  migrateLegacyTriadForWorkspaceRootsSync([...rootsForTriad]);
   // 如果刚执行了“取消置顶 active”的一次性迁移，这里需要写回磁盘
   if (!reg.unpinActiveMigrated && reg.activeWorkspacePath) {
     workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
@@ -1148,6 +1252,19 @@ app.whenReady().then(async () => {
     console.warn('[GatewayDaemon] auto-start failed:', e?.message ?? e);
   }
   ipcMain.handle('app:getVersion', () => app.getVersion());
+  ipcMain.handle('app:getAppCacheSettings', () => {
+    const prefs = readAppCachePrefsFile();
+    const configured =
+      typeof prefs.cacheRoot === 'string' && prefs.cacheRoot.trim() ? prefs.cacheRoot.trim() : null;
+    return {
+      effectiveRoot: getEffectiveAppCacheRootSync(),
+      defaultRoot: getDefaultAppCacheRootSync(),
+      configuredRoot: configured,
+    };
+  });
+  ipcMain.handle('app:setAppCacheRoot', async (_e, folderPath: string | null | undefined) =>
+    setAppCacheRootAndMigrate(folderPath ?? null)
+  );
   ipcMain.handle('app:setLanguage', (_event, lang: string) => {
     setAppLanguageFromRenderer(lang);
     return { success: true };

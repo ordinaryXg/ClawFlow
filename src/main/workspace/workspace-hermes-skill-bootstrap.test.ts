@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { workspaceBlobDirAbs } from './workspace-blob-store';
+import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 import { ensureWorkspaceDefaultHermesSkill, WORKSPACE_DEFAULT_HERMES_SKILL_MD } from './workspace-hermes-skill-bootstrap';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
 
@@ -15,6 +17,11 @@ describe('workspace-hermes-skill-bootstrap', () => {
 
   afterEach(() => {
     warnSpy.mockRestore();
+    try {
+      fs.rmSync(workspaceBlobDirAbs(dir), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -24,16 +31,16 @@ describe('workspace-hermes-skill-bootstrap', () => {
     expect(r1.created[0]).toBe(WORKSPACE_DEFAULT_HERMES_SKILL_MD);
     const list = listWorkspaceHermesSkills(dir);
     expect(list.some((s) => s.name === 'default')).toBe(true);
-    const md = fs.readFileSync(path.join(dir, '.agent', '.skills', 'default', 'SKILL.md'), 'utf8');
+    const md = fs.readFileSync(path.join(workspaceSkillsDirAbs(dir), 'default', 'SKILL.md'), 'utf8');
     expect(md).toContain('default');
   });
 
   it('does not duplicate when skills already exist', async () => {
-    fs.mkdirSync(path.join(dir, '.agent', '.skills', 'alpha'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.agent', '.skills', 'alpha', 'SKILL.md'), '# A\n', 'utf8');
+    fs.mkdirSync(path.join(workspaceSkillsDirAbs(dir), 'alpha'), { recursive: true });
+    fs.writeFileSync(path.join(workspaceSkillsDirAbs(dir), 'alpha', 'SKILL.md'), '# A\n', 'utf8');
     const r = await ensureWorkspaceDefaultHermesSkill(dir);
     expect(r.created.length).toBe(0);
-    expect(fs.existsSync(path.join(dir, '.agent', '.skills', 'default', 'SKILL.md'))).toBe(false);
+    expect(fs.existsSync(path.join(workspaceSkillsDirAbs(dir), 'default', 'SKILL.md'))).toBe(false);
   });
 
   it('second call is no-op after default exists', async () => {

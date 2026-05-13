@@ -141,6 +141,14 @@ export interface IElectronAPI {
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
   appRelaunch: () => Promise<void>;
+  appGetAppCacheSettings: () => Promise<{
+    effectiveRoot: string;
+    defaultRoot: string;
+    configuredRoot: string | null;
+  }>;
+  appSetAppCacheRoot: (
+    folderPath: string | null
+  ) => Promise<{ ok: true; effectiveRoot: string } | { ok: false; error: string }>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   intelligenceGetProfile: () => Promise<
     | {
@@ -156,6 +164,9 @@ export interface IElectronAPI {
     | { ok: false; error: string }
   >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
+  workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
+    summaries: Array<{ workspaceRoot: string; todos: number; agent: number; messaging: number; total: number }>;
+  }>;
   workspaceSetActive: (
     folderPath: string,
     opts?: { fromMainShell?: boolean }
@@ -313,6 +324,7 @@ export interface IElectronAPI {
   workspaceSkillsSetEnabled: (params: { skillRootRel: string; enabled: boolean }) => Promise<{ ok: true } | { ok: false; error?: string }>;
   workspaceSkillsDeleteSkill: (skillRootRel: string) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
+  onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
   todoTriggersSetAiReceipt: (params: {
@@ -483,11 +495,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSelectAll: () => ipcRenderer.invoke('window:selectAll'),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   appRelaunch: () => ipcRenderer.invoke('app:relaunch'),
+  appGetAppCacheSettings: () => ipcRenderer.invoke('app:getAppCacheSettings'),
+  appSetAppCacheRoot: (folderPath: string | null) => ipcRenderer.invoke('app:setAppCacheRoot', folderPath),
   syncMainUiPrefs: (prefs: { closeButtonAction: 'quit' | 'minimizeToTray' }) =>
     ipcRenderer.invoke('app:syncMainUiPrefs', prefs) as Promise<{ ok: true }>,
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
   intelligenceGetProfile: () => ipcRenderer.invoke('intelligence:getProfile'),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
+  workspaceListUnreadSummaries: (params: { paths: string[] }) =>
+    ipcRenderer.invoke('workspace:listUnreadSummaries', params),
   workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
   workspaceSetDefaultRoot: (folderPath: string | null) =>
     ipcRenderer.invoke('workspace:setDefaultRoot', folderPath) as Promise<{ ok: true } | { ok: false; error: string }>,
@@ -573,6 +589,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('workspace:changed', handler);
     return () => ipcRenderer.removeListener('workspace:changed', handler);
+  },
+  onWorkspaceChangelogUpdated: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('workspace:changelogUpdated', handler);
+    return () => ipcRenderer.removeListener('workspace:changelogUpdated', handler);
   },
   todoTriggersList: () => ipcRenderer.invoke('todoTriggers:list'),
   todoTriggersSaveAll: (triggers: unknown[]) => ipcRenderer.invoke('todoTriggers:saveAll', triggers),

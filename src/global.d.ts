@@ -141,6 +141,14 @@ export interface IElectronAPI {
   windowSelectAll: () => Promise<void>;
   quitApp: () => Promise<void>;
   appRelaunch: () => Promise<void>;
+  appGetAppCacheSettings: () => Promise<{
+    effectiveRoot: string;
+    defaultRoot: string;
+    configuredRoot: string | null;
+  }>;
+  appSetAppCacheRoot: (
+    folderPath: string | null
+  ) => Promise<{ ok: true; effectiveRoot: string } | { ok: false; error: string }>;
   syncMainUiPrefs: (prefs: { closeButtonAction: 'quit' | 'minimizeToTray' }) => Promise<{ ok: true }>;
   workspaceGetActive: () => Promise<{ path: string; meta: unknown | null }>;
   intelligenceGetProfile: () => Promise<
@@ -157,6 +165,9 @@ export interface IElectronAPI {
     | { ok: false; error: string }
   >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
+  workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
+    summaries: Array<{ workspaceRoot: string; todos: number; agent: number; messaging: number; total: number }>;
+  }>;
   workspaceGetDefaultPath: () => Promise<string>;
   workspaceSetDefaultRoot: (folderPath: string | null) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceRemove: (
@@ -262,7 +273,7 @@ export interface IElectronAPI {
   appSetPathHidden: (params: {
     absolutePath: string;
     hidden: boolean;
-    /** 收纳/恢复桌面快捷方式时必填当前工作区根路径（stash 落在该目录下） */
+    /** 收纳/恢复桌面快捷方式时必填当前工作区根路径（stash 位于应用缓存下对应工作区 blob） */
     workspacePath?: string;
   }) => Promise<
     | { ok: true; mode: 'stashed'; stashedPath: string; originalPath: string; leftSourceInPlace?: boolean }
@@ -277,10 +288,12 @@ export interface IElectronAPI {
     entries: Array<{
       id: string;
       at: number;
+      kind?: string;
       conversationId: string;
       title: string;
       userPreview: string;
       assistantExcerpt: string;
+      meta?: Record<string, unknown>;
     }>;
   }>;
   workspaceAppendChangeLog: (payload: {
@@ -327,6 +340,7 @@ export interface IElectronAPI {
   workspaceSkillsSetEnabled: (params: { skillRootRel: string; enabled: boolean }) => Promise<{ ok: true } | { ok: false; error?: string }>;
   workspaceSkillsDeleteSkill: (skillRootRel: string) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
+  onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
   todoTriggersSetAiReceipt: (params: {

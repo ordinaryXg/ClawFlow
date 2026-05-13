@@ -633,11 +633,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
             userPreview: content,
             assistantExcerpt: fullText,
           })
-        ).then((res) => {
-          if (res && typeof res === 'object' && 'ok' in res && res.ok) {
-            window.dispatchEvent(new CustomEvent('cf-workspace-changelog-updated'));
-          }
-        });
+        );
 
         const ipcMs = log?.ipcMs ?? Math.round(performance.now() - t0);
         // eslint-disable-next-line no-console

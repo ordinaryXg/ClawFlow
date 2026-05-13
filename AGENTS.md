@@ -34,7 +34,7 @@ src/
     scrape/               # 网页抓取任务
     skill/                # Skill Agent；轮次 totalUserManualRounds 与进化触发见 skill-evolution-scheduler.ts
     shell/                # 托盘、主窗偏好、图标、桌面钉、主壳工作区记忆
-    prefs/                # messaging-prefs、web-search-prefs（userData 持久化）
+    prefs/                # messaging-prefs、web-search-prefs、app-cache-prefs（userData 持久化）
   engine/                 # ClawFlow / OpenClaw、Gateway、Provider、tool-runtime
   messaging/              # 飞书等
   components/, pages/, store/
@@ -70,6 +70,7 @@ src/
 
 - Channel 多为 **`领域:动作`**（如 `workspace:listDir`、`subAgents:run`）。
 - 工作区相对路径类 API 通常先 `resolveWorkspaceRootForWebContents(event.sender)` 再操作磁盘。
+- 各工作区托管目录（`.agent`、`.subagent`、`.clawflow-launcher-stash`）物理位于应用缓存根下 `workspaces/<sha256>/`（默认根为 `userData/ClawFlowAppCache`，见 `workspace-blob-store.ts`），相对路径约定不变；启动或初始化时会从仓库根迁移遗留副本，并合并曾误放在 `userData` 根或 `%APPDATA%/ClawFlow` 等处的 `workspaces/`。
 
 ## 常用命令
 

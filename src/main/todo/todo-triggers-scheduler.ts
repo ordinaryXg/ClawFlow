@@ -5,6 +5,7 @@ import { resolveWorkspaceRootForWebContents } from '../electron-workspace-contex
 import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from './todo-triggers-service';
 import type { TodoTriggerRecord } from '../../shared/todo-triggers';
 import { stickySatellitePathByWindowId } from '../sticky-satellite-windows';
+import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 
 const timeoutByKey = new Map<string, NodeJS.Timeout>();
 
@@ -115,6 +116,14 @@ async function handleFire(workspaceRoot: string, triggerId: string): Promise<voi
   /** 先落盘再广播，避免渲染进程 load 仍读到「触发前」快照并随后用旧列表 saveAll 覆盖回执字段 */
   await applyPostFireMutation(workspaceRoot, triggerId);
   broadcastFire(workspaceRoot, t);
+  const repeat = t.trigger.kind === 'schedule' ? t.trigger.repeat : '';
+  void appendWorkspaceChangeLog(workspaceRoot, {
+    kind: 'todo_triggered',
+    title: `待办触发：${(t.title || '未命名').slice(0, 80)}`,
+    userPreview: `触发器 ID：${t.id}\n计划：${repeat}\n\n送达正文：\n${String(t.action?.text ?? '').slice(0, 1200)}`,
+    assistantExcerpt: `提交模型跟进：${t.action.submitToModel ? '是' : '否'}`,
+    meta: { triggerId: t.id, title: t.title },
+  }).catch(() => undefined);
   rescheduleTodoTriggersForWorkspace(workspaceRoot);
 }
 

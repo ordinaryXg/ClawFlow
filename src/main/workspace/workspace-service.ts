@@ -1,6 +1,7 @@
 /**
  * Workspace 目录与注册表（主进程）。
- * 每个 workspace 根下：**`.agent/`**（主 Agent、工具、技能、`.memory/`、主会话数据 **`.clawflow/`**）；**`.subagent/`**（子 Agent 缓存 `.subclawflow/`、记忆 `.submemory/`、角色模板 `.subroleAgent/`）。
+ * 每个 workspace：**`.agent/`**、**`.subagent/`**、**`.clawflow-launcher-stash/`** 位于应用缓存根下 `workspaces/<hash>/`（见 `workspace-blob-store`）；工作区根仅保留 `workspace.json` 路径引用及用户项目文件。
+ * 主会话元数据在 **`.agent/.clawflow/`**（通过 `clawflowDir()`）；子 Agent 缓存仍在 **`.subagent/...`** 逻辑路径下（物理在缓存 blob 内）。
  */
 
 import { randomUUID } from 'crypto';
@@ -17,9 +18,12 @@ import {
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
   workspaceAgentDotMemoryDirAbs,
+  workspaceAgentRootAbs,
   workspaceSubagentRolesDirAbs,
+  workspaceSubagentRootAbs,
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
+import { launcherStashDirAbs, migrateWorkspaceTriadFromLegacyRootsSync, workspaceBlobDirAbs } from './workspace-blob-store';
 import { ensureSkillAgentSlotForWorkspace } from '../skill/skill-agent-bootstrap';
 import {
   mergeToolSelection,
@@ -59,14 +63,17 @@ export const SUBCLAWFLOW_DIR = '.subagent/.subclawflow';
 export const SUBMEMORY_DIR = '.subagent/.submemory';
 
 /**
- * 仅从工作区根删除 ClawFlow 管理的目录，不删除用户项目文件。
- * 含 `.agent/`（内含 `.clawflow/`）、`.subagent/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`、`.clawflow-data`（待办等）；各目录不存在时忽略。
+ * 仅从工作区根及缓存 blob 删除 ClawFlow 管理的目录，不删除用户项目文件。
+ * 含 blob 内整包、工作区根遗留 `.agent/`、`.subagent/`、`.clawflow-launcher-stash/` 及历史遗留根下 `.clawflow`、`.subclawflow`、`.submemory`、`.roleAgent`、`.tool`、`.clawflow-data`（待办等）；各目录不存在时忽略。
  */
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
+  const blob = workspaceBlobDirAbs(workspaceRoot);
   const dirs = [
+    blob,
     path.join(root, WORKSPACE_AGENT_DIR),
     path.join(root, SUBAGENT_ROOT_DIR),
+    path.join(root, '.clawflow-launcher-stash'),
     path.join(root, '.clawflow'),
     path.join(root, WORKSPACE_TODO_DATA_DIR),
     path.join(root, '.subclawflow'),
@@ -256,15 +263,15 @@ export function isSameWorkspacePath(a: string, b: string): boolean {
 }
 
 export function clawflowDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), CLAWFLOW_DIR);
+  return path.join(workspaceAgentRootAbs(workspaceRoot), '.clawflow');
 }
 
 export function subagentRootDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), SUBAGENT_ROOT_DIR);
+  return workspaceSubagentRootAbs(workspaceRoot);
 }
 
 export function subclawflowDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), SUBCLAWFLOW_DIR);
+  return path.join(workspaceSubagentRootAbs(workspaceRoot), '.subclawflow');
 }
 
 /**
@@ -278,7 +285,7 @@ export function subclawflowSlotDirAbs(workspaceRoot: string, slotId: string): st
 }
 
 export function submemoryDir(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), SUBMEMORY_DIR);
+  return path.join(workspaceSubagentRootAbs(workspaceRoot), '.submemory');
 }
 
 /** 单个子 Agent 槽位在工作区下的记忆根目录（绝对路径）；与主 `.agent/.memory/` 分离。 */
@@ -505,35 +512,113 @@ export function loadRegistry(): WorkspaceRegistry {
   const p = getRegistryPath();
   try {
     const raw = fs.readFileSync(p, 'utf-8');
-    const j = JSON.parse(raw);
-    const active =
-      typeof j?.activeWorkspacePath === 'string' && j.activeWorkspacePath.trim()
-        ? path.resolve(j.activeWorkspacePath.trim())
-        : null;
-    const rawList: unknown[] = Array.isArray(j?.recentWorkspacePaths) ? j.recentWorkspacePaths : [];
-    const recentRaw = rawList.filter((x: unknown): x is string => typeof x === 'string' && Boolean(x.trim()));
-    const recent = recentRaw.map((x) => path.resolve(x.trim()));
-    let uniq = Array.from(new Set(recent)) as string[];
-    const migratedFlag = Boolean(j?.unpinActiveMigrated);
-
-    // 一次性迁移：旧逻辑会把 active 总是放到 recent[0]，导致“切换会置顶”的观感。
-    // 这里把 active 从头部移到末尾（仅第一次），之后切换仅更新选中态不改顺序。
-    if (!migratedFlag && active && uniq.length > 1 && path.resolve(uniq[0]) === path.resolve(active)) {
-      uniq = [...uniq.slice(1), uniq[0]];
-    }
-
-    const ovRaw = j?.defaultWorkspaceRootOverride;
-    const defaultWorkspaceRootOverride =
-      typeof ovRaw === 'string' && ovRaw.trim() ? path.resolve(ovRaw.trim()) : null;
-
-    return {
-      activeWorkspacePath: active,
-      recentWorkspacePaths: uniq,
-      unpinActiveMigrated: migratedFlag,
-      defaultWorkspaceRootOverride,
-    };
+    return parseWorkspaceRegistryJson(raw, p);
   } catch {
     return { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
+  }
+}
+
+function parseWorkspaceRegistryJson(raw: string, _sourcePathForLog?: string): WorkspaceRegistry {
+  const j = JSON.parse(raw);
+  const active =
+    typeof j?.activeWorkspacePath === 'string' && j.activeWorkspacePath.trim()
+      ? path.resolve(j.activeWorkspacePath.trim())
+      : null;
+  const rawList: unknown[] = Array.isArray(j?.recentWorkspacePaths) ? j.recentWorkspacePaths : [];
+  const recentRaw = rawList.filter((x: unknown): x is string => typeof x === 'string' && Boolean(x.trim()));
+  const recent = recentRaw.map((x) => path.resolve(x.trim()));
+  let uniq = Array.from(new Set(recent)) as string[];
+  const migratedFlag = Boolean(j?.unpinActiveMigrated);
+
+  if (!migratedFlag && active && uniq.length > 1 && path.resolve(uniq[0]) === path.resolve(active)) {
+    uniq = [...uniq.slice(1), uniq[0]];
+  }
+
+  const ovRaw = j?.defaultWorkspaceRootOverride;
+  const defaultWorkspaceRootOverride =
+    typeof ovRaw === 'string' && ovRaw.trim() ? path.resolve(ovRaw.trim()) : null;
+
+  return {
+    activeWorkspacePath: active,
+    recentWorkspacePaths: uniq,
+    unpinActiveMigrated: migratedFlag,
+    defaultWorkspaceRootOverride,
+  };
+}
+
+function registryHasPaths(reg: WorkspaceRegistry): boolean {
+  return (
+    (reg.recentWorkspacePaths?.length ?? 0) > 0 ||
+    (reg.activeWorkspacePath != null && String(reg.activeWorkspacePath).trim() !== '')
+  );
+}
+
+function mergeWorkspaceRegistries(a: WorkspaceRegistry, b: WorkspaceRegistry): WorkspaceRegistry {
+  const key = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+  const seen = new Set<string>();
+  const recent: string[] = [];
+  const add = (p: string) => {
+    const k = key(p);
+    if (seen.has(k)) return;
+    seen.add(k);
+    recent.push(path.resolve(p));
+  };
+  for (const p of a.recentWorkspacePaths ?? []) add(p);
+  for (const p of b.recentWorkspacePaths ?? []) add(p);
+  const activeRaw = a.activeWorkspacePath ?? b.activeWorkspacePath;
+  const active = activeRaw && String(activeRaw).trim() ? path.resolve(String(activeRaw).trim()) : null;
+  if (active) add(active);
+  const uniq = recent.slice(-12);
+  return {
+    activeWorkspacePath: active,
+    recentWorkspacePaths: uniq,
+    unpinActiveMigrated: a.unpinActiveMigrated ?? b.unpinActiveMigrated ?? true,
+    ...(a.defaultWorkspaceRootOverride != null
+      ? { defaultWorkspaceRootOverride: a.defaultWorkspaceRootOverride }
+      : b.defaultWorkspaceRootOverride != null
+        ? { defaultWorkspaceRootOverride: b.defaultWorkspaceRootOverride }
+        : {}),
+  };
+}
+
+/**
+ * 若当前 `cf.workspace.v1.json` 为空（例如应用名从 ClawFlow 变为 claw-flow 后 userData 目录变了），
+ * 尝试从 `%APPDATA%\ClawFlow` / `%APPDATA%\claw-flow` 读取同名注册表并合并写回当前 userData。
+ */
+export function migrateLegacyWorkspaceRegistryIfEmptySync(): void {
+  const curPath = getRegistryPath();
+  let cur: WorkspaceRegistry;
+  try {
+    const raw = fs.readFileSync(curPath, 'utf-8');
+    cur = parseWorkspaceRegistryJson(raw, curPath);
+  } catch {
+    cur = { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
+  }
+  if (registryHasPaths(cur)) return;
+
+  const altPaths: string[] = [];
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    const ap = process.env.APPDATA;
+    altPaths.push(path.join(ap, 'ClawFlow', REGISTRY_FILENAME));
+    altPaths.push(path.join(ap, 'claw-flow', REGISTRY_FILENAME));
+  }
+
+  let merged: WorkspaceRegistry | null = null;
+  for (const alt of altPaths) {
+    if (path.normalize(alt) === path.normalize(curPath)) continue;
+    if (!fs.existsSync(alt)) continue;
+    try {
+      const raw = fs.readFileSync(alt, 'utf-8');
+      const r = parseWorkspaceRegistryJson(raw, alt);
+      if (!registryHasPaths(r)) continue;
+      merged = merged == null ? mergeWorkspaceRegistries(cur, r) : mergeWorkspaceRegistries(merged, r);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (merged != null && registryHasPaths(merged)) {
+    saveRegistry(merged);
+    console.log('[workspace-service] restored workspace registry from legacy AppData path');
   }
 }
 
@@ -591,8 +676,8 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
 export async function workspaceHasExistingAgentAndSubagent(workspaceRoot: string): Promise<boolean> {
   const root = path.resolve(String(workspaceRoot ?? '').trim());
   if (!root) return false;
-  const agent = path.join(root, WORKSPACE_AGENT_DIR);
-  const subagent = path.join(root, '.subagent');
+  const agent = workspaceAgentRootAbs(root);
+  const subagent = workspaceSubagentRootAbs(root);
   const isDir = async (p: string) => {
     try {
       const st = await fs.promises.stat(p);
@@ -659,15 +744,17 @@ export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Prom
 }
 
 /**
- * 创建当前工作区 `.agent/.clawflow/`、`.subagent/`（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
- * 同时在**工作区 `.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
- * 若已同时存在 `.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
+ * 创建当前工作区在应用缓存下的 `.agent/.clawflow/`、`.subagent/`（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 同时在 **`.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
+ * 若已同时存在（缓存下的）`.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
+ * 打开时会先将工作区根下遗留的 `.agent` / `.subagent` / `.clawflow-launcher-stash` 迁入缓存（若目标尚不存在）。
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
   opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
+  migrateWorkspaceTriadFromLegacyRootsSync(root);
   const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
   if (!preserveExistingLayout) {
     migrateLegacyWorkspaceAgentBundleSync(root);
@@ -846,28 +933,32 @@ export async function resetWorkspaceCacheDirs(
   | { ok: false; error: string }
 > {
   const root = path.resolve(String(workspaceRoot || ''));
-  const agentDir = path.join(root, '.agent');
-  const subagentDir = path.join(root, '.subagent');
+  const agentDir = workspaceAgentRootAbs(root);
+  const subagentDir = workspaceSubagentRootAbs(root);
+  const stashDir = launcherStashDirAbs(root);
+  const legacyAgent = path.join(root, '.agent');
+  const legacySub = path.join(root, '.subagent');
+  const legacyStash = path.join(root, '.clawflow-launcher-stash');
   const removed = { agent: false, subagent: false };
   try {
-    try {
-      const st = await fs.promises.stat(agentDir);
-      if (st.isDirectory()) {
-        await fs.promises.rm(agentDir, { recursive: true, force: true });
-        removed.agent = true;
+    const tryRm = async (p: string) => {
+      try {
+        const st = await fs.promises.stat(p);
+        if (st.isDirectory()) {
+          await fs.promises.rm(p, { recursive: true, force: true });
+          return true;
+        }
+      } catch {
+        /* missing */
       }
-    } catch {
-      /* missing */
-    }
-    try {
-      const st = await fs.promises.stat(subagentDir);
-      if (st.isDirectory()) {
-        await fs.promises.rm(subagentDir, { recursive: true, force: true });
-        removed.subagent = true;
-      }
-    } catch {
-      /* missing */
-    }
+      return false;
+    };
+    if (await tryRm(agentDir)) removed.agent = true;
+    if (await tryRm(subagentDir)) removed.subagent = true;
+    await tryRm(stashDir);
+    await tryRm(legacyAgent);
+    await tryRm(legacySub);
+    await tryRm(legacyStash);
     return { ok: true, removed };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

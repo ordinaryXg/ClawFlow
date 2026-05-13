@@ -6,13 +6,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolvePathInsideWorkspace } from './workspace-explorer';
 import type { WorkspaceSkillListItem } from '../../shared/workspace-skills-types';
-import { normalizeHermesSkillWorkspaceRel, WORKSPACE_AGENT_SKILLS_REL } from './workspace-agent-layout';
+import { normalizeHermesSkillWorkspaceRel, WORKSPACE_AGENT_DIR, WORKSPACE_AGENT_SKILLS_REL, workspaceAgentRootAbs } from './workspace-agent-layout';
 
 const REF_EXT = new Set(['.md', '.txt']);
 export const WORKSPACE_SKILL_VIEW_MAX_BYTES = 512 * 1024;
 
-function toPosixRel(workspaceRoot: string, absPath: string): string {
-  return path.relative(path.resolve(workspaceRoot), absPath).split(path.sep).join('/');
+function toPosixRelUnderAgentTree(workspaceRoot: string, absPath: string): string {
+  const agentRoot = path.resolve(workspaceAgentRootAbs(workspaceRoot));
+  const ap = path.resolve(absPath);
+  const rel = path.relative(agentRoot, ap);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return path.relative(path.resolve(workspaceRoot), ap).split(path.sep).join('/');
+  }
+  return path.join(WORKSPACE_AGENT_DIR, rel).split(path.sep).join('/');
 }
 
 function listSkillMdAbsolutePaths(skillsBaseAbs: string): string[] {
@@ -51,8 +57,8 @@ export function listWorkspaceHermesSkills(workspaceRoot: string): WorkspaceSkill
   const items: WorkspaceSkillListItem[] = [];
   for (const absMd of listSkillMdAbsolutePaths(skillsBaseAbs)) {
     const skillRootAbs = path.dirname(absMd);
-    const skillRootRel = toPosixRel(root, skillRootAbs);
-    const skillMdRel = toPosixRel(root, absMd);
+    const skillRootRel = toPosixRelUnderAgentTree(root, skillRootAbs);
+    const skillMdRel = toPosixRelUnderAgentTree(root, absMd);
     const name = path.basename(skillRootAbs);
     const referenceFiles: Array<{ relPath: string }> = [];
     const refDir = path.join(skillRootAbs, 'references');
@@ -64,7 +70,7 @@ export function listWorkspaceHermesSkills(workspaceRoot: string): WorkspaceSkill
           try {
             if (!fs.statSync(p).isFile()) continue;
             const ext = path.extname(n).toLowerCase();
-            if (REF_EXT.has(ext)) referenceFiles.push({ relPath: toPosixRel(root, p) });
+            if (REF_EXT.has(ext)) referenceFiles.push({ relPath: toPosixRelUnderAgentTree(root, p) });
           } catch {
             /* ignore */
           }

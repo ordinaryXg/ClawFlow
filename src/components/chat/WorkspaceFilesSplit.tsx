@@ -637,7 +637,6 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
           style={{ flex: 'none', width: treeColPx, minWidth: 0 }}
         >
           <div className="cf-rightWorkspace__colTitle">{t('chat.rightTabs.treeTitle')}</div>
-          <div className="cf-rightWorkspace__treeDropHint">{t('chat.rightTabs.treeDropHint')}</div>
           <div
             className={`cf-fileTree${fileDragOver ? ' cf-fileTree--dragOver' : ''}`}
             role="tree"
