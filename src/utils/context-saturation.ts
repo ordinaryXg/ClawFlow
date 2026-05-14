@@ -11,11 +11,13 @@ export function estimateTokensFromText(s: string | undefined | null): number {
   return Math.max(1, Math.ceil(t.length / 4));
 }
 
-/** 常见模型上下文上限（token 级近似；未知模型取保守值） */
+/** 常见模型上下文上限（token 级近似；未知模型取保守值）。与厂商实际窗口可能有偏差，仅用于 UI 饱和度与溢出参考。 */
 export function resolveContextTokenLimit(modelId: string | null | undefined): number {
   const id = String(modelId ?? '').trim();
   if (!id) return 128_000;
   const lower = id.toLowerCase();
+  // DeepSeek V4：官方 API 写明 Pro / Flash 为 1M context（须在泛化 `deepseek` 之前匹配）
+  if (lower.includes('deepseek-v4')) return 1_000_000;
   if (lower.includes('deepseek')) return 64_000;
   if (lower.includes('gpt-4o-mini')) return 128_000;
   if (lower.includes('gpt-4o')) return 128_000;

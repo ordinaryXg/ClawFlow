@@ -24,7 +24,7 @@ function loadLarkSdk(): any {
     return require('@larksuiteoapi/node-sdk');
   } catch (e: unknown) {
     console.warn(
-      '[feishu-ws] @larksuiteoapi/node-sdk 未安装或加载失败，飞书长连接已跳过。请在项目根执行: npm install @larksuiteoapi/node-sdk',
+      '[feishu-ws] @larksuiteoapi/node-sdk missing or failed to load; Feishu WS skipped. Install with: npm install @larksuiteoapi/node-sdk',
       e instanceof Error ? e.message : e,
     );
     return null;
@@ -198,9 +198,6 @@ async function handleImText(
     channel: 'user_feishu',
     meta: { source: 'feishu', senderLabel, feishuBotId: bot.id },
   });
-  console.log(
-    `[feishu-ws] inbound bot=${bot.id} workspace=${wsRoot} conversation=${conversationId} preview=${params.text.slice(0, 80)}`,
-  );
   broadcastChatConversationsDirty({ workspaceRoot: wsRoot });
 
   const { appId, appSecret } = resolveFeishuAppCredentials({ botId: bot.id });
@@ -249,10 +246,8 @@ function onSdkImMessageReceive(data: unknown, bot: FeishuBotConfig): void {
       return;
     }
     if (extracted.skipReason) {
-      console.log(`[feishu-ws] bot=${bot.id} skipped: ${extracted.skipReason}`);
       return;
     }
-    console.log(`[feishu-ws] bot=${bot.id} enqueue inbound message_id=${extracted.messageId} len=${extracted.text.length}`);
     enqueueFeishuInbound(() =>
       handleImText(
         {
@@ -286,7 +281,6 @@ export function restartFeishuEventServerFromPrefs(): void {
   const bots = getNormalizedFeishuBots(prefs);
   const toStart = bots.filter((b) => b.bridgeEnabled);
   if (toStart.length === 0) {
-    console.log('[feishu-ws] 无启用桥接的飞书机器人，长连接未启动。');
     return;
   }
 
@@ -299,7 +293,7 @@ export function restartFeishuEventServerFromPrefs(): void {
   for (const bot of toStart) {
     const { appId, appSecret } = resolveFeishuAppCredentials({ botId: bot.id });
     if (!appId || !appSecret) {
-      console.warn(`[feishu-ws] 跳过机器人「${bot.name}」(${bot.id})：缺少 App ID / Secret。`);
+      console.warn(`[feishu-ws] Skipping bot "${bot.name}" (${bot.id}): missing App ID / Secret.`);
       continue;
     }
 
@@ -307,7 +301,8 @@ export function restartFeishuEventServerFromPrefs(): void {
       appId,
       appSecret,
       domain: Lark.Domain.Feishu,
-      loggerLevel: Lark.LoggerLevel.info,
+      // Avoid SDK info logs (channel `[ws]`) with embedded CJK — Windows consoles often mis-decode UTF-8 as GBK.
+      loggerLevel: Lark.LoggerLevel.warn,
       onError: (e: unknown) => {
         console.error(`[feishu-ws] bot=${bot.id} client onError:`, e instanceof Error ? e.message : e);
       },
@@ -324,11 +319,8 @@ export function restartFeishuEventServerFromPrefs(): void {
     void (async () => {
       try {
         await client.start({ eventDispatcher: dispatcher });
-        console.log(
-          `[feishu-ws] 已连接：${bot.name}（${bot.id}）。请在开放平台将该应用订阅设为「使用长连接接收事件」。`,
-        );
       } catch (e: unknown) {
-        console.error(`[feishu-ws] WSClient.start 失败 bot=${bot.id}:`, e instanceof Error ? e.message : e);
+        console.error(`[feishu-ws] WSClient.start failed bot=${bot.id}:`, e instanceof Error ? e.message : e);
         try {
           client.close({ force: true });
         } catch {
@@ -340,6 +332,6 @@ export function restartFeishuEventServerFromPrefs(): void {
   }
 
   if (scheduled === 0) {
-    console.warn('[feishu-ws] 已勾选桥接的机器人均未配置有效凭证，长连接未建立。');
+    console.warn('[feishu-ws] Bridge enabled for bots but none have valid credentials; long connection not started.');
   }
 }

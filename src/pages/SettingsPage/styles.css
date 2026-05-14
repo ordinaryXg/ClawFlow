@@ -1,7 +1,3 @@
-.cf-settingsPage__actions {
-  align-items: center;
-}
-
 .cf-settingsSplit {
   display: flex;
   flex: 1;
@@ -50,7 +46,7 @@
 
 .cf-settingsDetail__head h2 {
   font-size: 15px;
-  margin: 0 0 6px;
+  margin: 0 0 16px;
 }
 
 .cf-settingsDetail__head p {
@@ -80,6 +76,23 @@
   opacity: 0.72;
 }
 
+.cf-messagingFeishuBotGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cf-messagingFeishuBotCard {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .cf-messagingFeishuBotGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .cf-settingsSplit {
     flex-direction: column;
@@ -101,16 +114,6 @@
   .cf-settingsNav__btn:nth-child(even) {
     border-right: none;
   }
-}
-
-.cf-settingsPage__globalStripe {
-  margin-top: 12px;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-  border: none;
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
 
 .cf-settingsPage__grid {

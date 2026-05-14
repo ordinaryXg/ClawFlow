@@ -6,6 +6,7 @@
   "main": ".webpack/main",
   "private": true,
   "scripts": {
+    "prestart": "node -e \"if(process.platform==='win32'){try{require('child_process').execSync('chcp 65001',{stdio:'ignore',shell:true})}catch(e){}}\"",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",

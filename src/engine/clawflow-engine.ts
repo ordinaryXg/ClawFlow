@@ -25,7 +25,7 @@ import type {
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
-import { buildRoleAgentSystemContent } from './role-agent-context';
+import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
 import {
   resolveWebSearchConfig,
   sanitizeWebSearchForPublic,
@@ -62,7 +62,7 @@ export type InteractionMode = 'ask' | 'plan' | 'multitask';
 export interface ClawFlowEngineConfig {
   workspaceRoot?: string;
   verbose?: boolean;
-  /** Brave API、SearXNG、DuckDuckGo HTML；用户偏好见 userData cf.web-search-prefs.json */
+  /** Bocha / Brave / SearXNG / DuckDuckGo HTML；用户偏好见 userData cf.web-search-prefs.json */
   webSearch?: ClawFlowWebSearchUserConfig;
 }
 
@@ -157,6 +157,27 @@ export interface ClawFlowEngine {
     channel?: string;
     meta?: Record<string, unknown>;
   }): Promise<void>;
+
+  /**
+   * 按与下一发 sendMessage 相同的规则组装 messages，度量 UTF-8 与「当量/预算」用于溢出判断（非账单）。
+   */
+  estimateNextRequestContext(params: {
+    workspaceRoot: string;
+    conversationId: string;
+    pendingUserText: string;
+    modelId?: string | null;
+  }): Promise<
+    | {
+        ok: true;
+        utf8Bytes: number;
+        loadUnits: number;
+        budgetUnits: number;
+        ratio: number;
+        isOverflow: boolean;
+        isNearOverflow: boolean;
+      }
+    | { ok: false; error: string }
+  >;
 }
 
 class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
@@ -210,7 +231,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     this.webSearchBootstrap = { ...(cfg.webSearch ?? {}) };
     this.config = {
       workspaceRoot,
-      verbose: cfg.verbose ?? true,
+      verbose: cfg.verbose ?? false,
       webSearch: resolveWebSearchConfig(
         mergeWebSearchBootstrapWithFile(this.webSearchBootstrap, readWebSearchPrefsFile()),
         process.env
@@ -304,6 +325,43 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     await this.appendMessages(params.conversationId, [msg], store);
   }
 
+  async estimateNextRequestContext(params: {
+    workspaceRoot: string;
+    conversationId: string;
+    pendingUserText: string;
+    modelId?: string | null;
+  }): Promise<
+    | {
+        ok: true;
+        utf8Bytes: number;
+        loadUnits: number;
+        budgetUnits: number;
+        ratio: number;
+        isOverflow: boolean;
+        isNearOverflow: boolean;
+      }
+    | { ok: false; error: string }
+  > {
+    const effRoot = path.resolve(String(params.workspaceRoot ?? '').trim());
+    if (!effRoot) return { ok: false, error: 'missing_workspace' };
+    const convId = String(params.conversationId ?? '').trim();
+    if (!convId) return { ok: false, error: 'missing_conversation' };
+    const store = this.getSessionStore(effRoot);
+    try {
+      const convs = await store.readAll();
+      const conv = convs.find((c) => c.id === convId) ?? null;
+      const messages = await composeNextRequestChatMessages({
+        workspaceRoot: effRoot,
+        conversation: conv,
+        pendingUserText: params.pendingUserText,
+      });
+      const s = computeNextRequestContextStats(messages, params.modelId ?? null);
+      return { ok: true, ...s };
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   async upsertConversation(conversation: StoredConversation, workspaceRoot?: string): Promise<void> {
     const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
     await store.upsertConversation(conversation);
@@ -322,43 +380,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     store: SessionStore,
     roleWorkspaceRoot: string
   ): Promise<ChatMessage[]> {
-    const roleSystem = await buildRoleAgentSystemContent(roleWorkspaceRoot);
-
     const convsBefore = await store.readAll();
     const conv = convsBefore.find((c) => c.id === conversationId) ?? null;
-    const tail: ChatMessage[] = (conv?.messages ?? [])
-      .filter((m) => {
-        if (!m) return false;
-        if (m.role === 'user' || m.role === 'assistant') return true;
-        if (m.role !== 'tool') return false;
-        // DeepSeek 对 messages schema 较严格：tool_call_id 仅允许出现在 role="tool"。
-        // 工具 UI 生命周期不再重复落盘多段；仅保留 status=result（及无 status）的 tool 回灌模型，
-        // 避免污染上下文并可能触发 provider 的严格校验。
-        // DeepSeek 要求 role="tool" 必须带 tool_call_id；否则会 400 missing field tool_call_id
-        const toolCallId = typeof (m as any)?.tool_call_id === 'string' ? String((m as any).tool_call_id).trim() : '';
-        if (!toolCallId) return false;
-
-        const meta = (m as any)?.meta;
-        const status = typeof meta?.status === 'string' ? meta.status : '';
-        return status === 'result' || status === 'error' || !status;
-      })
-      .map((m) => ({
-        role: m.role as ChatMessage['role'],
-        content: String(m.content ?? ''),
-        ...(typeof m.reasoning_content === 'string' ? { reasoning_content: m.reasoning_content } : {}),
-        ...(Array.isArray(m.tool_calls) ? { tool_calls: m.tool_calls as ChatMessage['tool_calls'] } : {}),
-        ...(m.role === 'tool' && typeof (m as any).tool_call_id === 'string' ? { tool_call_id: (m as any).tool_call_id } : {}),
-      }));
-
-    const last = tail[tail.length - 1];
-    const ut = String(userText ?? '');
-    const alreadyHasUserTurn = last?.role === 'user' && String(last.content ?? '') === ut;
-    if (!alreadyHasUserTurn) {
-      tail.push({ role: 'user', content: ut });
-    }
-
-    // 每次请求固定携带 `.agent/.roleAgent/` 下 Markdown，作为 system（不写入会话持久化）
-    return [{ role: 'system', content: roleSystem }, ...tail];
+    return composeNextRequestChatMessages({
+      workspaceRoot: roleWorkspaceRoot,
+      conversation: conv,
+      pendingUserText: userText,
+    });
   }
 
   private async appendAssistantMessage(
@@ -1098,6 +1126,7 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     return {
       ...sanitizeWebSearchForPublic(resolved),
       braveApiKeySavedInFile: Boolean(file && Object.prototype.hasOwnProperty.call(file, 'braveApiKey')),
+      bochaApiKeySavedInFile: Boolean(file && Object.prototype.hasOwnProperty.call(file, 'bochaApiKey')),
       searxngApiKeySavedInFile: Boolean(file && Object.prototype.hasOwnProperty.call(file, 'searxngApiKey')),
     };
   });
@@ -1107,8 +1136,19 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     const cur = readWebSearchPrefsFile() ?? {};
     const next: WebSearchPrefsStored = { ...cur };
     if (typeof p.enabled === 'boolean') next.enabled = p.enabled;
-    if (p.provider === 'auto' || p.provider === 'brave' || p.provider === 'duckduckgo' || p.provider === 'searxng') {
+    if (
+      p.provider === 'auto' ||
+      p.provider === 'bocha' ||
+      p.provider === 'brave' ||
+      p.provider === 'duckduckgo' ||
+      p.provider === 'searxng'
+    ) {
       next.provider = p.provider;
+    }
+    if (typeof p.bochaBaseUrl === 'string') {
+      const bt = p.bochaBaseUrl.trim();
+      if (bt) next.bochaBaseUrl = bt;
+      else delete next.bochaBaseUrl;
     }
     if (typeof p.braveBaseUrl === 'string') {
       const bt = p.braveBaseUrl.trim();
@@ -1119,6 +1159,11 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       const st = p.searxngBaseUrl.trim();
       if (st) next.searxngBaseUrl = st;
       else delete next.searxngBaseUrl;
+    }
+    if (typeof p.bochaApiKey === 'string' && p.bochaApiKey.trim()) {
+      next.bochaApiKey = p.bochaApiKey.trim();
+    } else if (p.clearBochaApiKey === true) {
+      delete next.bochaApiKey;
     }
     if (typeof p.braveApiKey === 'string' && p.braveApiKey.trim()) {
       next.braveApiKey = p.braveApiKey.trim();
@@ -1147,6 +1192,26 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     const conversations = await getGlobalClawFlowEngine().listConversations(root);
     return { conversations };
   });
+  ipcMain.handle(
+    'engine:estimateNextRequestContext',
+    async (
+      event,
+      payload: { conversationId?: string; pendingUserText?: string; modelId?: string | null } | undefined
+    ) => {
+      const root = resolveWorkspaceRootForWebContents(event.sender);
+      const p = payload && typeof payload === 'object' ? payload : {};
+      const conversationId = String(p.conversationId ?? '').trim();
+      const pendingUserText = typeof p.pendingUserText === 'string' ? p.pendingUserText : '';
+      const modelId = p.modelId === null || typeof p.modelId === 'string' ? p.modelId : undefined;
+      if (!conversationId) return { ok: false as const, error: 'missing_conversation' };
+      return getGlobalClawFlowEngine().estimateNextRequestContext({
+        workspaceRoot: root,
+        conversationId,
+        pendingUserText,
+        modelId,
+      });
+    }
+  );
   ipcMain.handle('engine:getChatModels', async () => getGlobalClawFlowEngine().listChatModelCatalog());
   ipcMain.handle('engine:upsertConversation', async (event, conversation: StoredConversation) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);

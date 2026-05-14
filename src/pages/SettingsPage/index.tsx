@@ -32,14 +32,14 @@ const NAV_LABEL_KEYS: Record<SettingsSectionId, string> = {
   help: 'settings.navHelp',
 };
 
-const SECTION_META: Record<SettingsSectionId, { titleKey: string; hintKey: string }> = {
-  account: { titleKey: 'settings.sectionAccountTitle', hintKey: 'settings.sectionAccountHint' },
-  system: { titleKey: 'settings.sectionSystemTitle', hintKey: 'settings.sectionSystemHint' },
-  memory: { titleKey: 'settings.sectionMemoryTitle', hintKey: 'settings.sectionMemoryHint' },
-  models: { titleKey: 'settings.sectionModelsTitle', hintKey: 'settings.sectionModelsHint' },
-  integrations: { titleKey: 'settings.sectionIntegrationsTitle', hintKey: 'settings.sectionIntegrationsHint' },
-  data: { titleKey: 'settings.sectionDataTitle', hintKey: 'settings.sectionDataHint' },
-  help: { titleKey: 'settings.sectionHelpTitle', hintKey: 'settings.sectionHelpHint' },
+const SECTION_META: Record<SettingsSectionId, { titleKey: string }> = {
+  account: { titleKey: 'settings.sectionAccountTitle' },
+  system: { titleKey: 'settings.sectionSystemTitle' },
+  memory: { titleKey: 'settings.sectionMemoryTitle' },
+  models: { titleKey: 'settings.sectionModelsTitle' },
+  integrations: { titleKey: 'settings.sectionIntegrationsTitle' },
+  data: { titleKey: 'settings.sectionDataTitle' },
+  help: { titleKey: 'settings.sectionHelpTitle' },
 };
 
 const SettingsPage: FC = () => {
@@ -63,12 +63,10 @@ const SettingsPage: FC = () => {
   const {
     theme,
     language,
-    autoStartGateway,
     logLevel,
     closeButtonAction,
     uiFontSize,
     updateSettings,
-    resetSettings,
   } = useSettingsStore();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
@@ -86,18 +84,23 @@ const SettingsPage: FC = () => {
   } | null>(null);
   const [appCacheBusy, setAppCacheBusy] = useState(false);
 
-  type WebSearchProviderUi = 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+  type WebSearchProviderUi = 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
   const [wsEnabled, setWsEnabled] = useState(true);
-  const [wsProvider, setWsProvider] = useState<WebSearchProviderUi>('auto');
+  const [wsProvider, setWsProvider] = useState<WebSearchProviderUi>('searxng');
+  const [wsBochaBase, setWsBochaBase] = useState('');
   const [wsBraveBase, setWsBraveBase] = useState('');
   const [wsSearxBase, setWsSearxBase] = useState('');
   const [wsTimeout, setWsTimeout] = useState(25);
+  const [wsBochaKeyDraft, setWsBochaKeyDraft] = useState('');
   const [wsBraveKeyDraft, setWsBraveKeyDraft] = useState('');
   const [wsSearxKeyDraft, setWsSearxKeyDraft] = useState('');
+  const [wsBochaSavedInFile, setWsBochaSavedInFile] = useState(false);
   const [wsBraveSavedInFile, setWsBraveSavedInFile] = useState(false);
   const [wsSearxKeySavedInFile, setWsSearxKeySavedInFile] = useState(false);
+  const [wsBochaConfigured, setWsBochaConfigured] = useState(false);
   const [wsBraveConfigured, setWsBraveConfigured] = useState(false);
   const [wsSearxKeyConfigured, setWsSearxKeyConfigured] = useState(false);
+  const [wsClearBochaOnSave, setWsClearBochaOnSave] = useState(false);
   const [wsClearBraveOnSave, setWsClearBraveOnSave] = useState(false);
   const [wsClearSearxOnSave, setWsClearSearxOnSave] = useState(false);
 
@@ -319,15 +322,20 @@ const SettingsPage: FC = () => {
         if (s) {
           setWsEnabled(s.enabled);
           setWsProvider(s.provider);
+          setWsBochaBase(s.bochaBaseUrl ?? '');
           setWsBraveBase(s.braveBaseUrl ?? '');
           setWsSearxBase(s.searxngBaseUrl ?? '');
           setWsTimeout(s.timeoutSeconds ?? 25);
+          setWsBochaSavedInFile(Boolean(s.bochaApiKeySavedInFile));
           setWsBraveSavedInFile(s.braveApiKeySavedInFile);
           setWsSearxKeySavedInFile(Boolean(s.searxngApiKeySavedInFile));
+          setWsBochaConfigured(s.bochaApiKeyConfigured);
           setWsBraveConfigured(s.braveApiKeyConfigured);
           setWsSearxKeyConfigured(s.searxngApiKeyConfigured);
+          setWsBochaKeyDraft('');
           setWsBraveKeyDraft('');
           setWsSearxKeyDraft('');
+          setWsClearBochaOnSave(false);
           setWsClearBraveOnSave(false);
           setWsClearSearxOnSave(false);
         }
@@ -347,58 +355,41 @@ const SettingsPage: FC = () => {
     })();
   }, [activeSection]);
 
-  const onSave = async () => {
-    updateSettings({
-      theme,
-      language,
-      autoStartGateway,
-      logLevel,
-      closeButtonAction,
-      uiFontSize,
-    });
+  const onSaveWebSearchSettings = async () => {
     try {
       await window.electronAPI?.engineSaveWebSearchSettings?.({
         enabled: wsEnabled,
         provider: wsProvider,
+        bochaBaseUrl: wsBochaBase,
         braveBaseUrl: wsBraveBase,
         searxngBaseUrl: wsSearxBase,
         timeoutSeconds: wsTimeout,
+        clearBochaApiKey: wsClearBochaOnSave,
+        ...(wsBochaKeyDraft.trim() ? { bochaApiKey: wsBochaKeyDraft.trim() } : {}),
         clearBraveApiKey: wsClearBraveOnSave,
         ...(wsBraveKeyDraft.trim() ? { braveApiKey: wsBraveKeyDraft.trim() } : {}),
         clearSearxngApiKey: wsClearSearxOnSave,
         ...(wsSearxKeyDraft.trim() ? { searxngApiKey: wsSearxKeyDraft.trim() } : {}),
       });
+      setWsClearBochaOnSave(false);
       setWsClearBraveOnSave(false);
       setWsClearSearxOnSave(false);
+      setWsBochaKeyDraft('');
       setWsBraveKeyDraft('');
       setWsSearxKeyDraft('');
       const s2 = await window.electronAPI?.engineGetWebSearchSettings?.();
       if (s2) {
+        setWsBochaSavedInFile(Boolean(s2.bochaApiKeySavedInFile));
         setWsBraveSavedInFile(s2.braveApiKeySavedInFile);
         setWsSearxKeySavedInFile(Boolean(s2.searxngApiKeySavedInFile));
+        setWsBochaConfigured(s2.bochaApiKeyConfigured);
         setWsBraveConfigured(s2.braveApiKeyConfigured);
         setWsSearxKeyConfigured(s2.searxngApiKeyConfigured);
       }
+      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.webSearchSavedBody'));
     } catch (e: any) {
       (window as any).__cf_toast?.error?.(t('settings.webSearchSaveFail'), e?.message || t('common.sampleOpFailBody'));
-      return;
     }
-    try {
-      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.savedBody'));
-    } catch {
-      (window as any).__cf_toast?.error?.(t('settings.savePartialTitle'), t('settings.savePartialBody'));
-    }
-  };
-
-  const onReset = () => {
-    if (!window.confirm(t('settings.resetConfirm'))) return;
-    resetSettings();
-    const st = useSettingsStore.getState();
-    void i18n.changeLanguage(st.language);
-    document.documentElement.dataset.theme = st.theme;
-    document.documentElement.dataset.cfFont = st.uiFontSize;
-    void window.electronAPI?.syncMainUiPrefs?.({ closeButtonAction: st.closeButtonAction });
-    (window as any).__cf_toast?.success?.(t('settings.resetOkTitle'), t('settings.resetOkBody'));
   };
 
   useEffect(() => {
@@ -416,13 +407,6 @@ const SettingsPage: FC = () => {
       }
     })();
   }, [activeWorkspacePath]);
-
-  const refreshSettingsData = () => {
-    void reloadBuiltinCatalog();
-    void fetchStatus();
-    void reloadConnectorsCount();
-    (window as any).__cf_toast?.success?.(t('common.toastRefreshOkTitle'), t('common.toastRefreshOkBody'));
-  };
 
   const onPickWorkspaceFolder = () => {
     setCreateModalOpen(true);
@@ -588,9 +572,10 @@ const SettingsPage: FC = () => {
   const webSearchProviderSelectOptions = useMemo(
     () => [
       { value: 'auto', label: t('settings.webSearchProvider_auto'), hint: t('settings.webSearchHint_auto') },
-      { value: 'brave', label: t('settings.webSearchProvider_brave'), hint: t('settings.webSearchHint_brave') },
       { value: 'searxng', label: t('settings.webSearchProvider_searxng'), hint: t('settings.webSearchHint_searxng') },
+      { value: 'bocha', label: t('settings.webSearchProvider_bocha'), hint: t('settings.webSearchHint_bocha') },
       { value: 'duckduckgo', label: t('settings.webSearchProvider_ddg'), hint: t('settings.webSearchHint_ddg') },
+      { value: 'brave', label: t('settings.webSearchProvider_brave'), hint: t('settings.webSearchHint_brave') },
     ],
     [t],
   );
@@ -1430,6 +1415,17 @@ const SettingsPage: FC = () => {
             </div>
           </div>
           <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.webSearchBochaBase')}
+          </div>
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={wsBochaBase}
+            onChange={(e) => setWsBochaBase(e.target.value)}
+            placeholder={t('settings.webSearchBochaBasePh')}
+            autoComplete="off"
+          />
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.webSearchBraveBase')}
           </div>
           <input
@@ -1471,6 +1467,44 @@ const SettingsPage: FC = () => {
               }}
             />
           </div>
+          <div className="cf-sub" style={{ marginBottom: 6 }}>
+            {t('settings.webSearchBochaKey')}
+          </div>
+          <input
+            className="cf-input"
+            type="password"
+            style={{ width: '100%', marginBottom: 6 }}
+            value={wsBochaKeyDraft}
+            onChange={(e) => setWsBochaKeyDraft(e.target.value)}
+            placeholder={t('settings.webSearchBochaKeyPh')}
+            autoComplete="new-password"
+          />
+          <div className="cf-help" style={{ marginBottom: 8 }}>
+            {wsBochaConfigured
+              ? t('settings.webSearchKeyStatus_active')
+              : t('settings.webSearchKeyStatus_missing')}
+            {wsBochaSavedInFile ? ` · ${t('settings.webSearchKeyStatus_savedFile')}` : ''}
+          </div>
+          {wsBochaSavedInFile ? (
+            <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+              {wsClearBochaOnSave ? (
+                <>
+                  <span className="cf-help" style={{ color: 'var(--warning, #c9a227)' }}>
+                    {t('settings.webSearchKeyClearPending')}
+                  </span>
+                  <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setWsClearBochaOnSave(false)}>
+                    {t('settings.webSearchKeyClearCancel')}
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => setWsClearBochaOnSave(true)}>
+                  {t('settings.webSearchBochaKeyClear')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ height: 4, marginBottom: 10 }} />
+          )}
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.webSearchBraveKey')}
           </div>
@@ -1545,7 +1579,12 @@ const SettingsPage: FC = () => {
               )}
             </div>
           ) : null}
-          <div className="cf-help">{t('settings.webSearchSaveFooter')}</div>
+          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'center' }}>
+            <button type="button" className="cf-btn cf-btnPrimary cf-btnSmall" onClick={() => void onSaveWebSearchSettings()}>
+              {t('settings.webSearchSaveButton')}
+            </button>
+            <span className="cf-help">{t('settings.webSearchSaveHint')}</span>
+          </div>
         </div>
 
         <div className="cf-card">
@@ -1676,12 +1715,13 @@ const SettingsPage: FC = () => {
             {t('settings.messagingFeishuSharedTestMsgHelp')}
           </div>
 
-          {feishuBots.map((r, idx) => (
+          <div className="cf-messagingFeishuBotGrid">
+            {feishuBots.map((r, idx) => (
             <div
               key={r.id}
+              className="cf-messagingFeishuBotCard"
               style={{
-                marginBottom: 16,
-                padding: 12,
+                padding: 10,
                 borderRadius: 8,
                 border: '1px solid var(--border, rgba(127, 127, 127, 0.35))',
               }}
@@ -1869,7 +1909,8 @@ const SettingsPage: FC = () => {
                 </button>
               </div>
             </div>
-          ))}
+            ))}
+          </div>
 
           <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
             <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={addFeishuBot}>
@@ -1954,25 +1995,7 @@ const SettingsPage: FC = () => {
       <div className="cf-topbar">
         <div className="cf-pageTitle">
           <h2>{t('settings.title')}</h2>
-          <p>{t('settings.subtitleSplit')}</p>
         </div>
-        <div className="cf-row cf-settingsPage__actions">
-          <button className="cf-btn cf-btnGhost" type="button" onClick={() => refreshSettingsData()}>
-            {t('common.refresh')}
-          </button>
-          <button className="cf-btn cf-btnGhost" type="button" onClick={onReset}>
-            {t('settings.reset')}
-          </button>
-          <button className="cf-btn cf-btnPrimary" type="button" onClick={() => void onSave()}>
-            {t('settings.save')}
-          </button>
-        </div>
-      </div>
-
-      {null}
-
-      <div className="cf-settingsPage__globalStripe" role="note">
-        {t('settings.globalScopeStripe')}
       </div>
 
       <div className="cf-settingsSplit" role="presentation">
@@ -1991,7 +2014,6 @@ const SettingsPage: FC = () => {
         <div className="cf-settingsDetail">
           <header className="cf-settingsDetail__head">
             <h2>{t(sectionHead.titleKey)}</h2>
-            <p>{t(sectionHead.hintKey)}</p>
           </header>
           <div className="cf-settingsDetail__panels">{detailPanels}</div>
         </div>

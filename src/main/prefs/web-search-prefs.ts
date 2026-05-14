@@ -11,7 +11,9 @@ const FILENAME = 'cf.web-search-prefs.json';
 
 export type WebSearchPrefsStored = {
   enabled?: boolean;
-  provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+  provider?: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+  bochaApiKey?: string;
+  bochaBaseUrl?: string;
   braveApiKey?: string;
   braveBaseUrl?: string;
   searxngBaseUrl?: string;
@@ -47,8 +49,20 @@ export function mergeWebSearchBootstrapWithFile(
   const out: ClawFlowWebSearchUserConfig = { ...(bootstrap ?? {}) };
   if (!file) return out;
   if (typeof file.enabled === 'boolean') out.enabled = file.enabled;
-  if (file.provider === 'auto' || file.provider === 'brave' || file.provider === 'duckduckgo' || file.provider === 'searxng') {
+  if (
+    file.provider === 'auto' ||
+    file.provider === 'bocha' ||
+    file.provider === 'brave' ||
+    file.provider === 'duckduckgo' ||
+    file.provider === 'searxng'
+  ) {
     out.provider = file.provider;
+  }
+  if (Object.prototype.hasOwnProperty.call(file, 'bochaApiKey') && typeof file.bochaApiKey === 'string') {
+    out.bochaApiKey = file.bochaApiKey;
+  }
+  if (typeof file.bochaBaseUrl === 'string' && file.bochaBaseUrl.trim()) {
+    out.bochaBaseUrl = file.bochaBaseUrl.trim();
   }
   if (Object.prototype.hasOwnProperty.call(file, 'braveApiKey') && typeof file.braveApiKey === 'string') {
     out.braveApiKey = file.braveApiKey;

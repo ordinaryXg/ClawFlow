@@ -350,8 +350,6 @@ async function ensureGatewayWs(): Promise<WebSocket> {
       if (!payload || typeof payload !== 'object') return;
 
       if (payload.type === 'gateway:log') {
-        // eslint-disable-next-line no-console
-        console.debug('[gateway]', payload.entry?.level, payload.entry?.msg);
         return;
       }
 
@@ -635,12 +633,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
           })
         );
 
-        const ipcMs = log?.ipcMs ?? Math.round(performance.now() - t0);
-        // eslint-disable-next-line no-console
-        console.log(
-          `[chat] sendMessage engine=builtin ${log?.label ? `${log.label} ` : ''}ipc_ms=${ipcMs} chars=${fullText.length} mode=${interactionMode}`
-        );
-
         if (todoReceiptTriggerId) {
           void window.electronAPI?.todoTriggersSetAiReceipt?.({
             triggerId: todoReceiptTriggerId,
@@ -684,16 +676,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
           policyOverrides = null;
         }
         const { actual: actualMode, autoPick } = resolveEnginePlanMultitask(interactionMode, content);
-        const sendMeta = {
-          conversationId: sessionId,
-          mode: actualMode,
-          intent,
-          ...(autoPick ? { autoPick: autoPick } : {}),
-          modelId: modelId ?? null,
-          textLen: content.length,
-        };
-        // eslint-disable-next-line no-console
-        console.debug('[chat-debug] send(ws)', sendMeta);
         const requestId = uuidv4();
         const ws = await ensureGatewayWs();
 
@@ -795,15 +777,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
       cancelAssistantReveal();
 
       set({ streamingActivity: '', streamingThinking: null });
-      // eslint-disable-next-line no-console
-      console.debug('[chat-debug] send(reveal)', {
-        conversationId: sessionId,
-        mode: interactionMode,
-        modelId: modelId ?? null,
-        textLen: content.length,
-        replyLen: replyText.length,
-      });
-
       let raf = 0;
       let stopped = false;
       const cleanup = () => {

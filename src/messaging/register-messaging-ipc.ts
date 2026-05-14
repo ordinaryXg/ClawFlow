@@ -207,7 +207,7 @@ export function registerMessagingIPC(): void {
       const ctx = { receiveIdType, receiveId, textLength: text.length, botId: bot?.id };
       const { error, detail } = feishuIpcFailure(e, 'sendFeishuTestMessage');
       const detailWithCtx = `${detail}\n\n${JSON.stringify({ requestContext: ctx }, null, 2)}`;
-      console.error('[messaging:sendFeishuTestMessage] request context', ctx);
+      console.error('[messaging:sendFeishuTestMessage]', error);
       return { ok: false as const, error, detail: detailWithCtx };
     }
   });

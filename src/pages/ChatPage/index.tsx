@@ -21,6 +21,7 @@ import {
   estimateMessagesContextTokens,
   resolveContextTokenLimit,
 } from '../../utils/context-saturation';
+import { formatUtf8Bytes } from '../../utils/format-bytes';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -62,6 +63,16 @@ const ChatPage: FC = () => {
 
   const [modelRows, setModelRows] = useState<Array<{ id: string; label: string; available: boolean }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
+  const [nextCtx, setNextCtx] = useState<{
+    utf8Bytes: number;
+    loadUnits: number;
+    budgetUnits: number;
+    ratio: number;
+    isOverflow: boolean;
+    isNearOverflow: boolean;
+  } | null>(null);
+  const [nextCtxLoading, setNextCtxLoading] = useState(false);
+  const [nextCtxErr, setNextCtxErr] = useState<string | null>(null);
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const hubBranch = useWorkspaceHubStore((s) => s.getHubBranch(activeWorkspacePath));
   const setWorkspaceHubBranch = useWorkspaceHubStore((s) => s.setHubBranch);
@@ -226,6 +237,86 @@ const ChatPage: FC = () => {
   const contextSaturation = useMemo(() => computeContextSaturation(messages, modelId), [messages, modelId]);
   const contextUsedApprox = useMemo(() => estimateMessagesContextTokens(messages), [messages]);
   const contextLimitApprox = useMemo(() => resolveContextTokenLimit(modelId), [modelId]);
+
+  /** 仅在「非生成中」对消息列表做指纹：生成中不随流式/中间态触发主进程估算，结束后一次性更新。 */
+  const committedMessagesDigest = useMemo(() => {
+    if (isLoading) return '__loading__';
+    return messages
+      .map((m) => `${m.id}:${String(m.content ?? '').length}:${String(m.reasoningContent ?? '').length}`)
+      .join('\u001f');
+  }, [messages, isLoading]);
+
+  useEffect(() => {
+    const api = window.electronAPI?.engineEstimateNextRequestContext;
+    if (!api) {
+      setNextCtx(null);
+      setNextCtxLoading(false);
+      setNextCtxErr(null);
+      return;
+    }
+    if (!activeConversationId?.trim() || !activeWorkspacePath?.trim()) {
+      setNextCtx(null);
+      setNextCtxLoading(false);
+      setNextCtxErr(null);
+      return;
+    }
+    if (isLoading) {
+      setNextCtxLoading(false);
+      setNextCtxErr(null);
+      return;
+    }
+    let cancelled = false;
+    setNextCtxLoading(true);
+    setNextCtxErr(null);
+    void (async () => {
+      try {
+        const r = await api({
+          conversationId: activeConversationId,
+          pendingUserText: '',
+          modelId: modelId ?? null,
+        });
+        if (cancelled) return;
+        if (r.ok) {
+          setNextCtx({
+            utf8Bytes: r.utf8Bytes,
+            loadUnits: r.loadUnits,
+            budgetUnits: r.budgetUnits,
+            ratio: r.ratio,
+            isOverflow: r.isOverflow,
+            isNearOverflow: r.isNearOverflow,
+          });
+        } else {
+          setNextCtx(null);
+          setNextCtxErr(r.error);
+        }
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setNextCtx(null);
+          setNextCtxErr(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        if (!cancelled) setNextCtxLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId, activeWorkspacePath, modelId, committedMessagesDigest, isLoading]);
+
+  const contextMeterRatio = useMemo(() => {
+    if (nextCtx && nextCtx.budgetUnits > 0) return Math.min(1, nextCtx.loadUnits / nextCtx.budgetUnits);
+    return contextSaturation;
+  }, [nextCtx, contextSaturation]);
+
+  const contextMeterTitle = useMemo(() => {
+    if (!nextCtx) return undefined;
+    return t('chat.contextMeterTitleNext', {
+      pct: Math.min(999, Math.round((nextCtx.loadUnits / nextCtx.budgetUnits) * 100)),
+      load: nextCtx.loadUnits.toLocaleString(),
+      budget: nextCtx.budgetUnits.toLocaleString(),
+      bytes: formatUtf8Bytes(nextCtx.utf8Bytes),
+    });
+  }, [nextCtx, t]);
 
   const showApiKeyBar = modelRows.length > 0 && !modelRows.some((m) => m.available);
 
@@ -407,6 +498,11 @@ const ChatPage: FC = () => {
             contextSaturation={contextSaturation}
             contextUsedApprox={contextUsedApprox}
             contextLimitApprox={contextLimitApprox}
+            contextMeterRatio={contextMeterRatio}
+            contextMeterTitle={contextMeterTitle}
+            nextContextPayload={nextCtx}
+            nextContextLoading={nextCtxLoading}
+            nextContextError={nextCtxErr}
             showStarterPrompts={
               messages.length === 0 && streamingActivity === null && !isLoading && !toolApprovalForActive
             }

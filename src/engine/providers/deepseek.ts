@@ -48,6 +48,7 @@ function sanitizeToolsForDeepSeekRequest(tools: ToolSchema[] | undefined): ToolS
 }
 
 function logDeepSeekOutgoing(url: string, label: string, body: Record<string, unknown>): void {
+  if (process.env.CLAWFLOW_DEBUG_HTTP !== '1') return;
   try {
     // eslint-disable-next-line no-console
     console.log(`[DeepSeek] ${label} POST ${url}`);

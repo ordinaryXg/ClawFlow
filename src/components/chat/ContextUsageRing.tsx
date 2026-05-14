@@ -11,20 +11,24 @@ interface Props {
   ratio: number;
   usedTokensApprox?: number;
   limitTokensApprox?: number;
+  /** 若提供则覆盖默认 tooltip（例如主进程下一请求当量） */
+  titleOverride?: string;
 }
 
-const ContextUsageRing: FC<Props> = ({ ratio, usedTokensApprox, limitTokensApprox }) => {
+const ContextUsageRing: FC<Props> = ({ ratio, usedTokensApprox, limitTokensApprox, titleOverride }) => {
   const { t } = useTranslation();
   const gid = useId();
   const clamped = Math.min(1, Math.max(0, ratio));
   const dash = useMemo(() => C * (1 - clamped), [clamped]);
   const tone =
     clamped >= 0.92 ? 'var(--danger, #f85149)' : clamped >= 0.75 ? 'var(--warn, #d29922)' : 'var(--accent, #3fb950)';
-  const title = t('chat.contextRingTitle', {
-    pct: Math.round(clamped * 100),
-    used: usedTokensApprox != null ? `~${usedTokensApprox.toLocaleString()}` : '—',
-    limit: limitTokensApprox != null ? limitTokensApprox.toLocaleString() : '—',
-  });
+  const title =
+    titleOverride?.trim() ||
+    t('chat.contextRingTitle', {
+      pct: Math.round(clamped * 100),
+      used: usedTokensApprox != null ? `~${usedTokensApprox.toLocaleString()}` : '—',
+      limit: limitTokensApprox != null ? limitTokensApprox.toLocaleString() : '—',
+    });
 
   return (
     <div className="cf-contextRing" title={title} aria-label={title}>

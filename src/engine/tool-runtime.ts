@@ -479,7 +479,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'web_search',
         description:
-          'Search the web. Returns provider-normalized results for current information lookup.',
+          'Search the web. Returns provider-normalized results (Bocha / Brave / SearXNG / DuckDuckGo per settings).',
         strict: true,
         parameters: {
           type: 'object',

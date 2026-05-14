@@ -2,6 +2,7 @@
  * Electron 主进程入口（Webpack `main` entry）。
  * 职责与阅读顺序见仓库根目录 `AGENTS.md`；应用菜单与语言见 `src/main/application-menu.ts`。
  */
+import './main/win-console-utf8';
 import { app, BrowserWindow, ipcMain, shell, clipboard, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -1225,21 +1226,24 @@ app.whenReady().then(async () => {
   } catch (e: unknown) {
     console.warn('[todoTriggers] initial schedule failed:', e instanceof Error ? e.message : e);
   }
-  registerOpenClawIPC();
-  const webSearchProvider = String(process.env.CLAWFLOW_WEB_SEARCH_PROVIDER ?? 'auto').toLowerCase();
+  registerOpenClawIPC({ verbose: false });
+  const webSearchProvider = String(process.env.CLAWFLOW_WEB_SEARCH_PROVIDER ?? 'searxng').toLowerCase();
   registerClawFlowIPC({
     workspaceRoot: active,
-    verbose: true,
+    verbose: false,
     webSearch: {
       enabled: process.env.CLAWFLOW_WEB_SEARCH_DISABLED === '1' ? false : undefined,
       provider:
         webSearchProvider === 'brave' ||
         webSearchProvider === 'duckduckgo' ||
-        webSearchProvider === 'searxng'
+        webSearchProvider === 'searxng' ||
+        webSearchProvider === 'bocha'
           ? webSearchProvider
           : 'auto',
       braveApiKey: process.env.BRAVE_API_KEY,
       braveBaseUrl: process.env.BRAVE_BASE_URL,
+      bochaApiKey: process.env.BOCHA_API_KEY,
+      bochaBaseUrl: process.env.BOCHA_BASE_URL,
       searxngBaseUrl: process.env.CLAWFLOW_SEARXNG_URL,
       searxngApiKey: process.env.CLAWFLOW_SEARXNG_API_KEY,
     },

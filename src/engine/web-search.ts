@@ -1,5 +1,5 @@
 /**
- * Multitask / Plan 网络搜索：Brave Search API、SearXNG JSON API（自建实例）、无密钥 DuckDuckGo HTML 回退。
+ * Multitask / Plan 网络搜索：博查 Bocha Web Search API、Brave Search API、SearXNG JSON、DuckDuckGo HTML 回退。
  * 参考：openclaw/src/agents/tools/web-search.ts；SearXNG：`GET /search?format=json`
  */
 
@@ -11,9 +11,14 @@ export const WEB_SEARCH_DEFAULT_COUNT = 5;
 export type ClawFlowWebSearchUserConfig = {
   enabled?: boolean;
   /**
-   * auto：有 Brave Key 时优先 Brave；否则若配置了 searxngBaseUrl 则 SearXNG；否则 DuckDuckGo HTML。
+   * auto：已配置 searxngBaseUrl 时优先 SearXNG；失败或未配置时再试博查（需密钥）、Brave（需密钥）；最后 DuckDuckGo HTML。
+   * 未指定 provider 时默认 searxng（仍须填写实例根 URL 才能成功请求；Bearer 为可选）。
    */
-  provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+  provider?: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+  /** 博查 Web Search API Key（Bearer）；可用环境变量 BOCHA_API_KEY */
+  bochaApiKey?: string;
+  /** 博查 API 根，默认 https://api.bochaai.com */
+  bochaBaseUrl?: string;
   braveApiKey?: string;
   braveBaseUrl?: string;
   /** SearXNG 实例根 URL，如 https://search.example.org（不要尾斜杠） */
@@ -25,7 +30,9 @@ export type ClawFlowWebSearchUserConfig = {
 
 export type ResolvedClawFlowWebSearch = {
   enabled: boolean;
-  provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+  provider: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+  bochaApiKey: string;
+  bochaBaseUrl: string;
   braveApiKey: string;
   braveBaseUrl: string;
   searxngBaseUrl: string;
@@ -35,16 +42,19 @@ export type ResolvedClawFlowWebSearch = {
 
 export type PublicWebSearchConfig = {
   enabled: boolean;
-  provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+  provider: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+  bochaBaseUrl: string;
   braveBaseUrl: string;
   searxngBaseUrl: string;
   timeoutSeconds: number;
+  bochaApiKeyConfigured: boolean;
   braveApiKeyConfigured: boolean;
   searxngConfigured: boolean;
   searxngApiKeyConfigured: boolean;
 };
 
 const DEFAULT_BRAVE_BASE = 'https://api.search.brave.com';
+const DEFAULT_BOCHA_BASE = 'https://api.bochaai.com';
 const DDG_HTML = 'https://html.duckduckgo.com/html';
 
 export function resolveWebSearchConfig(
@@ -54,15 +64,27 @@ export function resolveWebSearchConfig(
   const keyFromCfg = String(input?.braveApiKey ?? '').trim();
   const keyFromEnv = String(env.BRAVE_API_KEY ?? '').trim();
   const braveApiKey = keyFromCfg || keyFromEnv;
-  const rawProvider = String(input?.provider ?? 'auto').toLowerCase();
+  const bochaFromCfg = String(input?.bochaApiKey ?? '').trim();
+  const bochaFromEnv = String(env.BOCHA_API_KEY ?? '').trim();
+  const bochaApiKey = bochaFromCfg || bochaFromEnv;
+  const rawProvider = String(input?.provider ?? 'searxng').toLowerCase();
   const provider: ResolvedClawFlowWebSearch['provider'] =
-    rawProvider === 'brave' || rawProvider === 'duckduckgo' || rawProvider === 'searxng' ? rawProvider : 'auto';
+    rawProvider === 'brave' || rawProvider === 'duckduckgo' || rawProvider === 'searxng' || rawProvider === 'bocha'
+      ? rawProvider
+      : rawProvider === 'auto'
+        ? 'auto'
+        : 'searxng';
   const base = String(input?.braveBaseUrl ?? DEFAULT_BRAVE_BASE).replace(/\/+$/, '') || DEFAULT_BRAVE_BASE;
+  const bochaBase = String(input?.bochaBaseUrl ?? env.BOCHA_BASE_URL ?? DEFAULT_BOCHA_BASE)
+    .trim()
+    .replace(/\/+$/, '') || DEFAULT_BOCHA_BASE;
   const searxBase = String(input?.searxngBaseUrl ?? '').trim().replace(/\/+$/, '');
   const searxKey = String(input?.searxngApiKey ?? '').trim();
   return {
     enabled: input?.enabled !== false,
     provider,
+    bochaApiKey,
+    bochaBaseUrl: bochaBase,
     braveApiKey,
     braveBaseUrl: base,
     searxngBaseUrl: searxBase,
@@ -78,9 +100,11 @@ export function sanitizeWebSearchForPublic(ws: ResolvedClawFlowWebSearch): Publi
   return {
     enabled: ws.enabled,
     provider: ws.provider,
+    bochaBaseUrl: ws.bochaBaseUrl,
     braveBaseUrl: ws.braveBaseUrl,
     searxngBaseUrl: ws.searxngBaseUrl,
     timeoutSeconds: ws.timeoutSeconds,
+    bochaApiKeyConfigured: Boolean(ws.bochaApiKey?.trim()),
     braveApiKeyConfigured: Boolean(ws.braveApiKey),
     searxngConfigured: Boolean(ws.searxngBaseUrl?.trim()),
     searxngApiKeyConfigured: Boolean(ws.searxngApiKey?.trim()),
@@ -242,6 +266,111 @@ async function fetchBraveWebSearch(params: {
         description,
         published: entry.age || undefined,
         siteName: siteNameFromUrl(u) || undefined,
+      };
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** 博查 freshness：oneDay / oneWeek / oneMonth / oneYear / noLimit */
+function normalizeBochaFreshness(
+  freshnessRaw: string | undefined,
+  dateAfter?: string,
+  dateBefore?: string
+): string {
+  if (dateAfter?.trim() || dateBefore?.trim()) return 'noLimit';
+  if (!freshnessRaw?.trim()) return 'noLimit';
+  const v = freshnessRaw.trim().toLowerCase();
+  const map: Record<string, string> = {
+    day: 'oneDay',
+    week: 'oneWeek',
+    month: 'oneMonth',
+    year: 'oneYear',
+    pd: 'oneDay',
+    pw: 'oneWeek',
+    pm: 'oneMonth',
+    py: 'oneYear',
+    oneday: 'oneDay',
+    oneweek: 'oneWeek',
+    onemonth: 'oneMonth',
+    oneyear: 'oneYear',
+    nolimit: 'noLimit',
+  };
+  return map[v] ?? 'noLimit';
+}
+
+function extractBochaWebPages(json: unknown): Array<Record<string, unknown>> {
+  if (!json || typeof json !== 'object') return [];
+  const root = json as Record<string, unknown>;
+  let webPages: unknown = root.webPages;
+  if (root.data && typeof root.data === 'object') {
+    const d = root.data as Record<string, unknown>;
+    if (d.webPages) webPages = d.webPages;
+  }
+  if (!webPages || typeof webPages !== 'object') return [];
+  const wp = webPages as Record<string, unknown>;
+  const value = wp.value;
+  if (!Array.isArray(value)) return [];
+  return value.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>;
+}
+
+async function fetchBochaWebSearch(params: {
+  baseUrl: string;
+  apiKey: string;
+  query: string;
+  count: number;
+  freshness: string;
+  signal?: AbortSignal;
+  timeoutMs: number;
+}): Promise<Array<Record<string, unknown>>> {
+  const base = params.baseUrl.replace(/\/+$/, '');
+  const url = `${base}/v1/web-search`;
+  const body = {
+    query: params.query,
+    count: Math.max(1, Math.min(50, params.count)),
+    summary: true,
+    freshness: params.freshness,
+  };
+
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), params.timeoutMs);
+  const signal = params.signal ? mergeAbortSignals(params.signal, ac.signal) : ac.signal;
+  try {
+    const res = await fetchWithProxyRetry(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${params.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: params.timeoutMs, retries: 1, signal }
+    );
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Bocha Web Search API error (${res.status}): ${detail.slice(0, 500) || res.statusText}`);
+    }
+    const data = (await res.json()) as unknown;
+    const rows = extractBochaWebPages(data);
+    return rows.map((entry) => {
+      const title = String(entry.name ?? '').trim();
+      const u = String(entry.url ?? '').trim();
+      const snippet = String(entry.snippet ?? '').trim();
+      const summary = String(entry.summary ?? '').trim();
+      const desc = summary || snippet;
+      const published = String(entry.datePublished ?? entry.dateLastCrawled ?? '').trim() || undefined;
+      const site = String(entry.siteName ?? '').trim() || siteNameFromUrl(u) || undefined;
+      return {
+        title,
+        url: u,
+        snippet: desc,
+        description: desc,
+        published,
+        siteName: site,
       };
     });
   } finally {
@@ -450,13 +579,12 @@ export async function runClawFlowWebSearch(
 
   const timeoutMs = Math.max(5000, (ws.timeoutSeconds ?? 25) * 1000);
   const hasSearxng = Boolean(ws.searxngBaseUrl?.trim());
-  const preferBrave =
-    ws.provider === 'brave' || (ws.provider === 'auto' && Boolean(ws.braveApiKey?.trim()));
+  const hasBocha = Boolean(ws.bochaApiKey?.trim());
 
   const notes: string[] = [];
   if (domainFilter.length) {
     notes.push(
-      'domain_filter is not applied in ClawFlow web_search (Brave API / SearXNG / DDG HTML paths do not map this field).'
+      'domain_filter is not applied in ClawFlow web_search (Bocha / Brave API / SearXNG / DDG HTML paths do not map this field).'
     );
   }
   if (typeof args.max_tokens === 'number' && args.max_tokens > 0) {
@@ -473,6 +601,37 @@ export async function runClawFlowWebSearch(
     max_tokens: args.max_tokens,
     max_tokens_per_page: args.max_tokens_per_page,
   });
+
+  const runBocha = async () => {
+    const apiKey = ws.bochaApiKey.trim();
+    if (!apiKey) {
+      return { ok: false as const, reason: 'missing_bocha_api_key' };
+    }
+    const freshness = normalizeBochaFreshness(freshnessRaw, dateAfter, dateBefore);
+    if (dateAfter || dateBefore) {
+      notes.push('Bocha: date_after/date_before are not mapped to API freshness; using noLimit for this request.');
+    }
+    const rows = await fetchBochaWebSearch({
+      baseUrl: ws.bochaBaseUrl,
+      apiKey,
+      query,
+      count,
+      freshness,
+      signal: ctx.abortSignal,
+      timeoutMs,
+    });
+    return {
+      ok: true as const,
+      provider: 'bocha' as const,
+      payload: {
+        query,
+        provider: 'bocha',
+        count: rows.length,
+        results: rows,
+        ...(notes.length ? { notes } : {}),
+      },
+    };
+  };
 
   const runBrave = async () => {
     const apiKey = ws.braveApiKey?.trim();
@@ -568,13 +727,14 @@ export async function runClawFlowWebSearch(
     };
   };
 
-  const failureBaseUrl = (provider: 'brave' | 'duckduckgo' | 'searxng') => {
+  const failureBaseUrl = (provider: 'bocha' | 'brave' | 'duckduckgo' | 'searxng') => {
     if (provider === 'brave') return ws.braveBaseUrl;
+    if (provider === 'bocha') return ws.bochaBaseUrl || DEFAULT_BOCHA_BASE;
     if (provider === 'searxng') return ws.searxngBaseUrl || 'searxng';
     return DDG_HTML;
   };
 
-  const wrapFailure = (provider: 'brave' | 'duckduckgo' | 'searxng', e: unknown) => {
+  const wrapFailure = (provider: 'bocha' | 'brave' | 'duckduckgo' | 'searxng', e: unknown) => {
     const nf = classifyNetworkFailure(e, failureBaseUrl(provider));
     return {
       ok: false,
@@ -584,7 +744,7 @@ export async function runClawFlowWebSearch(
       details: nf.details ?? null,
       note: '如在公司/校园网，请优先设置 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量；ClawFlow 已支持代理与轻量重试。',
       clawflow_search_readme_zh:
-        '本应用 web_search：可在系统设置中选择搜索源。支持 Brave Search API、自建 SearXNG（/search?format=json）、以及无密钥 DuckDuckGo HTML（易限流）。抓取具体站点请用 web_scrape 或内嵌浏览器。',
+        '本应用 web_search：可在系统设置中选择搜索源。支持博查 Bocha、Brave Search API、自建 SearXNG（/search?format=json）、以及无密钥 DuckDuckGo HTML（易限流）。抓取具体站点请用 web_scrape 或内嵌浏览器。',
     } as Record<string, unknown>;
   };
 
@@ -614,55 +774,95 @@ export async function runClawFlowWebSearch(
     }
   }
 
-  if (preferBrave) {
+  if (ws.provider === 'bocha') {
+    if (!hasBocha) {
+      return {
+        ok: false,
+        provider: 'bocha',
+        errorCode: 'missing_config',
+        hint: 'Configure bochaApiKey in Settings → System → Web search, or set BOCHA_API_KEY.',
+      } as Record<string, unknown>;
+    }
     try {
-      const b = await runBrave();
-      if (b.ok) return b.payload;
+      const out = await runBocha();
+      if (!out.ok) {
+        return {
+          ok: false,
+          provider: 'bocha',
+          errorCode: 'missing_config',
+          hint: 'Bocha Web Search requires an API key from https://open.bochaai.com/',
+        } as Record<string, unknown>;
+      }
+      return out.payload;
     } catch (e: unknown) {
-      if (ws.provider === 'brave') return wrapFailure('brave', e);
+      return wrapFailure('bocha', e);
     }
-    if (ws.provider === 'brave') {
-      throw new Error(
-        'web_search (brave) needs a Brave Search API key. Set BRAVE_API_KEY in the environment or configure webSearch.braveApiKey when creating the engine. If you do not want to use Brave, set webSearch.provider to "duckduckgo" or "searxng".'
-      );
-    }
+  }
+
+  if (ws.provider === 'auto') {
     if (hasSearxng) {
       try {
         const sx = await runSearxng();
-        return { ...sx.payload, fallbackFrom: 'brave_unconfigured_or_failed' };
+        return sx.payload;
       } catch {
-        /* chain to DDG */
+        /* fall through to Brave / DDG */
+      }
+    }
+    const bochaKey = ws.bochaApiKey?.trim();
+    if (bochaKey) {
+      try {
+        const bc = await runBocha();
+        if (bc.ok) {
+          return {
+            ...bc.payload,
+            ...(hasSearxng ? { fallbackFrom: 'searxng_failed' } : {}),
+          };
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    const braveKey = ws.braveApiKey?.trim();
+    if (braveKey) {
+      try {
+        const b = await runBrave();
+        if (b.ok) {
+          return {
+            ...b.payload,
+            ...(hasSearxng ? { fallbackFrom: 'searxng_failed' } : bochaKey ? { fallbackFrom: 'bocha_failed' } : {}),
+          };
+        }
+      } catch {
+        /* fall through */
       }
     }
     try {
       const ddg = await runDdg();
+      let fallbackFrom: string | undefined;
+      if (hasSearxng) fallbackFrom = 'searxng_failed';
+      else if (bochaKey) fallbackFrom = 'bocha_failed';
+      else if (braveKey) fallbackFrom = 'brave_failed';
       return {
         ...ddg.payload,
-        fallbackFrom: 'brave_unconfigured',
+        ...(fallbackFrom ? { fallbackFrom } : {}),
       };
     } catch (e: unknown) {
       return wrapFailure('duckduckgo', e);
     }
   }
 
-  if (hasSearxng) {
+  if (ws.provider === 'brave') {
     try {
-      const sx = await runSearxng();
-      return sx.payload;
+      const b = await runBrave();
+      if (b.ok) return b.payload;
     } catch (e: unknown) {
-      try {
-        const ddg = await runDdg();
-        return { ...ddg.payload, fallbackFrom: 'searxng_failed' };
-      } catch (e2: unknown) {
-        return wrapFailure('duckduckgo', e2);
-      }
+      return wrapFailure('brave', e);
     }
+    throw new Error(
+      'web_search (brave) needs a Brave Search API key. Set BRAVE_API_KEY in the environment or configure webSearch.braveApiKey when creating the engine. If you do not want to use Brave, set webSearch.provider to "duckduckgo", "bocha", or "searxng".'
+    );
   }
 
-  try {
-    const ddg = await runDdg();
-    return ddg.payload;
-  } catch (e: unknown) {
-    return wrapFailure('duckduckgo', e);
-  }
+  const _never: never = ws.provider;
+  return _never;
 }

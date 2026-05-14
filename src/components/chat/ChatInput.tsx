@@ -4,6 +4,7 @@ import type { ChatInteractionMode } from '../../store/modules/chatStore';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import { CfSelectWithHints } from '../CfSelectWithHints';
 import ContextUsageRing from './ContextUsageRing';
+import { formatUtf8Bytes } from '../../utils/format-bytes';
 import './chat.css';
 
 const CHAT_MODES: ChatInteractionMode[] = ['plan', 'multitask', 'auto'];
@@ -66,6 +67,19 @@ interface Props {
   contextSaturation?: number;
   contextUsedApprox?: number;
   contextLimitApprox?: number;
+  /** 主进程下一请求度量（与 sendMessage 组装一致） */
+  contextMeterRatio?: number;
+  contextMeterTitle?: string;
+  nextContextPayload?: {
+    utf8Bytes: number;
+    loadUnits: number;
+    budgetUnits: number;
+    isOverflow: boolean;
+    isNearOverflow: boolean;
+  } | null;
+  nextContextLoading?: boolean;
+  nextContextError?: string | null;
+  onDraftTextChange?: (text: string) => void;
   showStarterPrompts?: boolean;
 }
 
@@ -83,6 +97,12 @@ const ChatInput: FC<Props> = ({
   contextSaturation = 0,
   contextUsedApprox,
   contextLimitApprox,
+  contextMeterRatio,
+  contextMeterTitle,
+  nextContextPayload,
+  nextContextLoading,
+  nextContextError,
+  onDraftTextChange,
 }) => {
   const { t } = useTranslation();
   const shellVariant = useShellLayoutVariant();
@@ -170,7 +190,11 @@ const ChatInput: FC<Props> = ({
       <textarea
         className="cf-textarea"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          const v = e.target.value;
+          setValue(v);
+          onDraftTextChange?.(v);
+        }}
         placeholder={t('chat.inputPlaceholder')}
         disabled={disabled || isSending}
         onKeyDown={(e) => {
@@ -181,6 +205,34 @@ const ChatInput: FC<Props> = ({
         }}
         rows={3}
       />
+      <div
+        className={[
+          'cf-chatInput__contextMeter',
+          nextContextPayload?.isOverflow ? 'cf-chatInput__contextMeter--overflow' : '',
+          nextContextPayload?.isNearOverflow ? 'cf-chatInput__contextMeter--warn' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        {nextContextLoading ? <span className="cf-chatInput__contextMeterInner">{t('chat.nextContextLoading')}</span> : null}
+        {!nextContextLoading && nextContextError ? (
+          <span className="cf-chatInput__contextMeterInner cf-errorText">{nextContextError}</span>
+        ) : null}
+        {!nextContextLoading && !nextContextError && nextContextPayload ? (
+          <span className="cf-chatInput__contextMeterInner" title={t('chat.nextContextHint')}>
+            {t('chat.nextContextLine', {
+              bytes: formatUtf8Bytes(nextContextPayload.utf8Bytes),
+              load: nextContextPayload.loadUnits.toLocaleString(),
+              budget: nextContextPayload.budgetUnits.toLocaleString(),
+              pct: Math.min(999, Math.round((nextContextPayload.loadUnits / nextContextPayload.budgetUnits) * 100)),
+            })}
+            {nextContextPayload.isOverflow ? ` · ${t('chat.nextContextOverflow')}` : ''}
+          </span>
+        ) : null}
+        {!nextContextLoading && !nextContextError && !nextContextPayload ? (
+          <span className="cf-chatInput__contextMeterInner cf-chatInput__contextMeterInner--muted">{t('chat.nextContextIdle')}</span>
+        ) : null}
+      </div>
       <div className="cf-chatInput__footer">
         <div className="cf-chatInput__footerLeft">
           <div className="cf-chatInput__fieldGroup" title={t('chat.modeLabel')}>
@@ -233,9 +285,10 @@ const ChatInput: FC<Props> = ({
               popupMatchSelectWidth={false}
             />
             <ContextUsageRing
-              ratio={contextSaturation}
+              ratio={typeof contextMeterRatio === 'number' ? contextMeterRatio : contextSaturation}
               usedTokensApprox={contextUsedApprox}
               limitTokensApprox={contextLimitApprox}
+              titleOverride={contextMeterTitle}
             />
           </div>
         </div>

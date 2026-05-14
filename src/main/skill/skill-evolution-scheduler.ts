@@ -250,6 +250,5 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
     void applySuccessfulEvolutionRewards(root, total).catch((e) =>
       console.warn('[skill-agent] apply evolution rewards failed:', e)
     );
-    console.log('[skill-agent] evolution completed runId=', res.runId, 'totalRounds=', total);
   });
 }

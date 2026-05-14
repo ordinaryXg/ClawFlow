@@ -1,4 +1,4 @@
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
@@ -144,8 +144,10 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     }
     return r;
   }, [recentEntries, activeWorkspacePath]);
+  const workspaceRowsRef = useRef(workspaceRows);
+  workspaceRowsRef.current = workspaceRows;
 
-  const [unreadByNorm, setUnreadByNorm] = useState<Record<string, number>>({});
+  const [unreadByNorm, setUnreadByNorm] = useState<Record<string, { total: number }>>({});
 
   const refreshWorkspaceUnreadSummaries = useCallback(async (paths: string[]) => {
     const api = window.electronAPI;
@@ -155,9 +157,9 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     }
     try {
       const { summaries } = await api.workspaceListUnreadSummaries({ paths });
-      const next: Record<string, number> = {};
+      const next: Record<string, { total: number }> = {};
       for (const s of summaries) {
-        next[normalizeWorkspacePathForCompare(s.workspaceRoot)] = s.total;
+        next[normalizeWorkspacePathForCompare(s.workspaceRoot)] = { total: s.total };
       }
       setUnreadByNorm(next);
     } catch {
@@ -170,20 +172,17 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   }, [workspaceRows, activeWorkspacePath, refreshWorkspaceUnreadSummaries]);
 
   useEffect(() => {
-    const pull = () => void refreshWorkspaceUnreadSummaries(workspaceRows);
     const offDirty = window.electronAPI?.onChatConversationsDirty?.((p) => {
       const wr = typeof p?.workspaceRoot === 'string' ? p.workspaceRoot.trim() : '';
-      if (wr && !workspaceRows.some((x) => workspacePathsLikelyEqual(x, wr))) return;
-      pull();
+      const rows = workspaceRowsRef.current;
+      const paths =
+        wr && !rows.some((x) => workspacePathsLikelyEqual(x, wr)) ? [...rows, wr] : rows.length ? rows : wr ? [wr] : [];
+      void refreshWorkspaceUnreadSummaries(paths);
     });
-    const offTodo = window.electronAPI?.onTodoTriggersUpdated?.(() => pull());
-    const offSub = window.electronAPI?.onSubAgentsUpdated?.(() => pull());
     return () => {
       offDirty?.();
-      offTodo?.();
-      offSub?.();
     };
-  }, [workspaceRows, activeWorkspacePath, refreshWorkspaceUnreadSummaries]);
+  }, [refreshWorkspaceUnreadSummaries]);
 
   const gitRemoteForRow = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -366,7 +365,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                     const gitBusyHere = gitBusyPath != null && workspacePathsLikelyEqual(gitBusyPath, p);
                     const resetBusyHere = resetBusyPath != null && workspacePathsLikelyEqual(resetBusyPath, p);
                     const menuOpen = wsActionMenuFor != null && workspacePathsLikelyEqual(wsActionMenuFor, p);
-                    const rowUnread = unreadByNorm[normalizeWorkspacePathForCompare(p)] ?? 0;
+                    const normKey = normalizeWorkspacePathForCompare(p);
+                    const rowUnreadParts = unreadByNorm[normKey];
+                    const rowUnread = rowUnreadParts?.total ?? 0;
+                    const unreadBadgeTitle =
+                      rowUnread > 0
+                        ? `${t('workspace.unreadBadgeTitle')} (${rowUnread})`
+                        : t('workspace.unreadBadgeTitle');
 
                     return (
                       <li key={p} className="cf-sideTree__wsLi" role="none">
@@ -397,7 +402,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                           {rowUnread > 0 ? (
                             <span
                               className="cf-sideTree__wsUnreadBadge"
-                              title={t('workspace.unreadBadgeTitle')}
+                              title={unreadBadgeTitle}
                               aria-label={t('workspace.unreadBadgeAria', { count: rowUnread })}
                             >
                               {rowUnread > 99 ? '99+' : rowUnread}

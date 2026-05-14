@@ -139,7 +139,7 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
       cliPath: resolvedCliPath,
       commandTimeout: config.commandTimeout ?? 60000,
       gatewayStartTimeout: config.gatewayStartTimeout ?? 30000,
-      verbose: config.verbose ?? true,
+      verbose: config.verbose ?? false,
       workspaceRoot,
     };
 
@@ -822,12 +822,12 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
         : 'node';
       
       const args = [
-        '--experimental-vm-modules', 
-        cliPath, 
-        'gateway', 
+        '--experimental-vm-modules',
+        cliPath,
+        'gateway',
         'run',
-        '--allow-unconfigured',  // 允许未配置时启动
-        '--verbose'               // 详细日志
+        '--allow-unconfigured', // 允许未配置时启动
+        ...(this.config.verbose ? (['--verbose'] as const) : []),
       ];
       
       this.log('Spawn 命令:', nodeExe, args.join(' '));
@@ -867,17 +867,18 @@ class OpenClawEngineImpl extends EventEmitter implements OpenClawEngine, OpenCla
         });
       });
 
-      // 监听输出
-      if (this.gatewayProcess.stdout) {
-        this.gatewayProcess.stdout.on('data', (data: Buffer) => {
-          this.log('[Gateway stdout]:', data.toString().trim());
-        });
-      }
-
-      if (this.gatewayProcess.stderr) {
-        this.gatewayProcess.stderr.on('data', (data: Buffer) => {
-          this.logError('[Gateway stderr]:', data.toString().trim());
-        });
+      // 子进程大量输出会淹没终端；仅在 verbose 时镜像到控制台（早期失败检测仍监听 pipe）。
+      if (this.config.verbose) {
+        if (this.gatewayProcess.stdout) {
+          this.gatewayProcess.stdout.on('data', (data: Buffer) => {
+            this.log('[Gateway stdout]:', data.toString().trim());
+          });
+        }
+        if (this.gatewayProcess.stderr) {
+          this.gatewayProcess.stderr.on('data', (data: Buffer) => {
+            this.logError('[Gateway stderr]:', data.toString().trim());
+          });
+        }
       }
 
       // 监听进程退出
@@ -1269,7 +1270,7 @@ export function registerOpenClawIPC(config?: OpenClawEngineConfig): void {
     else if (action === 'disable') await getGlobalOpenClawCliEngine().disablePlugin(id);
     else {
       // Fallback: treat update as enable/disable only for now.
-      console.log('[OpenClawEngine] updateConnector unsupported action:', action);
+      if (action) console.warn('[OpenClawEngine] updateConnector unsupported action:', action);
     }
     return { success: true };
   });

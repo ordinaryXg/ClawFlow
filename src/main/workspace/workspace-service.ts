@@ -620,7 +620,6 @@ export function migrateLegacyWorkspaceRegistryIfEmptySync(): void {
   }
   if (merged != null && registryHasPaths(merged)) {
     saveRegistry(merged);
-    console.log('[workspace-service] restored workspace registry from legacy AppData path');
   }
 }
 
@@ -774,10 +773,7 @@ export async function ensureWorkspaceInitialized(
   }
   if (!preserveExistingLayout) {
     try {
-      const { created } = await ensureWorkspaceMainMemoryTemplates(root);
-      if (created.length) {
-        console.log('[workspace-service] main .memory templates created:', created.join(', '));
-      }
+      await ensureWorkspaceMainMemoryTemplates(root);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
@@ -791,10 +787,7 @@ export async function ensureWorkspaceInitialized(
 
   if (!preserveExistingLayout) {
     try {
-      const { created } = await ensureWorkspaceAgentRoleTemplates(root);
-      if (created.length) {
-        console.log('[workspace-service] agent role templates created:', created.join(', '));
-      }
+      await ensureWorkspaceAgentRoleTemplates(root);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
@@ -802,10 +795,7 @@ export async function ensureWorkspaceInitialized(
 
     // 子 Agent 的角色模板，缺失才补写到 `.subagent/.subroleAgent/`
     try {
-      const { created } = await ensureWorkspaceSubAgentRoleTemplates(root);
-      if (created.length) {
-        console.log('[workspace-service] sub-agent role templates created:', created.join(', '));
-      }
+      await ensureWorkspaceSubAgentRoleTemplates(root);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
@@ -813,10 +803,7 @@ export async function ensureWorkspaceInitialized(
 
     // Hermes：`.agent/.skills` 下尚无任何技能时，补写默认示例 `default/SKILL.md`
     try {
-      const { created } = await ensureWorkspaceDefaultHermesSkill(root);
-      if (created.length) {
-        console.log('[workspace-service] default Hermes skill created:', created.join(', '));
-      }
+      await ensureWorkspaceDefaultHermesSkill(root);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureWorkspaceDefaultHermesSkill failed:', msg);

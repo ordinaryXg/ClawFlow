@@ -510,6 +510,29 @@
   resize:none;
 }
 
+.cf-chatInput__contextMeter {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted, #8b949e);
+  padding: 4px 10px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+.cf-chatInput__contextMeter--warn .cf-chatInput__contextMeterInner {
+  color: var(--warn, #d29922);
+}
+.cf-chatInput__contextMeter--overflow .cf-chatInput__contextMeterInner {
+  color: var(--danger, #f85149);
+  font-weight: 600;
+}
+.cf-chatInput__contextMeterInner {
+  display: block;
+  word-break: break-word;
+}
+.cf-chatInput__contextMeterInner--muted {
+  opacity: 0.75;
+}
+
 .cf-chatSendBtn{
   padding:6px 8px;
   min-width:0;

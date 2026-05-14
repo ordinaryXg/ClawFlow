@@ -54,24 +54,46 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
+  engineEstimateNextRequestContext: (params: {
+    conversationId: string;
+    pendingUserText: string;
+    modelId?: string | null;
+  }) => Promise<
+    | {
+        ok: true;
+        utf8Bytes: number;
+        loadUnits: number;
+        budgetUnits: number;
+        ratio: number;
+        isOverflow: boolean;
+        isNearOverflow: boolean;
+      }
+    | { ok: false; error: string }
+  >;
   engineGetWebSearchSettings: () => Promise<{
     enabled: boolean;
-    provider: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    provider: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+    bochaBaseUrl: string;
     braveBaseUrl: string;
     searxngBaseUrl: string;
     timeoutSeconds: number;
+    bochaApiKeyConfigured: boolean;
     braveApiKeyConfigured: boolean;
     searxngConfigured: boolean;
     searxngApiKeyConfigured: boolean;
+    bochaApiKeySavedInFile: boolean;
     braveApiKeySavedInFile: boolean;
     searxngApiKeySavedInFile: boolean;
   }>;
   engineSaveWebSearchSettings: (params: {
     enabled?: boolean;
-    provider?: 'auto' | 'brave' | 'duckduckgo' | 'searxng';
+    provider?: 'auto' | 'bocha' | 'brave' | 'duckduckgo' | 'searxng';
+    bochaBaseUrl?: string;
     braveBaseUrl?: string;
     searxngBaseUrl?: string;
     timeoutSeconds?: number;
+    bochaApiKey?: string;
+    clearBochaApiKey?: boolean;
     braveApiKey?: string;
     clearBraveApiKey?: boolean;
     searxngApiKey?: string;
@@ -174,7 +196,7 @@ export interface IElectronAPI {
   >;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
-    summaries: Array<{ workspaceRoot: string; todos: number; agent: number; messaging: number; total: number }>;
+    summaries: Array<{ workspaceRoot: string; total: number }>;
   }>;
   workspaceSetActive: (
     folderPath: string,
@@ -410,6 +432,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) =>
     ipcRenderer.invoke('engineAuth:testConnection', params),
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
+  engineEstimateNextRequestContext: (params) => ipcRenderer.invoke('engine:estimateNextRequestContext', params),
   engineGetWebSearchSettings: () => ipcRenderer.invoke('engine:getWebSearchSettings'),
   engineSaveWebSearchSettings: (params) => ipcRenderer.invoke('engine:saveWebSearchSettings', params),
   messagingGetFeishuBots: () => ipcRenderer.invoke('messaging:getFeishuBots'),

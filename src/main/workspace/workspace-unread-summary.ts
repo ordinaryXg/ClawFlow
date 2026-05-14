@@ -1,20 +1,12 @@
 /**
- * 侧栏「工作区」行未读汇总：待办调度、子 Agent 需关注状态、飞书桥接会话中待回复等。
+ * 侧栏「工作区」行未读汇总：飞书桥接主会话待回复。
  */
 
 import * as path from 'path';
 import { SessionStore, type StoredConversation, type StoredMessage } from '../../engine/session-store';
-import { countTodoTriggersForWorkspaceHub } from '../../shared/todo-triggers';
-import type { SubAgentRunSnapshot, SubAgentSlot } from '../../shared/sub-agent-types';
-import { readRunSnapshots } from '../sub-agent/sub-agent-run-snapshot';
-import { readSubAgentSlots } from '../sub-agent/sub-agent-service';
-import { readTodoTriggers } from '../todo/todo-triggers-service';
 
 export type WorkspaceUnreadSummary = {
   workspaceRoot: string;
-  todos: number;
-  agent: number;
-  messaging: number;
   total: number;
 };
 
@@ -27,36 +19,23 @@ function lastNonToolMessage(messages: StoredMessage[] | undefined): StoredMessag
   return undefined;
 }
 
-/** 主会话为主：仅根据「最近更新的」那条会话判断飞书桥接是否仍停在用户侧（避免历史/空会话误报）。 */
-function pickLatestConversation(conversations: StoredConversation[]): StoredConversation | undefined {
+/**
+ * 主会话为主：与 SessionStore.normalizeToSingletonIfNeeded 一致，按创建时间取首条会话，
+ * 避免「最近被元数据 touch 的副会话」抢走未读判断（切换工作区后仍误显示飞书未读）。
+ */
+function pickPrimaryConversation(conversations: StoredConversation[]): StoredConversation | undefined {
   if (!Array.isArray(conversations) || conversations.length === 0) return undefined;
-  return [...conversations].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
+  if (conversations.length === 1) return conversations[0];
+  return [...conversations].sort((a, b) => a.createdAt - b.createdAt)[0];
 }
 
-/** 当前活跃会话中，最后一条非 tool 为飞书用户消息且尚无后续助手气泡时计 1。 */
+/** 主会话中，最后一条非 tool 为飞书用户消息且尚无后续助手气泡时计 1。 */
 export function countFeishuPendingRepliesInConversations(conversations: StoredConversation[]): number {
-  const primary = pickLatestConversation(conversations);
+  const primary = pickPrimaryConversation(conversations);
   if (!primary) return 0;
   const last = lastNonToolMessage(primary.messages);
   if (last && last.role === 'user' && last.channel === 'user_feishu') return 1;
   return 0;
-}
-
-/**
- * 子 Agent「需处理」：槽位 error，或运行快照为 error。
- * 不包含 `interrupted`（多为异常退出/重启后的中间态，无法靠「读完主会话」消除，易误报未读）。
- */
-export function countSubAgentAttention(slots: SubAgentSlot[], snaps: Record<string, SubAgentRunSnapshot>): number {
-  const attention = new Set<string>();
-  for (const s of slots) {
-    if (s.status === 'error') attention.add(s.id);
-    const snap = snaps[s.id];
-    if (snap?.status === 'error') attention.add(s.id);
-  }
-  for (const [id, snap] of Object.entries(snaps)) {
-    if (snap?.status === 'error') attention.add(id);
-  }
-  return attention.size;
 }
 
 async function readConversationsSafe(workspaceRoot: string): Promise<StoredConversation[]> {
@@ -70,17 +49,9 @@ async function readConversationsSafe(workspaceRoot: string): Promise<StoredConve
 
 export async function summarizeWorkspaceUnread(workspaceRoot: string): Promise<WorkspaceUnreadSummary> {
   const root = path.resolve(String(workspaceRoot || '').trim());
-  const triggers = await readTodoTriggers(root);
-  const todos = countTodoTriggersForWorkspaceHub(triggers);
-  const [slots, snaps, convs] = await Promise.all([
-    readSubAgentSlots(root),
-    readRunSnapshots(root),
-    readConversationsSafe(root),
-  ]);
-  const agent = countSubAgentAttention(slots, snaps);
-  const messaging = countFeishuPendingRepliesInConversations(convs);
-  const total = todos + agent + messaging;
-  return { workspaceRoot: root, todos, agent, messaging, total };
+  const convs = await readConversationsSafe(root);
+  const total = countFeishuPendingRepliesInConversations(convs);
+  return { workspaceRoot: root, total };
 }
 
 export async function summarizeWorkspacesUnread(paths: string[]): Promise<WorkspaceUnreadSummary[]> {
