@@ -21,6 +21,19 @@
       "loadError": "无法读取智能档案",
       "noWorkspace": "请先打开工作区",
       "loading": "加载中…"
+    },
+    "evolutionTest": {
+      "aria": "主动进化（测试）",
+      "title": "立即跑一次 Skill Agent 进化任务（与到达轮次间隔后的自动进化相同），用于测试整条管线。需在工作区工具中启用「技能」。",
+      "shortLabel": "主动进化",
+      "dockLabel": "进化",
+      "okTitle": "进化测试完成",
+      "okBody": "Skill Agent 已执行完毕；变更已记入工作区时间线，智能经验已更新。",
+      "errTitle": "进化测试失败",
+      "err_no_workspace": "请先打开工作区。",
+      "err_skills_disabled": "请先在「工作区工具」中启用「技能（Hermes）」，保存后再试。",
+      "err_no_conversation": "没有可用的主会话：请先打开或新建一条对话。",
+      "err_generic": "请查看工作区变更记录或主进程日志中的详细错误。"
     }
   },
   "sticky": {
@@ -936,7 +949,7 @@
     "messagingFeishuAddBot": "添加机器人",
     "messagingFeishuRemoveBot": "删除此机器人",
     "messagingFeishuBotCardTitle": "机器人 {{index}}",
-    "messagingFeishuSharedTestMsgHelp": "下方正文由各行「发送测试」共用，发到该行填写的默认接收者。",
+    "messagingFeishuSharedTestMsgHelp": "下方正文由各行「发送测试」共用，发到该行填写的默认接收者；留空则使用默认测试文案。",
     "messagingFeishuDocIm": "发送消息",
     "messagingFeishuDocToken": "获取 tenant_access_token",
     "messagingFeishuAppId": "App ID",
@@ -981,7 +994,8 @@
     "messagingFeishuTestOkBody": "已获取 tenant_access_token，约 {{seconds}} 秒内有效。",
     "messagingFeishuTestFailTitle": "连接失败",
     "messagingFeishuTestMsgLabel": "测试消息正文",
-    "messagingFeishuTestMsgPh": "发到各行填写的默认接收者",
+    "messagingFeishuTestMsgPh": "可改写；留空发送时将使用默认文案",
+    "messagingFeishuTestMsgDefault": "【ClawFlow】飞书连接测试（自设置页发送）",
     "messagingFeishuTestMsgEmptyTitle": "内容为空",
     "messagingFeishuTestMsgEmptyBody": "请填写测试消息正文。",
     "messagingFeishuSendTest": "发送测试消息",

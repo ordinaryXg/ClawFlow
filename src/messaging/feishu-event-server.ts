@@ -50,7 +50,61 @@ function rememberDedupeKey(botId: string, messageId: string): boolean {
   return false;
 }
 
-/** SDK 回调的 data 与 HTTP v2 的 event 结构一致，包一层再走原解析逻辑 */
+/**
+ * 将 WS SDK 传入的 data 归一成与 HTTP 事件订阅一致的 2.0 信封（部分版本为扁平结构：message/sender 在顶层）。
+ */
+function normalizeSdkImPayloadToHttpEnvelope(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== 'object') return null;
+  const root = data as Record<string, unknown>;
+
+  if (root.type === 'url_verification') return root;
+
+  const ev = root.event && typeof root.event === 'object' ? (root.event as Record<string, unknown>) : null;
+  if (ev) {
+    const header =
+      root.header && typeof root.header === 'object' ? (root.header as Record<string, unknown>) : null;
+    const eventType = String(header?.event_type ?? '').trim() || String(ev.type ?? '').trim();
+    if (!header || !String(header.event_type ?? '').trim()) {
+      return {
+        schema: String(root.schema ?? '2.0'),
+        header: { ...(header ?? {}), event_type: eventType || 'im.message.receive_v1' },
+        event: ev,
+      };
+    }
+    return root;
+  }
+
+  if (root.message && typeof root.message === 'object') {
+    return {
+      schema: '2.0',
+      header: { event_type: 'im.message.receive_v1' },
+      event: root,
+    };
+  }
+
+  const inner = root.data && typeof root.data === 'object' ? (root.data as Record<string, unknown>) : null;
+  if (inner) {
+    return normalizeSdkImPayloadToHttpEnvelope(inner);
+  }
+
+  return null;
+}
+
+function pickSenderReceiveTarget(sender: Record<string, unknown> | null): { id: string; type: FeishuReceiveIdType } | null {
+  if (!sender) return null;
+  const sid =
+    sender.sender_id && typeof sender.sender_id === 'object' ? (sender.sender_id as Record<string, unknown>) : null;
+  if (!sid) return null;
+  const openId = String(sid.open_id ?? '').trim();
+  if (openId) return { id: openId, type: 'open_id' };
+  const unionId = String(sid.union_id ?? '').trim();
+  if (unionId) return { id: unionId, type: 'union_id' };
+  const userId = String(sid.user_id ?? '').trim();
+  if (userId) return { id: userId, type: 'user_id' };
+  return null;
+}
+
+/** SDK 回调的 data 经归一化后走与 HTTP 相同的解析逻辑 */
 function extractFromSdkImReceive(data: unknown): {
   text: string;
   messageId: string;
@@ -58,12 +112,9 @@ function extractFromSdkImReceive(data: unknown): {
   replyReceiveIdType: FeishuReceiveIdType;
   skipReason?: string;
 } | null {
-  if (!data || typeof data !== 'object') return null;
-  return extractInboundText({
-    schema: '2.0',
-    header: { event_type: 'im.message.receive_v1' },
-    event: data as Record<string, unknown>,
-  });
+  const envelope = normalizeSdkImPayloadToHttpEnvelope(data);
+  if (!envelope) return null;
+  return extractInboundText(envelope);
 }
 
 function resolveImReceiveEventType(root: Record<string, unknown>): string {
@@ -128,13 +179,22 @@ function extractInboundText(payload: unknown): {
   }
   const messageId = String(message.message_id ?? '').trim();
   const chatId = String(message.chat_id ?? '').trim();
-  if (!text || !chatId) return null;
+  let replyReceiveId = chatId;
+  let replyReceiveIdType: FeishuReceiveIdType = 'chat_id';
+  if (!replyReceiveId) {
+    const alt = pickSenderReceiveTarget(sender);
+    if (alt) {
+      replyReceiveId = alt.id;
+      replyReceiveIdType = alt.type;
+    }
+  }
+  if (!text || !replyReceiveId) return null;
 
   return {
     text,
     messageId,
-    replyReceiveId: chatId,
-    replyReceiveIdType: 'chat_id',
+    replyReceiveId,
+    replyReceiveIdType,
   };
 }
 
@@ -186,6 +246,7 @@ async function handleImText(
   }
 
   if (params.messageId && rememberDedupeKey(bot.id, params.messageId)) {
+    console.log(`[feishu-ws] bot=${bot.id} skip duplicate message_id=${params.messageId}`);
     return;
   }
 
@@ -240,14 +301,23 @@ async function handleImText(
 
 function onSdkImMessageReceive(data: unknown, bot: FeishuBotConfig): void {
   try {
+    console.log(`[feishu-ws] bot=${bot.id} im.message.receive_v1 callback`);
     const extracted = extractFromSdkImReceive(data);
     if (!extracted) {
-      console.warn(`[feishu-ws] bot=${bot.id} im.message.receive_v1: could not parse payload`);
+      const hint =
+        typeof data === 'object' && data !== null
+          ? ` keys=${Object.keys(data as Record<string, unknown>).slice(0, 12).join(',')}`
+          : '';
+      console.warn(`[feishu-ws] bot=${bot.id} im.message.receive_v1: could not parse payload${hint}`);
       return;
     }
     if (extracted.skipReason) {
+      console.log(`[feishu-ws] bot=${bot.id} skip: ${extracted.skipReason}`);
       return;
     }
+    console.log(
+      `[feishu-ws] bot=${bot.id} enqueue inbound textLen=${extracted.text.length} replyType=${extracted.replyReceiveIdType}`
+    );
     enqueueFeishuInbound(() =>
       handleImText(
         {
@@ -280,12 +350,17 @@ export function restartFeishuEventServerFromPrefs(): void {
   const prefs = readMessagingPrefsFile();
   const bots = getNormalizedFeishuBots(prefs);
   const toStart = bots.filter((b) => b.bridgeEnabled);
+  console.log(
+    `[feishu-ws] restart: ${bots.length} bot(s) in prefs, ${toStart.length} with「事件桥接」开启（日志在启动 Electron 的终端/主进程，不是浏览器 F12）`
+  );
   if (toStart.length === 0) {
+    console.log('[feishu-ws] 未启动长连接：请在设置里为需要收消息的机器人打开「事件桥接」并保存。');
     return;
   }
 
   const Lark = loadLarkSdk();
   if (!Lark) {
+    console.warn('[feishu-ws] 未启动长连接：未加载 @larksuiteoapi/node-sdk（请 npm install 后重启应用）。');
     return;
   }
 
@@ -296,6 +371,8 @@ export function restartFeishuEventServerFromPrefs(): void {
       console.warn(`[feishu-ws] Skipping bot "${bot.name}" (${bot.id}): missing App ID / Secret.`);
       continue;
     }
+
+    console.log(`[feishu-ws] starting WSClient for bot=${bot.id} name="${bot.name}" appId=${appId.slice(0, 6)}…`);
 
     const client = new Lark.WSClient({
       appId,
@@ -319,6 +396,7 @@ export function restartFeishuEventServerFromPrefs(): void {
     void (async () => {
       try {
         await client.start({ eventDispatcher: dispatcher });
+        console.log(`[feishu-ws] bot=${bot.id} WSClient.start ok (long connection ready)`);
       } catch (e: unknown) {
         console.error(`[feishu-ws] WSClient.start failed bot=${bot.id}:`, e instanceof Error ? e.message : e);
         try {
@@ -332,6 +410,10 @@ export function restartFeishuEventServerFromPrefs(): void {
   }
 
   if (scheduled === 0) {
-    console.warn('[feishu-ws] Bridge enabled for bots but none have valid credentials; long connection not started.');
+    console.warn(
+      '[feishu-ws] 已开启桥接的机器人均未配置有效 App ID/Secret，长连未建立。请检查设置里每条机器人的凭证。'
+    );
+  } else {
+    console.log(`[feishu-ws] 已调度 ${scheduled} 个 WSClient，连接成功后会有「WSClient.start ok」日志。`);
   }
 }

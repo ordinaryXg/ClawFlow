@@ -21,6 +21,19 @@
       "loadError": "Could not load intelligence profile",
       "noWorkspace": "Open a workspace first",
       "loading": "Loading…"
+    },
+    "evolutionTest": {
+      "aria": "Run evolution (test)",
+      "title": "Run one Skill Agent evolution pass (same task as automatic evolution at interval). Requires Skills enabled in workspace tools.",
+      "shortLabel": "Evolve",
+      "dockLabel": "Evolve",
+      "okTitle": "Evolution test finished",
+      "okBody": "Skill Agent completed; check the workspace timeline. Intelligence XP was updated.",
+      "errTitle": "Evolution test failed",
+      "err_no_workspace": "Open a workspace first.",
+      "err_skills_disabled": "Enable “Skills (Hermes)” in workspace tools, save, then try again.",
+      "err_no_conversation": "No main conversation: open or create a chat first.",
+      "err_generic": "See the workspace change log or main-process logs for details."
     }
   },
   "sticky": {
@@ -938,7 +951,7 @@
     "messagingFeishuAddBot": "Add bot",
     "messagingFeishuRemoveBot": "Remove this bot",
     "messagingFeishuBotCardTitle": "Bot {{index}}",
-    "messagingFeishuSharedTestMsgHelp": "The test message below is shared: each row’s “Send test” uses this text and that row’s default receive_id.",
+    "messagingFeishuSharedTestMsgHelp": "The text below is shared by every row’s “Send test”, using that row’s default receive_id. If left blank, a built-in default test message is used.",
     "messagingFeishuDocIm": "Send message",
     "messagingFeishuDocToken": "tenant_access_token",
     "messagingFeishuAppId": "App ID",
@@ -983,7 +996,8 @@
     "messagingFeishuTestOkBody": "tenant_access_token acquired; valid for about {{seconds}}s.",
     "messagingFeishuTestFailTitle": "Connection failed",
     "messagingFeishuTestMsgLabel": "Test message body",
-    "messagingFeishuTestMsgPh": "Sends to each row’s default receive_id",
+    "messagingFeishuTestMsgPh": "Edit as needed; if empty when sending, a default test line is used",
+    "messagingFeishuTestMsgDefault": "[ClawFlow] Feishu connection test (sent from Settings)",
     "messagingFeishuTestMsgEmptyTitle": "Empty message",
     "messagingFeishuTestMsgEmptyBody": "Enter some text first.",
     "messagingFeishuSendTest": "Send test message",

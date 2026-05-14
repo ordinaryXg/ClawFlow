@@ -3,6 +3,7 @@ import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
+  /** 应用版本；网关状态/启停已映射到内置 engineGateway（不再使用 OpenClaw CLI） */
   getVersion: () => Promise<string>;
   getGatewayStatus: () => Promise<string>;
   startGateway: () => Promise<void>;
@@ -151,7 +152,7 @@ export interface IElectronAPI {
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
-  // 连接器管理（OpenClaw CLI 插件）
+  // 连接器（历史 OpenClaw 插件；已移除 CLI，接口保留为空实现以免旧页崩溃）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
@@ -194,6 +195,9 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  intelligenceTriggerEvolutionTest: (params?: {
+    conversationId?: string;
+  }) => Promise<{ ok: true; runId?: string } | { ok: false; error: string }>;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
     summaries: Array<{ workspaceRoot: string; total: number }>;
@@ -394,10 +398,14 @@ export interface IElectronAPI {
 
 // 通过 contextBridge 安全地暴露 API
 contextBridge.exposeInMainWorld('electronAPI', {
-  getVersion: () => ipcRenderer.invoke('openclaw:getVersion'),
-  getGatewayStatus: () => ipcRenderer.invoke('openclaw:getGatewayStatus'),
-  startGateway: () => ipcRenderer.invoke('openclaw:startGateway'),
-  stopGateway: () => ipcRenderer.invoke('openclaw:stopGateway'),
+  /** 兼容旧名：返回应用版本（不再调用 OpenClaw CLI） */
+  getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  getGatewayStatus: async () => {
+    const r = (await ipcRenderer.invoke('engineGateway:status')) as { status?: string } | null;
+    return String(r?.status ?? 'unknown');
+  },
+  startGateway: () => ipcRenderer.invoke('engineGateway:start', {}),
+  stopGateway: () => ipcRenderer.invoke('engineGateway:stop'),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
   // 新引擎（Phase 0：stub）
@@ -505,11 +513,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('chat:conversationsDirty', handler);
   },
   // 连接器管理
-  getConnectors: () => ipcRenderer.invoke('openclaw:getConnectors'),
-  addConnector: (config: any) => ipcRenderer.invoke('openclaw:addConnector', config),
-  updateConnector: (id: string, config: any) => ipcRenderer.invoke('openclaw:updateConnector', id, config),
-  deleteConnector: (id: string) => ipcRenderer.invoke('openclaw:deleteConnector', id),
-  testConnector: (id: string) => ipcRenderer.invoke('openclaw:testConnector', id),
+  getConnectors: async () => ({ connectors: [] as unknown[] }),
+  addConnector: async () => {
+    throw new Error('OpenClaw CLI 已移除，无法添加连接器');
+  },
+  updateConnector: async () => {
+    throw new Error('OpenClaw CLI 已移除，无法更新连接器');
+  },
+  deleteConnector: async () => {
+    throw new Error('OpenClaw CLI 已移除，无法删除连接器');
+  },
+  testConnector: async () => {
+    throw new Error('OpenClaw CLI 已移除，无法测试连接器');
+  },
   onNavigate: (cb: (path: string) => void) => {
     const handler = (_event: unknown, path: unknown) => {
       if (typeof path === 'string') cb(path);
@@ -538,6 +554,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('app:syncMainUiPrefs', prefs) as Promise<{ ok: true }>,
   workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
   intelligenceGetProfile: () => ipcRenderer.invoke('intelligence:getProfile'),
+  intelligenceTriggerEvolutionTest: (params?: { conversationId?: string }) =>
+    ipcRenderer.invoke('intelligence:triggerEvolutionTest', params ?? {}),
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceListUnreadSummaries: (params: { paths: string[] }) =>
     ipcRenderer.invoke('workspace:listUnreadSummaries', params),

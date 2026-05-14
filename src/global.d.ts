@@ -1,6 +1,7 @@
 // 全局类型声明
 
 export interface IElectronAPI {
+  /** 应用版本；网关状态/启停映射到内置 engineGateway */
   getVersion: () => Promise<string>;
   getGatewayStatus: () => Promise<string>;
   startGateway: () => Promise<void>;
@@ -151,7 +152,7 @@ export interface IElectronAPI {
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
-  // 连接器管理（OpenClaw CLI 插件）
+  // 连接器（历史 OpenClaw 插件；已移除 CLI，接口保留为空实现以免旧页崩溃）
   getConnectors: () => Promise<any>;
   addConnector: (config: any) => Promise<{ success: boolean }>;
   updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
@@ -195,6 +196,9 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  intelligenceTriggerEvolutionTest: (params?: {
+    conversationId?: string;
+  }) => Promise<{ ok: true; runId?: string } | { ok: false; error: string }>;
   workspaceListRecent: () => Promise<Array<{ path: string; gitRemoteUrl: string | null }>>;
   workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
     summaries: Array<{ workspaceRoot: string; total: number }>;

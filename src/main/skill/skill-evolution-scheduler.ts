@@ -252,3 +252,79 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
     );
   });
 }
+
+/**
+ * 用户主动触发一次与「自动进化」相同的 Skill Agent 任务（不依赖轮次间隔），用于联调 / 验证进化管线。
+ * 仍要求工作区 manifest 已启用 `tools.skills`。
+ */
+export async function runManualSkillEvolutionTest(params: {
+  workspaceRoot: string;
+  mainConversationId?: string;
+}): Promise<{ ok: true; runId?: string } | { ok: false; error: string }> {
+  const root = path.resolve(String(params.workspaceRoot ?? '').trim());
+  if (!root) return { ok: false, error: 'no_workspace' };
+
+  const tools = await readWorkspaceToolManifest(root);
+  if (!tools.skills) {
+    return { ok: false, error: 'skills_disabled' };
+  }
+
+  const store = new SessionStore(root);
+  const convs = await store.readAll();
+  let convId = String(params.mainConversationId ?? '').trim();
+  if (convId) {
+    const hit = convs.find((x) => x.id === convId);
+    if (!hit) return { ok: false, error: 'no_conversation' };
+  } else {
+    const normalized = await store.normalizeToSingletonIfNeeded();
+    convId = normalized[0]?.id ?? '';
+    if (!convId) return { ok: false, error: 'no_conversation' };
+  }
+
+  const before = await readSkillEvolutionState(root);
+  const chatExcerpt = await excerptMainConversationSinceLastEvolution(root, convId, before.lastEvolutionAtMs, 8000);
+  const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
+  const taskText = buildSkillEvolutionTask({ chatExcerpt, memoryExcerpt });
+
+  void appendWorkspaceChangeLog(root, {
+    kind: 'agent_dispatch',
+    title: '用户主动触发：技能进化（测试）',
+    conversationId: convId,
+    userPreview: `手动测试进化：已启动 Skill Agent（槽位 ${SKILL_AGENT_SLOT_ID}），不依赖轮次间隔。当前累计轮次 ${before.totalUserManualRounds}。`,
+    assistantExcerpt:
+      '与自动进化相同的任务说明：合并近期主对话与 .agent/.memory、维护 .agent/.skills、扩写 .agent/.roleAgent 下角色文档。',
+    meta: { dispatch: 'skill_evolution_manual', manual: true },
+  }).catch(() => undefined);
+
+  const res = await runSubAgentOnce({
+    workspaceRoot: root,
+    slotId: SKILL_AGENT_SLOT_ID,
+    taskText,
+    conversationId: SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
+  });
+
+  if (!res.ok) {
+    void appendWorkspaceChangeLog(root, {
+      kind: 'evolution',
+      title: '主动进化（测试）失败',
+      conversationId: convId,
+      userPreview: '手动触发的 Skill Agent 未成功完成。',
+      assistantExcerpt: String(res.error ?? '').slice(0, 3500),
+      meta: { evolutionOk: false, manual: true, runId: res.runId },
+    }).catch(() => undefined);
+    return { ok: false, error: String(res.error ?? 'run_failed') };
+  }
+
+  const { aspectKeys, titleZh } = classifyEvolutionOutcomeMarkdown(res.message || '');
+  void appendWorkspaceChangeLog(root, {
+    kind: 'evolution',
+    title: `${titleZh}（手动测试）`,
+    conversationId: convId,
+    userPreview: `主动触发完成。解析维度：${aspectKeys.length ? aspectKeys.join('、') : '（概述）'}`,
+    assistantExcerpt: (res.message || '').slice(0, 4000),
+    meta: { evolutionOk: true, aspects: aspectKeys, manual: true, runId: res.runId },
+  }).catch(() => undefined);
+
+  await applySuccessfulEvolutionRewards(root, before.totalUserManualRounds);
+  return { ok: true, runId: res.runId };
+}

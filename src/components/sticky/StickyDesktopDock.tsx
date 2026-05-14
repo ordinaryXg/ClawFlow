@@ -1,6 +1,7 @@
 import { FC, useCallback } from 'react';
 import { SwapOutlined, UserOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import ManualEvolutionFab from '../ManualEvolutionFab';
 import {
   STICKY_LAUNCHER_MIME,
   type StickyLauncherDragPayloadV1,
@@ -40,6 +41,7 @@ const StickyDesktopDock: FC = () => {
 
   return (
     <aside className="cf-stickyDesktopDock" aria-label={t('sticky.dockAria')}>
+      <ManualEvolutionFab variant="dock" />
       <div
         className="cf-stickyDesktopDock__chip"
         draggable

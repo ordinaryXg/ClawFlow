@@ -64,3 +64,49 @@
   font-weight: 600;
   color: var(--sticky-muted, var(--muted));
 }
+
+/* 便签条内：主动进化（点击触发，不可拖拽） */
+.cf-stickyDesktopDock .cf-manualEvolutionFab--dock {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 52px;
+  min-height: auto;
+  padding: 4px 6px 5px;
+  margin: 0;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1.15;
+  user-select: none;
+  color: var(--sticky-text, var(--text));
+}
+
+:root[data-theme='light'] .cf-stickyDesktopDock .cf-manualEvolutionFab--dock {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.cf-stickyDesktopDock .cf-manualEvolutionFab--dock:hover:not(:disabled) {
+  border-color: rgba(217, 119, 6, 0.5);
+  background: rgba(251, 191, 36, 0.14);
+}
+
+.cf-stickyDesktopDock .cf-manualEvolutionFab--dock .cf-manualEvolutionFab__inner {
+  flex-direction: column;
+  gap: 2px;
+  font-size: 18px;
+}
+
+.cf-stickyDesktopDock .cf-manualEvolutionFab--dock .cf-manualEvolutionFab__dockLabel {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--sticky-muted, var(--muted));
+}

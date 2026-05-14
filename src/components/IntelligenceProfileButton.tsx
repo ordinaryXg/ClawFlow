@@ -66,6 +66,12 @@ const IntelligenceProfileButton: FC<Props> = ({ variant = 'fab' }) => {
     return () => off?.();
   }, [load]);
 
+  useEffect(() => {
+    const onReload = () => void load();
+    window.addEventListener('cf-intelligence-profile-reload', onReload);
+    return () => window.removeEventListener('cf-intelligence-profile-reload', onReload);
+  }, [load]);
+
   const stickyBar = variant === 'stickyBar';
   const level = data?.level ?? 1;
   const progress = data && data.level < 100 ? Math.round(data.progress01 * 100) : 100;

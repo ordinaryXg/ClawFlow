@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -139,6 +139,12 @@ const SettingsPage: FC = () => {
   const [feishuTestText, setFeishuTestText] = useState('');
   const [feishuTestingBotId, setFeishuTestingBotId] = useState<string | null>(null);
   const [feishuSendingBotId, setFeishuSendingBotId] = useState<string | null>(null);
+  const feishuTestDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (feishuTestDefaultAppliedRef.current) return;
+    feishuTestDefaultAppliedRef.current = true;
+    setFeishuTestText((p) => p.trim() || t('settings.messagingFeishuTestMsgDefault'));
+  }, [t]);
 
   const [appVersion, setAppVersion] = useState<string>('');
   const [modelProvider, setModelProvider] = useState<'deepseek' | 'openai' | 'anthropic'>('deepseek');
@@ -671,11 +677,7 @@ const SettingsPage: FC = () => {
   };
 
   const onSendFeishuTestMessage = async (botId: string) => {
-    const text = feishuTestText.trim();
-    if (!text) {
-      (window as any).__cf_toast?.error?.(t('settings.messagingFeishuTestMsgEmptyTitle'), t('settings.messagingFeishuTestMsgEmptyBody'));
-      return;
-    }
+    const text = (feishuTestText.trim() || t('settings.messagingFeishuTestMsgDefault')).trim();
     const row = feishuBots.find((b) => b.id === botId);
     if (!row) return;
     setFeishuSendingBotId(botId);
@@ -1704,12 +1706,14 @@ const SettingsPage: FC = () => {
           <div className="cf-sub" style={{ marginBottom: 6 }}>
             {t('settings.messagingFeishuTestMsgLabel')}
           </div>
-          <input
-            className="cf-input"
-            style={{ width: '100%', marginBottom: 6 }}
+          <textarea
+            className="cf-textarea"
+            style={{ width: '100%', marginBottom: 6, minHeight: 88 }}
+            rows={3}
             value={feishuTestText}
             onChange={(e) => setFeishuTestText(e.target.value)}
             placeholder={t('settings.messagingFeishuTestMsgPh')}
+            spellCheck={false}
           />
           <div className="cf-help" style={{ marginBottom: 16 }}>
             {t('settings.messagingFeishuSharedTestMsgHelp')}
