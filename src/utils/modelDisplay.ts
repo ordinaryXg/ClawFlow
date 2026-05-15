@@ -1,5 +1,5 @@
 /**
- * OpenClaw `models list` 可能为空，但 auth 已配置。合并 CLI 列表与已配置提供方，供设置页 / 对话页展示可选模型。
+ * 内置目录可能未覆盖全部已配置提供方。合并引擎返回的模型列表与 auth 中的提供方键，供设置页 / 对话页展示可选模型。
  */
 export const PROVIDER_FALLBACK_MODEL_ID: Record<string, string> = {
   deepseek: 'deepseek/deepseek-chat',

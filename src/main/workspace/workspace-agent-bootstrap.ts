@@ -1,5 +1,5 @@
 /**
- * 工作区 Agent 角色模板：对齐 OpenClaw `ensureAgentWorkspace` + `docs/reference/templates/*`
+ * 工作区 Agent 角色模板：按需写入 `.agent/.roleAgent/` 等约定文件
  * 统一放在工作区 `.agent/.roleAgent/`，仅在文件不存在时创建（flag wx），不覆盖用户已有内容。
  */
 

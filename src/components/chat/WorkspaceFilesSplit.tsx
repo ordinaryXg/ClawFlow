@@ -59,23 +59,7 @@ function pushToast(type: 'success' | 'error', title: string, message?: string): 
   else api.error(title, message);
 }
 
-function pathsFromDataTransfer(dt: DataTransfer): string[] {
-  const api = window.electronAPI;
-  if (!api?.getPathForFile || dt.files.length === 0) return [];
-  const out: string[] = [];
-  for (let i = 0; i < dt.files.length; i++) {
-    try {
-      out.push(api.getPathForFile(dt.files[i]));
-    } catch {
-      /* ignore */
-    }
-  }
-  return out;
-}
-
-function hasFileDrag(e: DragEvent): boolean {
-  return [...e.dataTransfer.types].includes('Files');
-}
+import { hasDataTransferFileDrag, pathsFromDataTransferFiles } from '../../utils/electron-data-transfer-files';
 
 function isMarkdownFilename(rel: string): boolean {
   const base = rel.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? '';
@@ -242,7 +226,7 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
 
   const runExternalImport = useCallback(
     async (targetRelativeDir: string, dt: DataTransfer) => {
-      const paths = pathsFromDataTransfer(dt);
+      const paths = pathsFromDataTransferFiles(dt);
       if (paths.length === 0) {
         pushToast('error', t('sticky.importNoPaths'));
         return;
@@ -263,7 +247,7 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
   );
 
   const onExternalDragOver = useCallback((e: DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);
@@ -273,19 +257,19 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
       e.preventDefault();
       e.stopPropagation();
       setFileDragOver(false);
-      if (!hasFileDrag(e)) return;
+      if (!hasDataTransferFileDrag(e.dataTransfer)) return;
       await runExternalImport(targetRelativeDir, e.dataTransfer);
     },
     [runExternalImport]
   );
 
   const onTreeDragEnter = useCallback((e: DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer)) return;
     setFileDragOver(true);
   }, []);
 
   const onTreeDragLeave = useCallback((e: DragEvent) => {
-    if (!hasFileDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer)) return;
     const cur = e.currentTarget;
     const rel = e.relatedTarget;
     if (rel && cur instanceof Node && cur.contains(rel as Node)) return;

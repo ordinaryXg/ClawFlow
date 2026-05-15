@@ -35,7 +35,7 @@ src/
     skill/                # Skill Agent；轮次 totalUserManualRounds 与进化触发见 skill-evolution-scheduler.ts
     shell/                # 托盘、主窗偏好、图标、桌面钉、主壳工作区记忆
     prefs/                # messaging-prefs、web-search-prefs、app-cache-prefs（userData 持久化）
-  engine/                 # ClawFlow / OpenClaw、Gateway、Provider、tool-runtime
+  engine/                 # ClawFlow 引擎、Gateway、Provider、tool-runtime
   messaging/              # 飞书等
   components/, pages/, store/
   shared/                 # 类型、纯函数；含 workspace-preview-limits、intelligence-profile

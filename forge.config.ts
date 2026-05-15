@@ -20,8 +20,7 @@ const config: ForgeConfig = {
     asar: true,
   },
   hooks: {},
-  // 注意：不配置 rebuildConfig，因为 OpenClaw 作为子进程运行
-  // 其原生模块将由运行它的 Node.js 处理
+  // 注意：不配置 rebuildConfig；原生依赖由 Electron / 运行时按需处理
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),

@@ -1,6 +1,6 @@
 /**
  * Multitask / Plan 网络搜索：博查 Bocha Web Search API、Brave Search API、SearXNG JSON、DuckDuckGo HTML 回退。
- * 参考：openclaw/src/agents/tools/web-search.ts；SearXNG：`GET /search?format=json`
+ * SearXNG：`GET /search?format=json`
  */
 
 import { classifyNetworkFailure, fetchWithProxyRetry } from '../utils/net-fetch';
@@ -116,7 +116,7 @@ function clampCount(n: unknown): number {
   return Math.max(1, Math.min(WEB_SEARCH_MAX_COUNT, Math.floor(v)));
 }
 
-/** OpenClaw：day/week/month/year 或 Brave 简写 pd/pw/pm/py */
+/** 时间窗：day/week/month/year 或 Brave 简写 pd/pw/pm/py */
 function normalizeBraveFreshness(raw: string | undefined): string | undefined {
   if (!raw?.trim()) return undefined;
   const v = raw.trim().toLowerCase();
@@ -513,7 +513,7 @@ async function fetchSearxngSearch(params: {
   }
 }
 
-/** 将 ISO 国家码粗映射为 DDG kl（与 OpenClaw 行为接近，非精确） */
+/** 将 ISO 国家码粗映射为 DDG kl（近似映射，非精确） */
 function guessDdgKl(country: string | undefined, language: string | undefined): string | undefined {
   const c = String(country ?? '')
     .trim()
@@ -553,7 +553,7 @@ function collectIgnoredForDdg(args: Record<string, unknown>): string[] {
 }
 
 /**
- * 执行网络搜索；返回可被 JSON 序列化的结果（与 OpenClaw web_search 返回结构相近）。
+ * 执行网络搜索；返回可被 JSON 序列化的结果。
  */
 export async function runClawFlowWebSearch(
   args: Record<string, unknown>,

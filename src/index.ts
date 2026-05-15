@@ -201,6 +201,27 @@ function registerWorkspaceImportExternalPathsIPC(): void {
 }
 registerWorkspaceImportExternalPathsIPC();
 
+function registerWorkspaceCopyChatDropFilesIPC(): void {
+  try {
+    ipcMain.removeHandler('workspace:copyChatDropFiles');
+  } catch {
+    /* first load */
+  }
+  ipcMain.handle('workspace:copyChatDropFiles', async (event, params: { sourceAbsolutePaths: string[] }) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    try {
+      return await workspaceExplorer.copyExternalPathsToChatDropCache(
+        root,
+        Array.isArray(params?.sourceAbsolutePaths) ? params.sourceAbsolutePaths : []
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+}
+registerWorkspaceCopyChatDropFilesIPC();
+
 /** 便签拖入文件夹：须在 whenReady 前可用，避免渲染进程早于 registerWorkspaceIPC 发起 invoke */
 function registerWorkspaceStatAbsolutePathIPC(): void {
   try {
@@ -1205,8 +1226,7 @@ app.whenReady().then(async () => {
     workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
   }
   const active = reg.activeWorkspacePath ?? workspaceService.getDefaultWorkspacePath();
-  workspaceService.migrateWorkspaceOpenclawToGlobalOnce();
-  workspaceService.removeLegacyWorkspaceOpenclawDirs();
+  workspaceService.removeLegacyExternalAgentStateDirsSync();
   await workspaceService.ensureWorkspaceInitialized(active);
   workspaceService.setActiveWorkspace(active);
   setActiveWorkspaceRoot(active);

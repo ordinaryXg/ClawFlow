@@ -8,6 +8,7 @@
   - `01_PROJECT_OVERVIEW.md`：项目与范围（一句话理解）
   - `03_PRD.md`：PRD（已落地/未实现/待改进 + 证据）
   - `02_ARCHITECTURE.md`：架构与关键调用链（Main/Preload/Renderer/IPC/引擎/工具）
+  - `08_CHAT_SEND_PAYLOAD.md`：对话发送 payload（messages、tools、磁盘路径是否进 API）
   - `04_ROADMAP.md`：路线图（面向下一步）
 
 - **要开始改代码**
@@ -23,6 +24,7 @@
 - `04_ROADMAP.md`：路线图（里程碑 + 依赖）
 - `05_DEV_PROCESS.md`：开发流程（如何写“可追溯”文档与验收）
 - `06_TASKS.md`：任务清单（按模块/优先级/验收）
+- `08_CHAT_SEND_PAYLOAD.md`：每次对话发往模型的内容与文件（DeepSeek / messages / tools / 工作区路径对照）
 
 ## 统一约定（本轮重整理的标准）
 

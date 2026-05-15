@@ -1,3 +1,6 @@
+/**
+ * `*** Begin Patch` / `*** End Patch` 多文件补丁解析与应用（工作区 `apply_patch` 工具使用）。
+ */
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

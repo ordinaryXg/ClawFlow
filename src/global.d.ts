@@ -8,8 +8,7 @@ export interface IElectronAPI {
   stopGateway: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  // Legacy OpenClaw chat & config APIs removed (desktop chat/gateway are built-in).
-  // 新引擎（Phase 0：stub）
+  // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
@@ -152,12 +151,6 @@ export interface IElectronAPI {
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
-  // 连接器（历史 OpenClaw 插件；已移除 CLI，接口保留为空实现以免旧页崩溃）
-  getConnectors: () => Promise<any>;
-  addConnector: (config: any) => Promise<{ success: boolean }>;
-  updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
-  deleteConnector: (id: string) => Promise<{ success: boolean }>;
-  testConnector: (id: string) => Promise<{ success: boolean }>;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;
@@ -296,6 +289,12 @@ export interface IElectronAPI {
     sourceAbsolutePaths: string[];
     overwrite?: boolean;
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  workspaceCopyChatDropFiles: (params: {
+    sourceAbsolutePaths: string[];
+  }) => Promise<
+    | { ok: true; items: Array<{ destAbs: string; displayName: string }> }
+    | { ok: false; error: string }
+  >;
   workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;

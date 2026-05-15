@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createHash, randomUUID } from 'crypto';
-import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './openclaw-apply-patch';
+import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './apply-patch';
 import type { WorkspaceToolId } from '../shared/workspace-tools';
 import { toolNameAllowedByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
 import { runWebScrapeForTool } from '../main/scrape/scrape-runner';
@@ -157,7 +157,7 @@ function assertStrictSchema(schema: ToolSchema): void {
   const properties =
     (params as any).properties && typeof (params as any).properties === 'object' ? (params as any).properties : {};
 
-  // additionalProperties=false；required 仅列出必填字段（与 JSON Schema / OpenClaw web_search 一致）
+  // additionalProperties=false；required 仅列出必填字段（与 JSON Schema / web_search 一致）
   if ((params as any).additionalProperties !== false) {
     throw new Error(`Tool schema must set additionalProperties=false: ${(schema as any)?.function?.name ?? 'unknown'}`);
   }
@@ -220,7 +220,7 @@ async function resolveRealPathInsideWorkspace(workspaceRoot: string, relativePat
   const rootCmp = normalizePathForCompare(rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep);
   const parentCmp = normalizePathForCompare(parentReal.endsWith(path.sep) ? parentReal : parentReal + path.sep);
   if (!parentCmp.startsWith(rootCmp)) throw new Error('Path escapes workspace');
-  // additionally prevent symlink segments inside workspace root (OpenClaw-style)
+  // additionally prevent symlink segments inside workspace root
   await assertNoExistingPathAliases({ rootPath: workspaceRoot, candidatePath: path.dirname(full) });
   return full;
 }
@@ -923,7 +923,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_apply_patch_v2',
         description:
-          'Apply an OpenClaw-compatible multi-file patch (*** Begin Patch/End Patch with Add/Update/Delete/Move). Workspace-only with strict safety guards.',
+          'Apply a multi-file unified diff patch (*** Begin Patch/End Patch with Add/Update/Delete/Move). Workspace-only with strict safety guards.',
         strict: true,
         parameters: {
           type: 'object',

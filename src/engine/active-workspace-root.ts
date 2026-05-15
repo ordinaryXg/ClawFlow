@@ -1,5 +1,5 @@
 /**
- * 主进程内「当前用于 CLI/解析类逻辑的 workspace 根」单例（与 OpenClaw 解耦）。
+ * 主进程内「当前用于解析类逻辑的 workspace 根」单例。
  * 随用户切换工作区由 index / workspace IPC 更新；供 electron-workspace-context 等读取。
  */
 import * as path from 'path';

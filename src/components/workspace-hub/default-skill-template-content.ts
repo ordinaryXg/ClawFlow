@@ -1,24 +1,20 @@
-/** 无磁盘技能时「技能」面板右侧展示的 Hermes 示例正文（与仓库内 default/SKILL.md 语义一致） */
-export const DEFAULT_SKILL_TEMPLATE_MARKDOWN = `# default — 工作区默认技能（Hermes 模板）
+/** 无磁盘技能时「技能」面板右侧展示的说明（引导使用内置 skill-creator，不再自动创建 default/） */
+export const DEFAULT_SKILL_TEMPLATE_MARKDOWN = `# 尚未发现工作区技能
 
-本技能由 ClawFlow 在工作区**首次初始化且尚无其它技能**时自动创建，便于你立刻在「技能」面板看到示例目录结构，并作为后续「自主进化」的起点。
+ClawFlow **不会**再自动创建 \`.agent/.skills/default/\` 示例目录。
 
-## 是什么
+## 如何开始
 
-- **路径**：\`.agent/.skills/default/SKILL.md\`（主说明）
-- **扩展**：可在同目录下 \`references/\` 放 \`.md\` / \`.txt\` 补充材料（会被 FTS 索引）
+1. 确认 \`.agent/.tool/manifest.json\` 中已开启 **\`tools.skills\`**。
+2. 打开工作区后若已自动补全，请阅读 **\`.agent/.skills/skill-creator/SKILL.md\`**（「创建 Skill 的 Skill」），在对话中让模型按其中流程使用 \`workspace_skill_create\` 等工具新建你的第一个技能目录。
+3. 若该文件不存在，可在对话中说明「按 skill-creator 初始化 Hermes 技能」或手动从应用模板复制同名目录。
 
-## 该怎么用
+## 常用工具
 
-1. 在 \`.agent/.tool/manifest.json\` 中打开 **\`tools.skills\`**（以及需要全文检索时再打开 **\`tools.knowledge_base\`**）。
-2. 在对话里让模型使用 \`workspace_skill_list\` / \`workspace_skill_view\` 按需读取；用 \`workspace_skill_patch\` 做小步修改；用 \`workspace_skill_create\` 新建其它技能目录。
-3. 用 \`workspace_memory_search\` 在已索引的 \`SKILL.md\` 与 \`references\` 中检索关键词；若索引异常可调用 \`workspace_memory_rebuild_index\`。
-
-## 你可以怎么改这份模板
-
-- 把上文改成你项目里**真实可复用的约定**（命名规范、常用命令、禁止事项、检查清单等）。
-- 需要删整棵技能树时再用 \`workspace_skill_delete\`（高危，通常需确认/审批）。
+- \`workspace_skill_list\` / \`workspace_skill_view\`：浏览已有技能  
+- \`workspace_skill_create\`：新建 \`.agent/.skills/<名称>/SKILL.md\`  
+- \`workspace_skill_patch\` / \`workspace_skill_write_aux\`：小步修改正文与 \`references/\`
 
 ---
 
-*此文件可安全编辑或删除；删除后若目录下无任何 **/SKILL.md**，下次工作区初始化会再次补回本默认技能。*`;
+*新建技能请统一走 skill-creator 约定，避免依赖已废弃的 default 自动目录。*`;

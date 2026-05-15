@@ -3,15 +3,14 @@ import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
-  /** 应用版本；网关状态/启停已映射到内置 engineGateway（不再使用 OpenClaw CLI） */
+  /** 应用版本；网关状态/启停映射到内置 engineGateway */
   getVersion: () => Promise<string>;
   getGatewayStatus: () => Promise<string>;
   startGateway: () => Promise<void>;
   stopGateway: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
-  // Legacy OpenClaw chat & config APIs removed (desktop chat/gateway are built-in).
-  // 新引擎（Phase 0：stub）
+  // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
@@ -152,12 +151,6 @@ export interface IElectronAPI {
   ) => () => void;
   onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
-  // 连接器（历史 OpenClaw 插件；已移除 CLI，接口保留为空实现以免旧页崩溃）
-  getConnectors: () => Promise<any>;
-  addConnector: (config: any) => Promise<{ success: boolean }>;
-  updateConnector: (id: string, config: any) => Promise<{ success: boolean }>;
-  deleteConnector: (id: string) => Promise<{ success: boolean }>;
-  testConnector: (id: string) => Promise<{ success: boolean }>;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;
@@ -283,6 +276,12 @@ export interface IElectronAPI {
     sourceAbsolutePaths: string[];
     overwrite?: boolean;
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  workspaceCopyChatDropFiles: (params: {
+    sourceAbsolutePaths: string[];
+  }) => Promise<
+    | { ok: true; items: Array<{ destAbs: string; displayName: string }> }
+    | { ok: false; error: string }
+  >;
   workspaceMkdir: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   workspaceRenamePath: (params: { from: string; to: string; overwrite?: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -398,7 +397,6 @@ export interface IElectronAPI {
 
 // 通过 contextBridge 安全地暴露 API
 contextBridge.exposeInMainWorld('electronAPI', {
-  /** 兼容旧名：返回应用版本（不再调用 OpenClaw CLI） */
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getGatewayStatus: async () => {
     const r = (await ipcRenderer.invoke('engineGateway:status')) as { status?: string } | null;
@@ -512,20 +510,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('chat:conversationsDirty', handler);
     return () => ipcRenderer.removeListener('chat:conversationsDirty', handler);
   },
-  // 连接器管理
-  getConnectors: async () => ({ connectors: [] as unknown[] }),
-  addConnector: async () => {
-    throw new Error('OpenClaw CLI 已移除，无法添加连接器');
-  },
-  updateConnector: async () => {
-    throw new Error('OpenClaw CLI 已移除，无法更新连接器');
-  },
-  deleteConnector: async () => {
-    throw new Error('OpenClaw CLI 已移除，无法删除连接器');
-  },
-  testConnector: async () => {
-    throw new Error('OpenClaw CLI 已移除，无法测试连接器');
-  },
   onNavigate: (cb: (path: string) => void) => {
     const handler = (_event: unknown, path: unknown) => {
       if (typeof path === 'string') cb(path);
@@ -613,6 +597,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sourceAbsolutePaths: string[];
     overwrite?: boolean;
   }) => ipcRenderer.invoke('workspace:importExternalPaths', params),
+  workspaceCopyChatDropFiles: (params: { sourceAbsolutePaths: string[] }) =>
+    ipcRenderer.invoke('workspace:copyChatDropFiles', params),
   workspaceMkdir: (relativePath: string) => ipcRenderer.invoke('workspace:mkdir', { relativePath }),
   workspaceWriteTextFile: (params: { relativePath: string; content?: string; overwrite?: boolean }) =>
     ipcRenderer.invoke('workspace:writeTextFile', params),

@@ -2,6 +2,7 @@
  * 工作空间内安全列目录 / 读文件（主进程，供 IPC 使用）。
  */
 
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WORKSPACE_IMAGE_PREVIEW_MAX_BYTES } from '../../shared/workspace-preview-limits';
@@ -12,6 +13,7 @@ import {
   previewPdfBuffer,
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
 } from './workspace-office-preview';
+import { clawflowDir } from './workspace-service';
 
 const TEXT_PREVIEW_MAX = 256 * 1024;
 const FILE_HARD_MAX = 1024 * 1024;
@@ -282,6 +284,62 @@ export async function importExternalPathsIntoWorkspace(
   }
 
   return { ok: true };
+}
+
+/** 对话拖入附件缓存目录名（位于 `.agent/.clawflow/` 下） */
+export const CHAT_DROP_CACHE_DIRNAME = 'chat-drop-cache';
+
+function makeUniqueChatDropDestName(originalBase: string): string {
+  const ext = path.extname(originalBase);
+  const stem = ext ? originalBase.slice(0, -ext.length) : originalBase;
+  const safeStem = stem.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'file';
+  const short = safeStem.slice(0, 80);
+  return `${short}__${Date.now().toString(36)}_${randomUUID().slice(0, 10)}${ext}`;
+}
+
+/**
+ * 将绝对路径上的文件/目录**复制**到工作区 `.agent/.clawflow/chat-drop-cache/`，供会话引用。
+ * 不删除源路径；目录递归复制。
+ */
+export async function copyExternalPathsToChatDropCache(
+  workspaceRoot: string,
+  sourceAbsolutePaths: string[]
+): Promise<
+  | { ok: true; items: Array<{ destAbs: string; displayName: string }> }
+  | { ok: false; error: string }
+> {
+  const cacheRoot = path.join(clawflowDir(path.resolve(workspaceRoot)), CHAT_DROP_CACHE_DIRNAME);
+  await fs.promises.mkdir(cacheRoot, { recursive: true });
+
+  const paths = sourceAbsolutePaths.map((p) => path.resolve(String(p || ''))).filter(Boolean);
+  if (paths.length === 0) return { ok: false, error: 'No files to copy' };
+
+  const items: Array<{ destAbs: string; displayName: string }> = [];
+
+  for (const src of paths) {
+    const st = await fs.promises.stat(src).catch(() => null);
+    if (!st) return { ok: false, error: `Source not found: ${src}` };
+
+    const base = path.basename(src);
+    if (!base || base === '.' || base === '..') return { ok: false, error: 'Invalid file name' };
+
+    const destName = makeUniqueChatDropDestName(base);
+    const dest = path.join(cacheRoot, destName);
+    const destResolved = path.resolve(dest);
+    const cacheResolved = path.resolve(cacheRoot);
+    if (!destResolved.startsWith(cacheResolved + path.sep) && destResolved !== cacheResolved) {
+      return { ok: false, error: 'Invalid destination' };
+    }
+
+    if (st.isDirectory()) {
+      await fs.promises.cp(src, dest, { recursive: true });
+    } else {
+      await fs.promises.copyFile(src, dest);
+    }
+    items.push({ destAbs: destResolved, displayName: base });
+  }
+
+  return { ok: true, items };
 }
 
 export type FilePreviewResult =

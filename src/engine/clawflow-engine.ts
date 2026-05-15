@@ -545,7 +545,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     };
   }
 
-  /** 内置 Chat UI：下拉模型列表（不依赖 OpenClaw CLI） */
+  /** 内置 Chat UI：下拉模型列表 */
   async listChatModelCatalog(): Promise<{
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;

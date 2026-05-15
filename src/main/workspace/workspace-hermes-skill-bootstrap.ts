@@ -1,16 +1,16 @@
 /**
- * Hermes 工作区技能：在 `.agent/.skills/` 下无任一技能时，补写默认示例 `default/SKILL.md`（flag wx，不覆盖用户已有技能）。
+ * Hermes 工作区技能：打开工作区时若缺失则补写内置 `skill-creator/SKILL.md`（wx，不覆盖用户修改）。
+ * 不再自动创建 `default/` 示例目录；新建技能请通过 `.agent/.skills/skill-creator` 说明与工具链完成。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { refreshHermesSkillMemoryIndexBestEffort } from '../../engine/hermes-skill-index-hooks';
-import { listWorkspaceHermesSkills } from './workspace-skills-read';
-import templateDefaultSkillMd from '../../workspace-templates/hermes-skills/default/SKILL.md';
+import templateSkillCreatorSkillMd from '../../workspace-templates/hermes-skills/skill-creator/SKILL.md';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 
-export const WORKSPACE_DEFAULT_HERMES_SKILL_DIR = '.agent/.skills/default';
-export const WORKSPACE_DEFAULT_HERMES_SKILL_MD = `${WORKSPACE_DEFAULT_HERMES_SKILL_DIR}/SKILL.md`;
+export const WORKSPACE_SKILL_CREATOR_HERMES_SKILL_DIR = '.agent/.skills/skill-creator';
+export const WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD = `${WORKSPACE_SKILL_CREATOR_HERMES_SKILL_DIR}/SKILL.md`;
 
 async function writeFileIfMissing(filePath: string, content: string): Promise<boolean> {
   try {
@@ -24,23 +24,18 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
 }
 
 /**
- * 若 `.agent/.skills/**` 下尚无任何 `SKILL.md`，则创建默认示例技能目录。
+ * 若 `.agent/.skills/skill-creator/SKILL.md` 尚不存在则创建（与其它技能是否已存在无关）。
  */
-export async function ensureWorkspaceDefaultHermesSkill(workspaceRoot: string): Promise<{ created: string[] }> {
+export async function ensureWorkspaceSkillCreatorHermesSkill(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
   const skillsBase = workspaceSkillsDirAbs(root);
   await fs.promises.mkdir(skillsBase, { recursive: true });
 
-  const existing = listWorkspaceHermesSkills(root);
-  if (existing.length > 0) {
-    return { created: [] };
-  }
-
-  const relMd = WORKSPACE_DEFAULT_HERMES_SKILL_MD.replace(/\\/g, '/');
-  const absMd = path.join(skillsBase, 'default', 'SKILL.md');
+  const relMd = WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD.replace(/\\/g, '/');
+  const absMd = path.join(skillsBase, 'skill-creator', 'SKILL.md');
   await fs.promises.mkdir(path.dirname(absMd), { recursive: true });
 
-  const body = String(templateDefaultSkillMd ?? '').trimEnd();
+  const body = String(templateSkillCreatorSkillMd ?? '').trimEnd();
   const payload = body.endsWith('\n') ? body : `${body}\n`;
 
   const created: string[] = [];

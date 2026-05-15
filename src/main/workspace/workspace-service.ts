@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { ensureWorkspaceSubAgentRoleTemplates } from './workspace-subagent-role-bootstrap';
-import { ensureWorkspaceDefaultHermesSkill } from './workspace-hermes-skill-bootstrap';
+import { ensureWorkspaceSkillCreatorHermesSkill } from './workspace-hermes-skill-bootstrap';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import {
   migrateLegacyWorkspaceAgentBundleSync,
@@ -366,25 +366,9 @@ export function legacyTodoTriggersStorePath(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'todo-triggers.v1.json');
 }
 
-export function openclawStateDir(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'openclaw');
-}
-
-export function openclawConfigPath(workspaceRoot: string): string {
-  return path.join(openclawStateDir(workspaceRoot), 'openclaw.json');
-}
-
-/** 应用级共享：模型鉴权与 OpenClaw 状态（不随工作区切换变化） */
+/** 应用级共享目录（`userData/.clawflow/`）：模型鉴权 `auth-profiles.v*.json` 等，不随工作区切换变化 */
 export function globalClawflowRoot(): string {
   return path.join(app.getPath('userData'), CLAWFLOW_DIR);
-}
-
-export function globalOpenclawStateDir(): string {
-  return path.join(globalClawflowRoot(), 'openclaw');
-}
-
-export function globalOpenclawConfigPath(): string {
-  return path.join(globalOpenclawStateDir(), 'openclaw.json');
 }
 
 /** 注册表里出现过的 workspace 根路径（活跃、最近、默认），用于迁移与清理。 */
@@ -397,111 +381,22 @@ export function registeredWorkspaceRootCandidates(reg?: WorkspaceRegistry): stri
   return Array.from(new Set(candidates.map((x) => path.resolve(String(x).trim())).filter(Boolean)));
 }
 
-function authProfilesPathUnderOpenclawState(stateRoot: string): string {
-  return path.join(stateRoot, 'agents', 'main', 'agent', 'auth-profiles.json');
-}
-
-function readAuthProfilesPayload(filePath: string): { version: number; profiles: Record<string, unknown> } | null {
-  try {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const j = JSON.parse(raw) as { version?: unknown; profiles?: unknown };
-    if (!j || typeof j !== 'object') return null;
-    const profiles =
-      j.profiles && typeof j.profiles === 'object' && !Array.isArray(j.profiles)
-        ? (j.profiles as Record<string, unknown>)
-        : {};
-    const version = typeof j.version === 'number' ? j.version : 1;
-    return { version, profiles };
-  } catch {
-    return null;
-  }
-}
-
-function countAuthProfiles(filePath: string): number {
-  const p = readAuthProfilesPayload(filePath);
-  return p ? Object.keys(p.profiles).length : 0;
-}
-
 /**
- * 将历史上保存在「各工作区 `.agent/.clawflow/openclaw`」（或旧版根目录 `.clawflow/openclaw`）下的鉴权合并到全局目录（仅当全局尚无 profile 时执行）。
- * 在创建任意 OpenClaw 引擎之前调用一次即可。
+ * 删除磁盘上仍存在的旧版子目录名 `openclaw`（历史布局残留），位于工作区或用户数据 `.clawflow/` 下。
  */
-export function migrateWorkspaceOpenclawToGlobalOnce(): void {
-  const destRoot = globalOpenclawStateDir();
-  fs.mkdirSync(destRoot, { recursive: true });
-
-  const destAuth = authProfilesPathUnderOpenclawState(destRoot);
-  if (fs.existsSync(destAuth) && countAuthProfiles(destAuth) > 0) {
-    migrateOpenclawJsonIfMissing(destRoot);
-    return;
-  }
-
-  const uniq = registeredWorkspaceRootCandidates();
-
-  const mergedProfiles: Record<string, unknown> = {};
-  let mergedVersion = 1;
-
-  for (const ws of uniq) {
-    const srcRoots = [openclawStateDir(ws), path.join(path.resolve(ws), '.clawflow', 'openclaw')];
-    for (const srcRoot of srcRoots) {
-      const srcAuth = authProfilesPathUnderOpenclawState(srcRoot);
-      if (!fs.existsSync(srcAuth)) continue;
-      const payload = readAuthProfilesPayload(srcAuth);
-      if (!payload || Object.keys(payload.profiles).length === 0) continue;
-      Object.assign(mergedProfiles, payload.profiles);
-      mergedVersion = payload.version;
-    }
-  }
-
-  if (Object.keys(mergedProfiles).length > 0) {
-    const destAgentDir = path.dirname(destAuth);
-    fs.mkdirSync(destAgentDir, { recursive: true });
-    fs.writeFileSync(destAuth, JSON.stringify({ version: mergedVersion, profiles: mergedProfiles }, null, 2), 'utf-8');
-  }
-
-  migrateOpenclawJsonIfMissing(destRoot, uniq);
-}
-
-function migrateOpenclawJsonIfMissing(destRoot: string, workspaceCandidates?: string[]): void {
-  const destCfg = path.join(destRoot, 'openclaw.json');
-  if (fs.existsSync(destCfg)) return;
-  const candidates = workspaceCandidates ?? registeredWorkspaceRootCandidates();
-  for (const ws of candidates) {
-    const tryPaths = [openclawConfigPath(ws), path.join(path.resolve(ws), '.clawflow', 'openclaw', 'openclaw.json')];
-    for (const srcCfg of tryPaths) {
-      if (!fs.existsSync(srcCfg)) continue;
-      try {
-        fs.copyFileSync(srcCfg, destCfg);
-      } catch (e) {
-        console.warn('[workspace-service] migrate openclaw.json failed:', e);
-      }
-      return;
-    }
-  }
-}
-
-/**
- * 删除各工作区下历史遗留的 per-workspace `openclaw` 目录（模型鉴权已迁至应用全局目录）。
- * 覆盖 `.agent/.clawflow/openclaw` 与旧版根目录 `.clawflow/openclaw`。
- * 不会删除与用户数据全局目录相同的路径。
- */
-export function removeLegacyWorkspaceOpenclawDirs(): void {
-  const globalRoot = path.resolve(globalOpenclawStateDir());
+export function removeLegacyExternalAgentStateDirsSync(): void {
+  const targets = new Set<string>();
+  targets.add(path.resolve(path.join(globalClawflowRoot(), 'openclaw')));
   for (const ws of registeredWorkspaceRootCandidates()) {
-    const legacies = [
-      path.resolve(path.join(clawflowDir(ws), 'openclaw')),
-      path.resolve(path.join(ws, '.clawflow', 'openclaw')),
-    ];
-    const seen = new Set<string>();
-    for (const legacy of legacies) {
-      if (seen.has(legacy)) continue;
-      seen.add(legacy);
-      if (legacy === globalRoot || !fs.existsSync(legacy)) continue;
-      try {
-        fs.rmSync(legacy, { recursive: true, force: true });
-      } catch (e) {
-        console.warn('[workspace-service] remove legacy workspace openclaw failed:', legacy, e);
-      }
+    targets.add(path.resolve(path.join(clawflowDir(ws), 'openclaw')));
+    targets.add(path.resolve(path.join(ws, '.clawflow', 'openclaw')));
+  }
+  for (const dir of targets) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+      console.warn('[workspace-service] remove legacy external-agent dir failed:', dir, e);
     }
   }
 }
@@ -745,7 +640,7 @@ export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Prom
 }
 
 /**
- * 创建工作区根下 **`.agent/.clawflow/`**、**`.subagent/`**（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`，并确保应用级全局 OpenClaw 状态目录存在。
+ * 创建工作区根下 **`.agent/.clawflow/`**、**`.subagent/`**（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`。
  * 同时在 **`.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  * 若工作区根下已同时存在 `.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
  * 打开时会先迁移：**根下 `.clawflow-launcher-stash` → 应用缓存**；**缓存内旧版 `.agent` / `.subagent` → 工作区根**（若根下尚无对应目录）。
@@ -762,10 +657,8 @@ export async function ensureWorkspaceInitialized(
   }
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
-  const ocDir = globalOpenclawStateDir();
 
   await fs.promises.mkdir(cf, { recursive: true });
-  await fs.promises.mkdir(ocDir, { recursive: true });
   try {
     await fs.promises.mkdir(workspaceAgentDotMemoryDirAbs(root), { recursive: true });
   } catch {
@@ -801,20 +694,20 @@ export async function ensureWorkspaceInitialized(
       console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
     }
 
-    // Hermes：`.agent/.skills` 下尚无任何技能时，补写默认示例 `default/SKILL.md`
-    try {
-      await ensureWorkspaceDefaultHermesSkill(root);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[workspace-service] ensureWorkspaceDefaultHermesSkill failed:', msg);
-    }
-
     try {
       await ensureSkillAgentSlotForWorkspace(root);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureSkillAgentSlotForWorkspace failed:', msg);
     }
+  }
+
+  // 新建与既有工作区：若缺失则补写内置 `skill-creator/SKILL.md`（wx，不覆盖用户编辑）
+  try {
+    await ensureWorkspaceSkillCreatorHermesSkill(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceSkillCreatorHermesSkill failed:', msg);
   }
 
   const now = Date.now();

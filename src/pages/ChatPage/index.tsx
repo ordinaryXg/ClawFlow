@@ -80,6 +80,7 @@ const ChatPage: FC = () => {
   const chatIntent = useSettingsStore((s) => s.chatIntent);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [messagesScrollEl, setMessagesScrollEl] = useState<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const resizeDragRef = useRef<{ startY: number; startH: number } | null>(null);
@@ -154,6 +155,11 @@ const ChatPage: FC = () => {
   }, [fetchConversations, activeWorkspacePath]);
 
   // 自动下拉：只有当用户在底部附近时才跟随输出，避免用户上翻阅读时被强制拉回。
+  const assignMessagesScrollRef = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setMessagesScrollEl(el);
+  }, []);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -164,7 +170,7 @@ const ChatPage: FC = () => {
     onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll as any);
-  }, []);
+  }, [messagesScrollEl]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -320,6 +326,27 @@ const ChatPage: FC = () => {
 
   const showApiKeyBar = modelRows.length > 0 && !modelRows.some((m) => m.available);
 
+  /** 顶栏：发送后先「等待回复」，出现流式内容后「正在输入」，结束后清空 */
+  const chatStreamHeaderStatus = useMemo<'idle' | 'waiting' | 'typing'>(() => {
+    if (!isLoading) return 'idle';
+    const act = typeof streamingActivity === 'string' ? streamingActivity.trim() : '';
+    const think = typeof streamingThinking === 'string' ? streamingThinking.trim() : '';
+    if (act.length > 0 || think.length > 0) return 'typing';
+    return 'waiting';
+  }, [isLoading, streamingActivity, streamingThinking]);
+
+  const chatHeaderStatusRow = (
+    <>
+      <span className="cf-chatCenter__sessionWord">{t('chat.headerSession')}</span>
+      {chatStreamHeaderStatus === 'waiting' ? (
+        <span className="cf-chatCenter__streamStatus cf-chatCenter__streamStatus--wait">{t('chat.statusWaitingReply')}</span>
+      ) : null}
+      {chatStreamHeaderStatus === 'typing' ? (
+        <span className="cf-chatCenter__streamStatus cf-chatCenter__streamStatus--typing">{t('chat.statusTyping')}</span>
+      ) : null}
+    </>
+  );
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) ?? null,
     [conversations, activeConversationId]
@@ -408,8 +435,12 @@ const ChatPage: FC = () => {
       {!isAlternateShell ? (
         <header className="cf-chatCenter__header">
           <div className="cf-chatCenter__title">
-            <b style={{ fontSize: 12 }}>{activeConversation?.title ?? t('chat.noSessionSelected')}</b>
-            {isLoading ? <span className="cf-sub">{t('chat.responding')}</span> : null}
+            <div className="cf-chatCenter__titleBlock">
+              <div className="cf-chatCenter__titleRow">{chatHeaderStatusRow}</div>
+              <div className="cf-chatCenter__titleSubtitle">
+                {activeConversation?.title?.trim() ? activeConversation.title : t('chat.noSessionSelected')}
+              </div>
+            </div>
           </div>
           {error ? (
             <div className="cf-chatCenter__error">
@@ -431,13 +462,17 @@ const ChatPage: FC = () => {
             </div>
           ) : null}
           <div className="cf-chatCenter__sessionHint" aria-live="polite">
-            <span className="cf-chatCenter__sessionHintTitle">{activeConversation?.title ?? t('chat.noSessionSelected')}</span>
-            {isLoading ? <span className="cf-sub">{t('chat.responding')}</span> : null}
+            <div className="cf-chatCenter__sessionHintTop">
+              <div className="cf-chatCenter__titleRow">{chatHeaderStatusRow}</div>
+              <span className="cf-chatCenter__sessionHintTitle">
+                {activeConversation?.title?.trim() ? activeConversation.title : t('chat.noSessionSelected')}
+              </span>
+            </div>
           </div>
         </>
       )}
 
-      <div ref={scrollRef} className="cf-chatCenter__messages">
+      <div ref={assignMessagesScrollRef} className="cf-chatCenter__messages">
         {isAlternateShell ? <TodoTriggersStickyFloat /> : null}
         {messages.length === 0 && streamingActivity === null && !toolApprovalForActive ? (
           <div className="cf-chatCenter__empty">
@@ -448,7 +483,12 @@ const ChatPage: FC = () => {
           </div>
         ) : (
           <>
-            <MessageList messages={messages} />
+            <MessageList
+              messages={messages}
+              scrollRoot={messagesScrollEl}
+              stickToBottomRef={stickToBottomRef}
+              conversationId={activeConversationId}
+            />
             <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
             {toolApprovalForActive ? (
               <ToolApprovalBar pending={toolApprovalForActive} onRespond={respondToolApproval} />

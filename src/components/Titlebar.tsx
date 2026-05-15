@@ -46,7 +46,6 @@ const Titlebar: FC<Props> = ({ visible = true }) => {
       items: [
         { key: 'chat', label: t('nav.chat'), onClick: () => navigate('/chat') },
         { key: 'skills', label: t('nav.skills'), onClick: () => navigate('/skills') },
-        { key: 'connectors', label: t('nav.connectors'), onClick: () => navigate('/connectors') },
         { key: 'settings', label: t('nav.settings'), onClick: () => navigate('/settings') },
         { type: 'divider' },
         { key: 'reload', label: t('titlebar.reload'), onClick: () => void window.electronAPI?.windowReload?.() },

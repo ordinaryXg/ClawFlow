@@ -1,6 +1,6 @@
 import type { WorkspaceSkillListItem } from './workspace-skills-types';
 
-/** 与工作区 bootstrap `ensureWorkspaceDefaultHermesSkill` 创建的示例目录一致（POSIX） */
+/** 历史工作区可能存在的示例目录 `.agent/.skills/default`（POSIX），与其它技能并存时在发现列表中隐藏以免重复占位 */
 export const WORKSPACE_BOOTSTRAP_DEFAULT_SKILL_ROOT_POSIX = '.agent/.skills/default';
 
 export function normalizeHermesSkillRootRel(rel: string): string {

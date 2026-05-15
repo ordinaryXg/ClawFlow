@@ -116,8 +116,6 @@ const SettingsPage: FC = () => {
     ...DEFAULT_WORKSPACE_TOOL_SELECTION,
   });
   const [accountToolsSaving, setAccountToolsSaving] = useState(false);
-  const [connectorCount, setConnectorCount] = useState(0);
-
   type FeishuRecvUi = 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
   type FeishuBotUiRow = {
     id: string;
@@ -212,16 +210,6 @@ const SettingsPage: FC = () => {
     }
   }, []);
 
-  const reloadConnectorsCount = useCallback(async () => {
-    try {
-      const res = await window.electronAPI?.getConnectors?.();
-      const arr = res?.connectors;
-      setConnectorCount(Array.isArray(arr) ? arr.length : 0);
-    } catch {
-      setConnectorCount(0);
-    }
-  }, []);
-
   const reloadFeishuMessaging = useCallback(async () => {
     try {
       const res = await window.electronAPI?.messagingGetFeishuBots?.();
@@ -296,11 +284,6 @@ const SettingsPage: FC = () => {
     if (activeSection !== 'models') return;
     void reloadBuiltinCatalog();
   }, [activeSection, activeWorkspacePath, reloadBuiltinCatalog]);
-
-  useEffect(() => {
-    if (activeSection !== 'integrations' && activeSection !== 'system') return;
-    void reloadConnectorsCount();
-  }, [activeSection, reloadConnectorsCount]);
 
   useEffect(() => {
     if (activeSection !== 'integrations') return;
@@ -528,8 +511,6 @@ const SettingsPage: FC = () => {
       setAccountToolsSaving(false);
     }
   };
-
-  // OpenClaw CLI settings removed (desktop runs fully built-in).
 
   const gatewayChip = useMemo(() => {
     if (gatewayStatus === 'running')
@@ -1293,22 +1274,6 @@ const SettingsPage: FC = () => {
                 aria-label={t('settings.logLevel')}
               />
             </div>
-          </div>
-        </div>
-
-        <div className="cf-card">
-          <h3>{t('settings.connectorsCount')}</h3>
-          <div className="cf-divider" />
-          <div className="cf-help" style={{ marginBottom: 12 }}>
-            {t('settings.connectorsCountHint', { count: connectorCount })}
-          </div>
-          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={() => void reloadConnectorsCount()}>
-              {t('settings.refreshIntegrationStatus')}
-            </button>
-            <button className="cf-btn cf-btnPrimary cf-btnSmall" type="button" onClick={() => navigate('/connectors')}>
-              {t('settings.openConnectors')}
-            </button>
           </div>
         </div>
 

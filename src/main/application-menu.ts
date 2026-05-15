@@ -44,7 +44,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     learnMore: '了解更多',
     navChat: '对话',
     navSkills: '技能',
-    navConnectors: '连接器',
     navSettings: '全局设置',
   },
   en: {
@@ -82,7 +81,6 @@ const I18N: Record<AppLang, Record<string, string>> = {
     learnMore: 'Learn More',
     navChat: 'Chat',
     navSkills: 'Skills',
-    navConnectors: 'Connectors',
     navSettings: 'Global settings',
   },
 };
@@ -164,7 +162,6 @@ export function setupApplicationMenu(): void {
       submenu: [
         { label: t('navChat'), click: () => nav('/chat') },
         { label: t('navSkills'), click: () => nav('/skills') },
-        { label: t('navConnectors'), click: () => nav('/connectors') },
         { label: t('navSettings'), click: () => nav('/settings') },
         { type: 'separator' },
         { role: 'reload', label: t('reload') },

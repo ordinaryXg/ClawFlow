@@ -88,23 +88,7 @@ function pushToast(type: 'success' | 'error', title: string, message?: string): 
   else api.error(title, message);
 }
 
-function pathsFromDataTransfer(dt: DataTransfer): string[] {
-  const api = window.electronAPI;
-  if (!api?.getPathForFile || dt.files.length === 0) return [];
-  const out: string[] = [];
-  for (let i = 0; i < dt.files.length; i++) {
-    try {
-      out.push(api.getPathForFile(dt.files[i]));
-    } catch {
-      /* ignore */
-    }
-  }
-  return out;
-}
-
-function hasFileDrag(e: React.DragEvent): boolean {
-  return [...e.dataTransfer.types].includes('Files');
-}
+import { hasDataTransferFileDrag, pathsFromDataTransferFiles } from '../../utils/electron-data-transfer-files';
 
 function hasLauncherDrag(e: React.DragEvent): boolean {
   return [...e.dataTransfer.types].includes(STICKY_LAUNCHER_MIME);
@@ -422,7 +406,7 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
 
   const runExternalImport = useCallback(
     async (targetRelativeDir: string, dt: DataTransfer) => {
-      const paths = pathsFromDataTransfer(dt);
+      const paths = pathsFromDataTransferFiles(dt);
       if (paths.length === 0) {
         pushToast('error', t('sticky.importNoPaths'));
         return;
@@ -460,23 +444,23 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
           return;
         }
       }
-      if (!hasFileDrag(e)) return;
+      if (!hasDataTransferFileDrag(e.dataTransfer)) return;
       await runExternalImport(targetRelativeDir, e.dataTransfer);
     };
 
   const onDragOverTarget = (e: React.DragEvent) => {
-    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer) && !hasLauncherDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = hasLauncherDrag(e) ? 'copy' : 'move';
   };
 
   const onBodyDragEnter = (e: React.DragEvent) => {
-    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer) && !hasLauncherDrag(e)) return;
     setFileDragOver(true);
   };
 
   const onBodyDragLeave = (e: React.DragEvent) => {
-    if (!hasFileDrag(e) && !hasLauncherDrag(e)) return;
+    if (!hasDataTransferFileDrag(e.dataTransfer) && !hasLauncherDrag(e)) return;
     const cur = e.currentTarget;
     const rel = e.relatedTarget;
     if (rel && cur instanceof Node && cur.contains(rel as Node)) return;
