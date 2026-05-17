@@ -25,6 +25,14 @@ import type {
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
+import { resolveModelIdForInteractionMode } from './mode-defaults';
+import {
+  buildConversationModeClassifierUserMessage,
+  CONVERSATION_MODE_CLASSIFIER_SYSTEM,
+  heuristicConversationModeClassification,
+  parseClassificationResponse,
+  type ConversationModeClassification,
+} from './conversation-mode-classifier';
 import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
 import {
   resolveWebSearchConfig,
@@ -35,6 +43,15 @@ import {
 } from './web-search';
 import { resolveWorkspaceRootForWebContents } from '../main/electron-workspace-context';
 import {
+  DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  readEngineRuntimePrefsFile,
+  resolveMaxSendMessageToolLoopSteps,
+  writeEngineRuntimePrefsFile,
+  type EngineRuntimePrefsStored,
+} from '../main/prefs/engine-runtime-prefs';
+import {
   mergeWebSearchBootstrapWithFile,
   readWebSearchPrefsFile,
   writeWebSearchPrefsFile,
@@ -44,6 +61,14 @@ import { maybeScheduleSkillEvolutionAfterMainTurn } from '../main/skill/skill-ev
 import { SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID } from '../shared/skill-agent-constants';
 
 export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-search';
+
+/** `sendMessage` 内模型↔工具循环默认上限（可被 `cf.engine-runtime-prefs.json` 覆盖） */
+export const MAX_SEND_MESSAGE_TOOL_LOOP_STEPS = DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS;
+export {
+  DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+} from '../main/prefs/engine-runtime-prefs';
 
 /** Chat 下拉：内置引擎可用模型 ID（`/ 前即为 provider router id） */
 const BUILTIN_CHAT_MODEL_CATALOG: Record<string, readonly string[]> = {
@@ -128,6 +153,15 @@ export interface ClawFlowEngine {
 
   /** Gateway / 主进程在用户确认或拒绝后调用，解除 sendMessage 内工具前等待 */
   resolveToolApproval(approvalId: string, approved: boolean): void;
+
+  /**
+   * 发送主对话前：Ask + JSON，对用户消息做 a–e 复杂度分类（不落盘、不写入会话历史）。
+   */
+  classifyConversationMode(params: {
+    userText: string;
+    modelId?: string;
+    abortSignal?: AbortSignal;
+  }): Promise<ConversationModeClassification>;
 
   /**
    * Ask 单轮流式（SSE → onDelta）。Plan / Multitask 若需工具循环请用 sendMessage。
@@ -635,7 +669,23 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     // - If a model provider is available and configured, use it
     // - Otherwise return a deterministic stub
     const mode = params.mode ?? 'ask';
-    const modelId = params.modelId ?? 'deepseek/deepseek-chat';
+    if (mode === 'ask') {
+      const message = await this.sendMessageTextStream({
+        conversationId: params.conversationId,
+        userText: params.userText,
+        modelId: resolveModelIdForInteractionMode('ask', params.modelId),
+        mode: 'ask',
+        onDelta: params.onDelta ?? (() => {}),
+        abortSignal: params.abortSignal,
+        intent: params.intent,
+        policyOverrides: params.policyOverrides,
+        workspaceRoot: params.workspaceRoot,
+        assistantMessageChannel: params.assistantMessageChannel,
+        assistantMessageMeta: params.assistantMessageMeta,
+      });
+      return { message };
+    }
+    const modelId = resolveModelIdForInteractionMode(mode, params.modelId);
     const effRoot = path.resolve(params.workspaceRoot ?? this.config.workspaceRoot);
     const store = this.getSessionStore(effRoot);
     const toolRuntimeConfig = { ...this.config, workspaceRoot: effRoot };
@@ -669,7 +719,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       if (baseModeConfig.toolsEnabled) {
         baseModeConfig.tools = filterToolSchemasByWorkspaceManifest(this.tools.listSchemas(), workspaceToolSelection);
       }
-      for (let step = 0; step < 6; step++) {
+      const maxToolLoopSteps = resolveMaxSendMessageToolLoopSteps(readEngineRuntimePrefsFile());
+      for (let step = 0; step < maxToolLoopSteps; step++) {
         if (params.abortSignal?.aborted) throw new Error('CANCELLED');
         const req: ChatCompletionRequest = {
           model: modelId,
@@ -967,6 +1018,49 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return { message: reply };
   }
 
+  async classifyConversationMode(params: {
+    userText: string;
+    modelId?: string;
+    abortSignal?: AbortSignal;
+  }): Promise<ConversationModeClassification> {
+    const userText = String(params.userText ?? '').trim();
+    if (!userText) return heuristicConversationModeClassification('');
+
+    const modelId = resolveModelIdForInteractionMode('ask', params.modelId);
+    const providerId = this.router.resolveProviderIdFromModelId(modelId);
+    const provider = providerId ? this.router.get(providerId) : null;
+    if (!provider || !providerId) return heuristicConversationModeClassification(userText);
+
+    const baseModeConfig = buildModeConfig({ mode: 'ask', intent: 'fast' });
+    const modeConfig: ModeConfig = {
+      ...baseModeConfig,
+      jsonMode: true,
+      toolsEnabled: false,
+      tools: undefined,
+    };
+
+    const req: ChatCompletionRequest = {
+      model: modelId,
+      messages: [
+        { role: 'system', content: CONVERSATION_MODE_CLASSIFIER_SYSTEM },
+        { role: 'user', content: buildConversationModeClassifierUserMessage(userText) },
+      ],
+      modeConfig,
+    };
+
+    try {
+      const res = await provider.chatCompletion(req, { signal: params.abortSignal });
+      const merged = mergeCompletionReasoning(res.content, res.reasoning_content);
+      const raw = merged.displayContent.trim() || merged.reasoningCombined.trim();
+      const parsed = parseClassificationResponse(raw);
+      if (parsed) return parsed;
+    } catch (e: any) {
+      console.warn('[ClawFlowEngine] classifyConversationMode failed:', e?.message ?? e);
+    }
+
+    return heuristicConversationModeClassification(userText);
+  }
+
   async sendMessageTextStream(params: {
     conversationId: string;
     userText: string;
@@ -996,7 +1090,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       }
     };
 
-    const modelId = params.modelId ?? 'deepseek/deepseek-chat';
+    const modelId = resolveModelIdForInteractionMode(params.mode, params.modelId);
     const providerId = this.router.resolveProviderIdFromModelId(modelId);
     const provider = providerId ? this.router.get(providerId) : null;
     const streamMode = params.mode;
@@ -1118,6 +1212,36 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
 
   ipcMain.handle('engine:getConfig', async () => getGlobalClawFlowEngine().getConfig());
 
+  ipcMain.handle('engine:getRuntimeSettings', async () => {
+    const file = readEngineRuntimePrefsFile();
+    return {
+      maxSendMessageToolLoopSteps: resolveMaxSendMessageToolLoopSteps(file),
+      defaultMaxSendMessageToolLoopSteps: DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+      minMaxSendMessageToolLoopSteps: MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+      maxMaxSendMessageToolLoopSteps: MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+    };
+  });
+
+  ipcMain.handle('engine:saveRuntimeSettings', async (_e, payload: unknown) => {
+    const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+    const raw = p.maxSendMessageToolLoopSteps;
+    if (raw !== undefined && (typeof raw !== 'number' || !Number.isFinite(raw))) {
+      return { ok: false as const, error: 'invalid_steps' };
+    }
+    const cur = readEngineRuntimePrefsFile() ?? {};
+    const next: EngineRuntimePrefsStored = { ...cur };
+    if (raw !== undefined) {
+      next.maxSendMessageToolLoopSteps = resolveMaxSendMessageToolLoopSteps({
+        maxSendMessageToolLoopSteps: raw,
+      });
+    }
+    writeEngineRuntimePrefsFile(next);
+    return {
+      ok: true as const,
+      maxSendMessageToolLoopSteps: resolveMaxSendMessageToolLoopSteps(next),
+    };
+  });
+
   ipcMain.handle('engine:getWebSearchSettings', async () => {
     const eng = getGlobalClawFlowEngine();
     const file = readWebSearchPrefsFile();
@@ -1213,6 +1337,17 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     }
   );
   ipcMain.handle('engine:getChatModels', async () => getGlobalClawFlowEngine().listChatModelCatalog());
+  ipcMain.handle('engine:classifyConversationMode', async (_e, payload: unknown) => {
+    const userText = typeof (payload as { userText?: string })?.userText === 'string' ? (payload as { userText: string }).userText : '';
+    const modelId =
+      typeof (payload as { modelId?: string })?.modelId === 'string' ? (payload as { modelId: string }).modelId : undefined;
+    try {
+      const classification = await getGlobalClawFlowEngine().classifyConversationMode({ userText, modelId });
+      return { ok: true as const, ...classification };
+    } catch (e: any) {
+      return { ok: false as const, error: e?.message ?? String(e) };
+    }
+  });
   ipcMain.handle('engine:upsertConversation', async (event, conversation: StoredConversation) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     await getGlobalClawFlowEngine().upsertConversation(conversation, root);

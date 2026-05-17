@@ -1,6 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ChatInteractionMode } from '../../store/modules/chatStore';
 import { useShellLayoutVariant } from '../../context/ShellLayoutContext';
 import { CfSelectWithHints } from '../CfSelectWithHints';
 import ContextUsageRing from './ContextUsageRing';
@@ -23,28 +22,6 @@ function pushChatToast(type: 'success' | 'error', title: string, message?: strin
   if (!api) return;
   if (type === 'success') api.success(title, message);
   else api.error(title, message);
-}
-
-const CHAT_MODES: ChatInteractionMode[] = ['plan', 'multitask', 'auto'];
-
-/** 对话模式：重叠对话气泡，象征多模式对话 */
-function IconChatMode() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M7 6H5a2 2 0 00-2 2v5a2 2 0 002 2h1.2L8 17v-2.2A2 2 0 009 13V8a2 2 0 00-2-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M20 10h-5a2 2 0 00-2 2v2a2 2 0 002 2h2.2L20 18v-2.5a1.5 1.5 0 001.5-1.5V12a2 2 0 00-2-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 /** 偏好/强度：递升柱形，象征更快 / 更强 / 更省钱的梯度 */
@@ -79,8 +56,6 @@ interface Props {
   models?: Array<{ id: string; label: string }>;
   modelId?: string | null;
   onModelChange?: (modelId: string | null) => void;
-  interactionMode: ChatInteractionMode;
-  onInteractionModeChange: (mode: ChatInteractionMode) => void;
   intent: 'fast' | 'strong' | 'cheap';
   onIntentChange: (intent: 'fast' | 'strong' | 'cheap') => void;
   /** 0–1，当前会话相对模型上下文上限的粗略饱和度 */
@@ -109,8 +84,6 @@ const ChatInput: FC<Props> = ({
   models,
   modelId,
   onModelChange,
-  interactionMode,
-  onInteractionModeChange,
   intent,
   onIntentChange,
   showStarterPrompts,
@@ -136,26 +109,6 @@ const ChatInput: FC<Props> = ({
   const canSend = useMemo(() => {
     return !disabled && !isSending && (value.trim().length > 0 || pendingAttachments.length > 0);
   }, [disabled, isSending, value, pendingAttachments.length]);
-
-  const modeOptions = useMemo(
-    () =>
-      CHAT_MODES.map((m) => ({
-        value: m,
-        label:
-          m === 'plan'
-            ? t('chat.modePlan')
-            : m === 'multitask'
-              ? t('chat.modeMultitask')
-              : t('chat.modeAuto'),
-        hint:
-          m === 'plan'
-            ? t('chat.modeCapabilityPlan')
-            : m === 'multitask'
-              ? t('chat.modeCapabilityMultitask')
-              : t('chat.modeCapabilityAuto'),
-      })),
-    [t],
-  );
 
   const intentOptions = useMemo(
     () => [
@@ -412,23 +365,6 @@ const ChatInput: FC<Props> = ({
       </div>
       <div className="cf-chatInput__footer">
         <div className="cf-chatInput__footerLeft">
-          <div className="cf-chatInput__fieldGroup" title={t('chat.modeLabel')}>
-            <span className="cf-chatInput__fieldIco" aria-hidden>
-              <IconChatMode />
-            </span>
-            <CfSelectWithHints
-              id="cf-chat-mode"
-              className="cf-selectHint--compact"
-              popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
-              value={interactionMode}
-              onChange={(v) => onInteractionModeChange(v as ChatInteractionMode)}
-              options={modeOptions}
-              disabled={disabled || isSending}
-              aria-label={t('chat.modeLabel')}
-              hintIconAriaBase={t('chat.modeHelpAria')}
-              popupMatchSelectWidth={false}
-            />
-          </div>
           <div className="cf-chatInput__fieldGroup" title={t('chat.intentLabel')}>
             <span className="cf-chatInput__fieldIco" aria-hidden>
               <IconIntent />

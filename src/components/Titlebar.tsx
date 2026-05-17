@@ -1,4 +1,4 @@
-import { FC, useMemo } from 'react';
+import { FC, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Dropdown } from 'antd';
@@ -79,10 +79,15 @@ const Titlebar: FC<Props> = ({ visible = true }) => {
     [t]
   );
 
+  const onTitleBarDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    void window.electronAPI?.windowToggleMaximize?.();
+  }, []);
+
   if (!visible) return null;
 
   return (
-    <div className="cf-titlebar">
+    <div className="cf-titlebar" onDoubleClick={onTitleBarDoubleClick}>
       <div className="cf-titlebar__left">
         <div className="cf-titlebar__brand" onClick={() => navigate('/chat')} role="button" tabIndex={0}>
           <div className="cf-brandBadge" />

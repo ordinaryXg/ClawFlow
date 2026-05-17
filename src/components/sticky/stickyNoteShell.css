@@ -178,6 +178,7 @@
   flex: 1;
   -webkit-app-region: drag;
   cursor: default;
+  user-select: none;
 }
 
 .cf-stickyMain__mergeDrag {

@@ -12,6 +12,8 @@ function getWsServerCtor(): new (options?: { noServer?: boolean }) => WsServerCl
   throw new Error('ws: missing WebSocketServer / WebSocket.Server');
 }
 import { getGlobalClawFlowEngine } from './clawflow-engine';
+import { resolveModelIdForInteractionMode } from './mode-defaults';
+import type { InteractionMode } from './providers/types';
 
 export type GatewayStatus = 'running' | 'stopped' | 'unknown';
 
@@ -202,18 +204,31 @@ class GatewayDaemon extends EventEmitter {
             return;
           }
           const conversationId = String(body?.conversationId ?? '').trim() || 'webhook-default';
-          let mode = (String(body?.mode ?? '').trim().toLowerCase() || 'plan') as 'ask' | 'plan' | 'multitask';
-          if (mode === 'ask') mode = 'plan';
-          const modelId = typeof body?.modelId === 'string' ? body.modelId : undefined;
+          const mode = (String(body?.mode ?? 'plan').trim().toLowerCase() || 'plan') as InteractionMode;
+          const modelId = resolveModelIdForInteractionMode(
+            mode,
+            typeof body?.modelId === 'string' ? body.modelId : undefined
+          );
 
           this.emit('channel:message', { channelId: 'webhook', conversationId, text });
           this.pushLog('info', `[http] /message conv=${conversationId} mode=${mode} chars=${text.length}`);
-          const out = await getGlobalClawFlowEngine().sendMessage({
-            conversationId,
-            userText: text,
-            mode,
-            ...(modelId ? { modelId } : {}),
-          });
+          const out =
+            mode === 'ask'
+              ? {
+                  message: await getGlobalClawFlowEngine().sendMessageTextStream({
+                    conversationId,
+                    userText: text,
+                    mode: 'ask',
+                    modelId,
+                    onDelta: () => {},
+                  }),
+                }
+              : await getGlobalClawFlowEngine().sendMessage({
+                  conversationId,
+                  userText: text,
+                  mode,
+                  modelId,
+                });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, message: out.message }));
           return;
@@ -351,14 +366,16 @@ class GatewayDaemon extends EventEmitter {
     const requestId = String(msg.requestId ?? '').trim();
     const conversationId = String(msg.conversationId ?? '').trim();
     const text = String(msg.text ?? '').trim();
-    let mode = (String(msg.mode ?? 'plan').trim().toLowerCase() || 'plan') as 'ask' | 'plan' | 'multitask';
-    if (mode === 'ask') mode = 'plan';
+    const mode = (String(msg.mode ?? 'plan').trim().toLowerCase() || 'plan') as InteractionMode;
     const intent = (String((msg as any).intent ?? 'strong').trim().toLowerCase() || 'strong') as
       | 'fast'
       | 'strong'
       | 'cheap';
     const policyOverrides = (msg as any).policyOverrides;
-    const modelId = typeof msg.modelId === 'string' ? msg.modelId.trim() : '';
+    const modelId = resolveModelIdForInteractionMode(
+      mode,
+      typeof msg.modelId === 'string' ? msg.modelId.trim() : undefined
+    );
     const workspaceRoot =
       typeof (msg as any).workspaceRoot === 'string' ? String((msg as any).workspaceRoot).trim() : '';
 
@@ -387,31 +404,47 @@ class GatewayDaemon extends EventEmitter {
     };
 
     try {
-      const out = await getGlobalClawFlowEngine().sendMessage({
-        conversationId,
-        userText: text,
-        mode: mode === 'multitask' ? 'multitask' : 'plan',
-        ...(modelId ? { modelId } : {}),
-        ...(workspaceRoot ? { workspaceRoot } : {}),
-        onDelta: sendDelta,
-        abortSignal: abort.signal,
-        intent,
-        ...(policyOverrides ? { policyOverrides } : {}),
-        requestId,
-        onToolApprovalNeeded: (p) => {
-          if (abort.signal.aborted) return;
-          this.send(ws, {
-            type: 'chat:toolApproval',
-            requestId,
-            conversationId,
-            approvalId: p.approvalId,
-            tools: p.tools,
-            riskLevel: p.riskLevel,
-            timeoutMs: p.timeoutMs,
-            defaultApproved: p.defaultApproved,
-          });
-        },
-      });
+      const engine = getGlobalClawFlowEngine();
+      const out =
+        mode === 'ask'
+          ? {
+              message: await engine.sendMessageTextStream({
+                conversationId,
+                userText: text,
+                mode: 'ask',
+                modelId,
+                ...(workspaceRoot ? { workspaceRoot } : {}),
+                onDelta: sendDelta,
+                abortSignal: abort.signal,
+                intent,
+                ...(policyOverrides ? { policyOverrides } : {}),
+              }),
+            }
+          : await engine.sendMessage({
+              conversationId,
+              userText: text,
+              mode,
+              modelId,
+              ...(workspaceRoot ? { workspaceRoot } : {}),
+              onDelta: sendDelta,
+              abortSignal: abort.signal,
+              intent,
+              ...(policyOverrides ? { policyOverrides } : {}),
+              requestId,
+              onToolApprovalNeeded: (p) => {
+                if (abort.signal.aborted) return;
+                this.send(ws, {
+                  type: 'chat:toolApproval',
+                  requestId,
+                  conversationId,
+                  approvalId: p.approvalId,
+                  tools: p.tools,
+                  riskLevel: p.riskLevel,
+                  timeoutMs: p.timeoutMs,
+                  defaultApproved: p.defaultApproved,
+                });
+              },
+            });
       this.abortByRequestId.delete(requestId);
       this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
     } catch (e: any) {

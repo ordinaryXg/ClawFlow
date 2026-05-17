@@ -141,14 +141,14 @@ function registerShellViewWindowIPC(): void {
         shellCompactByWindowId.set(win.id, { restoreBounds, restoreMaximized });
       }
       const wa = screen.getDisplayMatching(win.getBounds()).workArea;
-      /** 便签：宽约工作区 1/4；高度为工作区高度减去上下留白（略小于整屏高度），贴右侧竖条 */
-      const width = Math.max(320, Math.floor(wa.width * 0.25));
+      /** 便签：宽约工作区 32%（下限 380px），便于文件列表横向展示；高度贴右侧竖条 */
+      const width = Math.max(380, Math.floor(wa.width * 0.32));
       const marginTop = 10;
       const marginBottom = 18;
       const height = Math.max(420, wa.height - marginTop - marginBottom);
       const x = wa.x + wa.width - width;
       const y = wa.y + marginTop;
-      win.setMinimumSize(260, 320);
+      win.setMinimumSize(300, 320);
       win.setBounds({ x, y, width, height }, true);
       return { ok: true as const };
     }

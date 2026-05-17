@@ -3,15 +3,20 @@
 
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { autoPickMode, type ChatIntent } from '../../engine/mode-policy';
+import type { ChatIntent } from '../../engine/mode-policy';
+import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import {
+  heuristicConversationModeClassification,
+  type ConversationModeClassification,
+} from '../../engine/conversation-mode-classifier';
+
+export type { ConversationModeClassification };
 import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
 import { useTodoTriggerStore } from './todoTriggerStore';
 import { dedupeUiToolMessages } from '../../engine/dedupe-tool-messages';
 import { normalizeWorkspacePathForCompare as normWorkspacePath } from '../../shared/workspace-path-compare';
-
-export type ChatInteractionMode = 'plan' | 'multitask' | 'auto';
 
 type GatewayWsEvent =
   | { type: 'chat:ack'; requestId: string; conversationId: string }
@@ -36,9 +41,14 @@ type GatewayWsSend =
       requestId: string;
       conversationId: string;
       text: string;
-      mode: 'plan' | 'multitask';
+      mode: 'ask' | 'plan' | 'multitask';
       intent?: ChatIntent;
-      autoPick?: { pickedMode: 'plan' | 'multitask'; reason: string };
+      autoPick?: {
+        pickedMode: 'ask' | 'plan' | 'multitask';
+        reason: string;
+        category?: string;
+        categoryLabel?: string;
+      };
       policyOverrides?: unknown;
       modelId?: string;
       workspaceRoot?: string;
@@ -188,7 +198,9 @@ export interface ChatState {
   /** 流式：思考过程（已由 demux 剥离标记） */
   streamingThinking: string | null;
   error: string | null;
-  interactionMode: ChatInteractionMode;
+  /** 最近一次发送前的模式分类（测试展示，不落消息列表） */
+  activeModeClassification: ConversationModeClassification | null;
+  isClassifyingMode: boolean;
   /** Gateway 工具执行前待用户确认（仅当前连接会话） */
   toolApprovalPending: ToolApprovalPendingState | null;
 
@@ -204,7 +216,6 @@ export interface ChatState {
   deleteConversation: (id: string) => void;
   clearMessages: () => void;
   setError: (error: string | null) => void;
-  setInteractionMode: (mode: ChatInteractionMode) => void;
   respondToolApproval: (approved: boolean) => void;
   /** 待办触发器：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
   applyTodoTrigger: (payload: {
@@ -242,21 +253,23 @@ function cancelAssistantReveal() {
   revealCleanup = null;
 }
 
-/** UI 已隐藏 Ask；发往引擎/Gateway 仅使用 plan 或 multitask。 */
-function resolveEnginePlanMultitask(
-  mode: ChatInteractionMode,
-  text: string
-): {
-  actual: 'plan' | 'multitask';
-  autoPick: { pickedMode: 'plan' | 'multitask'; reason: string } | null;
-} {
-  if (mode === 'auto') {
-    const auto = autoPickMode(text);
-    const picked: 'plan' | 'multitask' = auto.pickedMode === 'multitask' ? 'multitask' : 'plan';
-    return { actual: picked, autoPick: { reason: auto.reason, pickedMode: picked } };
+async function classifyConversationForSend(
+  content: string,
+  modelId?: string | null
+): Promise<ConversationModeClassification> {
+  try {
+    const res = await window.electronAPI?.engineClassifyConversationMode?.({
+      userText: content,
+      ...(modelId ? { modelId } : {}),
+    });
+    if (res && 'ok' in res && res.ok) {
+      const { ok: _ok, ...classification } = res;
+      return classification;
+    }
+  } catch {
+    /* fallback below */
   }
-  if (mode === 'multitask') return { actual: 'multitask', autoPick: null };
-  return { actual: 'plan', autoPick: null };
+  return heuristicConversationModeClassification(content);
 }
 
 type Pending = {
@@ -436,10 +449,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
   streamingActivity: null,
   streamingThinking: null,
   error: null,
-  interactionMode: 'multitask',
+  activeModeClassification: null,
+  isClassifyingMode: false,
   toolApprovalPending: null,
-
-  setInteractionMode: (mode) => set({ interactionMode: mode }),
 
   respondToolApproval: (approved: boolean) => {
     const pending = get().toolApprovalPending;
@@ -522,7 +534,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   ) => {
     cancelAssistantReveal();
     const now = Date.now();
-    const { activeConversationId, interactionMode } = get();
+    const { activeConversationId } = get();
 
     let conversationId = activeConversationId;
     if (!conversationId) {
@@ -657,6 +669,23 @@ export const useChatStore = create<ChatState>()((set, get) => {
         typeof window.electronAPI?.engineGatewayStatus === 'function' &&
         typeof window.electronAPI?.engineGatewayStart === 'function';
 
+      set({ isClassifyingMode: true, activeModeClassification: null });
+      let classification: ConversationModeClassification;
+      try {
+        classification = await classifyConversationForSend(content, modelId);
+      } finally {
+        set({ isClassifyingMode: false });
+      }
+      set({ activeModeClassification: classification });
+      const actualMode = classification.mode;
+      const effectiveModelId = resolveModelIdForInteractionMode(actualMode, modelId);
+      const autoPick = {
+        pickedMode: classification.mode,
+        reason: classification.summary,
+        category: classification.category,
+        categoryLabel: classification.categoryLabel,
+      };
+
       if (useBuiltinStream) {
         cancelAssistantReveal();
         set({ streamingActivity: '', streamingThinking: null });
@@ -675,7 +704,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
         } catch {
           policyOverrides = null;
         }
-        const { actual: actualMode, autoPick } = resolveEnginePlanMultitask(interactionMode, content);
         const requestId = uuidv4();
         const ws = await ensureGatewayWs();
 
@@ -751,21 +779,20 @@ export const useChatStore = create<ChatState>()((set, get) => {
           text: content,
           mode: actualMode,
           intent,
-          ...(autoPick ? { autoPick: autoPick } : {}),
+          autoPick,
           ...(policyOverrides ? { policyOverrides } : {}),
-          ...(modelId ? { modelId } : {}),
+          modelId: effectiveModelId,
           ...(sendWorkspaceRoot ? { workspaceRoot: sendWorkspaceRoot } : {}),
         };
         ws.send(JSON.stringify(msg));
         return;
       }
 
-      const { actual: ipcMode } = resolveEnginePlanMultitask(interactionMode, content);
       const response = await window.electronAPI?.engineSendMessage?.({
         conversationId: sessionId,
         userText: content,
-        mode: ipcMode,
-        ...(modelId ? { modelId } : {}),
+        mode: actualMode,
+        modelId: effectiveModelId,
       });
       const t1 = performance.now();
 

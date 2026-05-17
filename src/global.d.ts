@@ -54,6 +54,17 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
+  engineClassifyConversationMode: (params: { userText: string; modelId?: string }) => Promise<
+    | {
+        ok: true;
+        category: 'a' | 'b' | 'c' | 'd' | 'e';
+        categoryLabel: string;
+        mode: 'ask' | 'plan' | 'multitask';
+        summary: string;
+        fallback?: boolean;
+      }
+    | { ok: false; error: string }
+  >;
   engineEstimateNextRequestContext: (params: {
     conversationId: string;
     pendingUserText: string;
@@ -69,6 +80,15 @@ export interface IElectronAPI {
         isNearOverflow: boolean;
       }
     | { ok: false; error: string }
+  >;
+  engineGetRuntimeSettings: () => Promise<{
+    maxSendMessageToolLoopSteps: number;
+    defaultMaxSendMessageToolLoopSteps: number;
+    minMaxSendMessageToolLoopSteps: number;
+    maxMaxSendMessageToolLoopSteps: number;
+  }>;
+  engineSaveRuntimeSettings: (params: { maxSendMessageToolLoopSteps?: number }) => Promise<
+    { ok: true; maxSendMessageToolLoopSteps: number } | { ok: false; error: string }
   >;
   engineGetWebSearchSettings: () => Promise<{
     enabled: boolean;

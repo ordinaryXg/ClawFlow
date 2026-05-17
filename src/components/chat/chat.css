@@ -1144,3 +1144,11 @@
   box-sizing: border-box;
 }
 
+.cf-chatModeDebug {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  padding: 4px 12px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

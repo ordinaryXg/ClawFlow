@@ -22,6 +22,8 @@ import {
   resolveContextTokenLimit,
 } from '../../utils/context-saturation';
 import { formatUtf8Bytes } from '../../utils/format-bytes';
+import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import ModeClassificationDebug from '../../components/chat/ModeClassificationDebug';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -48,8 +50,8 @@ const ChatPage: FC = () => {
     deleteConversation,
     sendMessage,
     setError,
-    interactionMode,
-    setInteractionMode,
+    activeModeClassification,
+    isClassifyingMode,
     toolApprovalPending,
     respondToolApproval,
   } = useChatStore();
@@ -230,6 +232,11 @@ const ChatPage: FC = () => {
   useEffect(() => {
     void reloadChatModels();
   }, [reloadChatModels, activeWorkspacePath]);
+
+  useEffect(() => {
+    if (!activeModeClassification) return;
+    setModelId((prev) => resolveModelIdForInteractionMode(activeModeClassification.mode, prev));
+  }, [activeModeClassification]);
 
   const modelsForSelect = useMemo(
     () =>
@@ -520,6 +527,7 @@ const ChatPage: FC = () => {
 
       <footer className="cf-chatCenter__input" style={{ height: inputPanelHeightPx }}>
         <div className="cf-chatCenter__inputInner">
+          <ModeClassificationDebug classifying={isClassifyingMode} classification={activeModeClassification} />
           <ChatApiKeyBar
             visible={showApiKeyBar}
             onSaved={() => void reloadChatModels()}
@@ -531,8 +539,6 @@ const ChatPage: FC = () => {
             models={modelsForSelect}
             modelId={modelId}
             onModelChange={handleModelChange}
-            interactionMode={interactionMode}
-            onInteractionModeChange={setInteractionMode}
             intent={chatIntent}
             onIntentChange={(v) => updateSettings({ chatIntent: v })}
             contextSaturation={contextSaturation}

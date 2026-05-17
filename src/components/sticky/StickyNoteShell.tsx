@@ -46,9 +46,14 @@ function hasFileDrag(e: React.DragEvent): boolean {
 }
 
 const STICKY_FILE_PANE_H_KEY = 'clawflow.stickyFilePaneHeightPx';
-const DEFAULT_FILE_PANE_H = 176;
-const MIN_FILE_PANE_H = 88;
-const MIN_CHAT_SECTION_H = 200;
+/** 默认文件区偏高，便签窗较窄时仍能看到更多条目 */
+const DEFAULT_FILE_PANE_H = 260;
+const MIN_FILE_PANE_H = 72;
+/** 对话区最小高度（绝对值）；与比例下限取较大者，避免拖高文件区时上限过小 */
+const MIN_CHAT_SECTION_H = 110;
+/** 文件区最多占分栏可用高度的比例（其余留给对话与输入） */
+const MAX_FILE_PANE_HEIGHT_RATIO = 0.82;
+const MIN_CHAT_SECTION_HEIGHT_RATIO = 0.2;
 const SPLITTER_H = 6;
 
 function loadFilePaneHeight(): number {
@@ -290,8 +295,15 @@ const StickyNoteShell: FC = () => {
   const clampFilePane = useCallback((h: number) => {
     const wrap = splitWrapRef.current;
     if (!wrap) return Math.max(MIN_FILE_PANE_H, h);
-    const inner = wrap.getBoundingClientRect().height - SPLITTER_H;
-    const maxFile = Math.max(MIN_FILE_PANE_H, inner - MIN_CHAT_SECTION_H);
+    const inner = Math.max(0, wrap.getBoundingClientRect().height - SPLITTER_H);
+    if (inner <= MIN_FILE_PANE_H) return MIN_FILE_PANE_H;
+    const minChat = Math.max(
+      MIN_CHAT_SECTION_H,
+      Math.floor(inner * MIN_CHAT_SECTION_HEIGHT_RATIO)
+    );
+    const maxByChatReserve = inner - minChat;
+    const maxByRatio = Math.floor(inner * MAX_FILE_PANE_HEIGHT_RATIO);
+    const maxFile = Math.max(MIN_FILE_PANE_H, Math.min(maxByChatReserve, maxByRatio));
     return Math.max(MIN_FILE_PANE_H, Math.min(maxFile, h));
   }, []);
 
@@ -456,6 +468,11 @@ const StickyNoteShell: FC = () => {
     navigate('/chat');
   };
 
+  const onStickyTopBarDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    void window.electronAPI?.windowToggleMaximize?.();
+  }, []);
+
   const satelliteMergePath = isSatellite ? stickyBootstrap?.satelliteWorkspace?.trim() ?? '' : '';
 
   return (
@@ -506,7 +523,7 @@ const StickyNoteShell: FC = () => {
       ) : null}
 
       <div className="cf-stickyMain">
-        <header className="cf-stickyMain__bar">
+        <header className="cf-stickyMain__bar" onDoubleClick={onStickyTopBarDoubleClick}>
           <div className="cf-stickyMain__titleWrap">
             {satelliteMergePath ? (
               <button

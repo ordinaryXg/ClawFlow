@@ -9,31 +9,29 @@ export type ModePolicyOverrides = Partial<
 >;
 
 export function defaultModeConfig(mode: InteractionMode): ModeConfig {
-  return {
-    mode,
-    ...(mode === 'ask'
-      ? { thinking: { type: 'disabled' } }
-      : { thinking: { type: 'enabled' }, reasoning_effort: 'max' }),
-    // NOTE: do NOT enable DeepSeek beta base URL by default.
-    // In many networks, /beta endpoints are blocked or unstable, causing UND_ERR_CONNECT_TIMEOUT.
-    // Users can still opt-in via policyOverrides.useBetaBaseUrl when needed.
-  };
+  if (mode === 'ask') {
+    return { mode, thinking: { type: 'disabled' } };
+  }
+  if (mode === 'plan') {
+    return { mode, thinking: { type: 'enabled' }, reasoning_effort: 'high' };
+  }
+  return { mode, thinking: { type: 'enabled' }, reasoning_effort: 'max' };
 }
 
 export function applyIntentPreset(mode: InteractionMode, intent: ChatIntent): ModeConfig {
   const base = defaultModeConfig(mode);
+  if (intent === 'strong') return base;
   if (intent === 'fast') {
-    // Faster: less thinking, avoid extra compute.
     return { ...base, thinking: { type: 'disabled' }, reasoning_effort: undefined };
   }
-  if (intent === 'cheap') {
-    // Cheaper: similar to fast but keep plan reasoning toggle for plan/multitask minimal.
-    return mode === 'ask'
-      ? { ...base, thinking: { type: 'disabled' }, reasoning_effort: undefined }
-      : { ...base, thinking: { type: 'enabled' }, reasoning_effort: 'high' };
+  // cheap：Ask 仍关闭思考；Plan 保持 high；Multitask 降为 high
+  if (mode === 'ask') {
+    return { ...base, thinking: { type: 'disabled' }, reasoning_effort: undefined };
   }
-  // strong
-  return base;
+  if (mode === 'plan') {
+    return { ...base, thinking: { type: 'enabled' }, reasoning_effort: 'high' };
+  }
+  return { ...base, thinking: { type: 'enabled' }, reasoning_effort: 'high' };
 }
 
 export function buildModeConfig(params: {
@@ -72,6 +70,9 @@ export function autoPickMode(text: string): AutoPick {
   if (hasPlanningSignals || len > 220) {
     return { pickedMode: 'plan', reason: '检测到规划/对比/较长输入，自动选择 Plan。' };
   }
-  return { pickedMode: 'plan', reason: 'Defaulting to Plan (Ask mode is temporarily disabled).' };
+  if (len <= 120) {
+    return { pickedMode: 'ask', reason: '较短、偏问答类输入，自动选择 Ask。' };
+  }
+  return { pickedMode: 'plan', reason: '默认选择 Plan。' };
 }
 

@@ -29,12 +29,16 @@ export const rules: Required<ModuleOptions>['rules'] = [
       },
     },
   },
-  /** 工作区初始化模板：仅打包 src/workspace-templates 下 .md 为纯文本 */
+  /** 工作区模板与引擎提示词：打包为纯文本字符串 */
   {
     test: /\.md$/i,
     include: (abs: string) => {
       const n = abs.replace(/\\/g, '/');
-      return n.includes('/workspace-templates/') || n.endsWith('/workspace-templates');
+      return (
+        n.includes('/workspace-templates/') ||
+        n.endsWith('/workspace-templates') ||
+        n.includes('/engine/prompts/')
+      );
     },
     type: 'asset/source',
   },

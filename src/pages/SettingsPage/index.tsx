@@ -104,6 +104,12 @@ const SettingsPage: FC = () => {
   const [wsClearBraveOnSave, setWsClearBraveOnSave] = useState(false);
   const [wsClearSearxOnSave, setWsClearSearxOnSave] = useState(false);
 
+  const [toolLoopSteps, setToolLoopSteps] = useState(9);
+  const [toolLoopStepsMin, setToolLoopStepsMin] = useState(1);
+  const [toolLoopStepsMax, setToolLoopStepsMax] = useState(24);
+  const [toolLoopStepsDefault, setToolLoopStepsDefault] = useState(9);
+  const [engineRuntimeSaving, setEngineRuntimeSaving] = useState(false);
+
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [toolModal, setToolModal] = useState<{
@@ -307,6 +313,17 @@ const SettingsPage: FC = () => {
         setDefaultWorkspacePathDisplay('');
       }
       try {
+        const rt = await window.electronAPI?.engineGetRuntimeSettings?.();
+        if (rt) {
+          setToolLoopSteps(rt.maxSendMessageToolLoopSteps);
+          setToolLoopStepsMin(rt.minMaxSendMessageToolLoopSteps);
+          setToolLoopStepsMax(rt.maxMaxSendMessageToolLoopSteps);
+          setToolLoopStepsDefault(rt.defaultMaxSendMessageToolLoopSteps);
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
         const s = await window.electronAPI?.engineGetWebSearchSettings?.();
         if (s) {
           setWsEnabled(s.enabled);
@@ -343,6 +360,38 @@ const SettingsPage: FC = () => {
       }
     })();
   }, [activeSection]);
+
+  const onSaveEngineRuntimeSettings = async () => {
+    const n = Math.floor(Number(toolLoopSteps));
+    if (!Number.isFinite(n) || n < toolLoopStepsMin || n > toolLoopStepsMax) {
+      (window as any).__cf_toast?.error?.(
+        t('settings.engineRuntimeSaveFail'),
+        t('settings.engineRuntimeErr_invalid_steps', { min: toolLoopStepsMin, max: toolLoopStepsMax }),
+      );
+      return;
+    }
+    setEngineRuntimeSaving(true);
+    try {
+      const res = await window.electronAPI?.engineSaveRuntimeSettings?.({ maxSendMessageToolLoopSteps: n });
+      if (res && 'ok' in res && res.ok === false) {
+        const err = String((res as { error?: string }).error ?? '');
+        const msg =
+          err === 'invalid_steps'
+            ? t('settings.engineRuntimeErr_invalid_steps', { min: toolLoopStepsMin, max: toolLoopStepsMax })
+            : err || t('common.sampleOpFailBody');
+        (window as any).__cf_toast?.error?.(t('settings.engineRuntimeSaveFail'), msg);
+        return;
+      }
+      if (res && 'ok' in res && res.ok) {
+        setToolLoopSteps(res.maxSendMessageToolLoopSteps);
+      }
+      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.engineRuntimeSavedBody'));
+    } catch (e: any) {
+      (window as any).__cf_toast?.error?.(t('settings.engineRuntimeSaveFail'), e?.message || t('common.sampleOpFailBody'));
+    } finally {
+      setEngineRuntimeSaving(false);
+    }
+  };
 
   const onSaveWebSearchSettings = async () => {
     try {
@@ -1273,6 +1322,50 @@ const SettingsPage: FC = () => {
                 hintIconAriaBase={t('common.selectOptionHintAria')}
                 aria-label={t('settings.logLevel')}
               />
+            </div>
+          </div>
+        </div>
+
+        <div className="cf-card">
+          <h3>{t('settings.engineRuntimeTitle')}</h3>
+          <div className="cf-divider" />
+          <div className="cf-row cf-settingsPage__row" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="cf-sub">
+                <strong style={{ color: 'var(--text)' }}>{t('settings.engineRuntimeToolLoopSteps')}</strong>
+              </div>
+              <div className="cf-help">{t('settings.engineRuntimeToolLoopStepsHelp')}</div>
+              <div className="cf-help" style={{ marginTop: 6 }}>
+                {t('settings.engineRuntimeToolLoopStepsRange', {
+                  min: toolLoopStepsMin,
+                  max: toolLoopStepsMax,
+                  default: toolLoopStepsDefault,
+                })}
+              </div>
+            </div>
+            <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <input
+                className="cf-input"
+                type="number"
+                min={toolLoopStepsMin}
+                max={toolLoopStepsMax}
+                step={1}
+                style={{ width: 88 }}
+                value={toolLoopSteps}
+                onChange={(e) => {
+                  const v = Number.parseInt(e.target.value, 10);
+                  if (Number.isFinite(v)) setToolLoopSteps(v);
+                }}
+                aria-label={t('settings.engineRuntimeToolLoopSteps')}
+              />
+              <button
+                type="button"
+                className="cf-btn cf-btnPrimary cf-btnSmall"
+                disabled={engineRuntimeSaving}
+                onClick={() => void onSaveEngineRuntimeSettings()}
+              >
+                {engineRuntimeSaving ? t('settings.engineRuntimeSaving') : t('settings.engineRuntimeSave')}
+              </button>
             </div>
           </div>
         </div>
