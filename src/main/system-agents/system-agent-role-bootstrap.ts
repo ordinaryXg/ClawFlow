@@ -10,15 +10,16 @@ import templateSkillsTools from '../../workspace-templates/subagent-roles/skills
 import templateCogAgents from '../../workspace-templates/subagent-roles/cognitive-allocation/AGENTS.md';
 import templateCogSoul from '../../workspace-templates/subagent-roles/cognitive-allocation/SOUL.md';
 import templateCogTools from '../../workspace-templates/subagent-roles/cognitive-allocation/TOOLS.md';
-import templateCogClassifier from '../../workspace-templates/subagent-roles/cognitive-allocation/CLASSIFIER.md';
+
+import templateExpAgents from '../../workspace-templates/subagent-roles/expectation-planning/AGENTS.md';
+import templateExpSoul from '../../workspace-templates/subagent-roles/expectation-planning/SOUL.md';
+import templateExpTools from '../../workspace-templates/subagent-roles/expectation-planning/TOOLS.md';
 
 type RoleMd = 'AGENTS.md' | 'SOUL.md' | 'TOOLS.md';
-type CognitiveRoleMd = RoleMd | 'CLASSIFIER.md';
 
-const SYSTEM_ROLE_TEMPLATES: Record<
-  'skills' | 'cognitive-allocation',
-  Array<{ name: RoleMd | 'CLASSIFIER.md'; content: string }>
-> = {
+export type SystemRoleTemplateId = 'skills' | 'cognitive-allocation' | 'expectation-planning';
+
+const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, Array<{ name: RoleMd; content: string }>> = {
   skills: [
     { name: 'AGENTS.md', content: templateSkillsAgents },
     { name: 'SOUL.md', content: templateSkillsSoul },
@@ -28,11 +29,19 @@ const SYSTEM_ROLE_TEMPLATES: Record<
     { name: 'AGENTS.md', content: templateCogAgents },
     { name: 'SOUL.md', content: templateCogSoul },
     { name: 'TOOLS.md', content: templateCogTools },
-    { name: 'CLASSIFIER.md', content: templateCogClassifier },
+  ],
+  'expectation-planning': [
+    { name: 'AGENTS.md', content: templateExpAgents },
+    { name: 'SOUL.md', content: templateExpSoul },
+    { name: 'TOOLS.md', content: templateExpTools },
   ],
 };
 
-const COGNITIVE_ALLOCATION_ROLE_FILES: CognitiveRoleMd[] = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'CLASSIFIER.md'];
+const STANDARD_ROLE_FILES: readonly RoleMd[] = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
+
+function isSystemRoleTemplateId(id: SubAgentRoleTemplateId): id is SystemRoleTemplateId {
+  return id === 'skills' || id === 'cognitive-allocation' || id === 'expectation-planning';
+}
 
 async function writeFileIfMissing(abs: string, body: string): Promise<boolean> {
   try {
@@ -56,14 +65,11 @@ export async function ensureSystemSubAgentRoleTemplates(): Promise<void> {
   }
 }
 
-async function readRoleMarkdownParts(
-  roleTemplateId: 'skills' | 'cognitive-allocation',
-  fileNames: readonly CognitiveRoleMd[]
-): Promise<string[]> {
+async function readRoleMarkdownParts(roleTemplateId: SystemRoleTemplateId): Promise<string> {
   const baseDir = systemSubagentRolesDirAbs();
   const dir = path.join(baseDir, roleTemplateId);
   const parts: string[] = [];
-  for (const name of fileNames) {
+  for (const name of STANDARD_ROLE_FILES) {
     try {
       const body = await fs.promises.readFile(path.join(dir, name), 'utf-8');
       parts.push(body.trimEnd());
@@ -72,22 +78,17 @@ async function readRoleMarkdownParts(
       if (fallback) parts.push(String(fallback).trimEnd());
     }
   }
-  return parts;
+  return parts.join('\n\n');
 }
 
 export async function buildSystemSubAgentRoleSystemContent(
   roleTemplateId: SubAgentRoleTemplateId
 ): Promise<string> {
-  if (roleTemplateId === 'skills') {
-    return (await readRoleMarkdownParts('skills', ['AGENTS.md', 'SOUL.md', 'TOOLS.md'])).join('\n\n');
-  }
-  if (roleTemplateId === 'cognitive-allocation') {
-    return buildCognitiveAllocationSystemPrompt();
-  }
-  return '';
+  if (!isSystemRoleTemplateId(roleTemplateId)) return '';
+  return readRoleMarkdownParts(roleTemplateId);
 }
 
-/** 认知分配 Agent 完整 system 提示（含 CLASSIFIER 方法论）。 */
+/** @deprecated 使用 buildSystemSubAgentRoleSystemContent('cognitive-allocation') */
 export async function buildCognitiveAllocationSystemPrompt(): Promise<string> {
-  return (await readRoleMarkdownParts('cognitive-allocation', COGNITIVE_ALLOCATION_ROLE_FILES)).join('\n\n');
+  return buildSystemSubAgentRoleSystemContent('cognitive-allocation');
 }

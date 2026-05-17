@@ -28,6 +28,7 @@ import {
   refreshOutboundMergeWindowMsFromEngine,
 } from '../../shared/outbound-merge-window-client';
 import ModeClassificationDebug from '../../components/chat/ModeClassificationDebug';
+import ExpectationPlanningPanel from '../../components/chat/ExpectationPlanningPanel';
 import {
   DEFAULT_SYSTEM_AGENT_SETTINGS,
   SYSTEM_AGENT_SETTINGS_BROADCAST,
@@ -61,6 +62,9 @@ const ChatPage: FC = () => {
     setError,
     activeModeClassification,
     isClassifyingMode,
+    isExpectationPlanning,
+    expectationPlanStream,
+    activeExpectationPlanDisplay,
     pendingSendQueue,
     removePendingSend,
     toolApprovalPending,
@@ -531,6 +535,11 @@ const ChatPage: FC = () => {
               stickToBottomRef={stickToBottomRef}
               conversationId={activeConversationId}
             />
+            <ExpectationPlanningPanel
+              planning={isExpectationPlanning}
+              streamText={expectationPlanStream}
+              displayMarkdown={activeExpectationPlanDisplay}
+            />
             <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
             {toolApprovalForActive ? (
               <ToolApprovalBar pending={toolApprovalForActive} onRespond={respondToolApproval} />
@@ -572,7 +581,7 @@ const ChatPage: FC = () => {
             onOpenFullSettings={() => navigate('/settings')}
           />
           <ChatInput
-            disabled={isClassifyingMode}
+            disabled={isClassifyingMode || isExpectationPlanning}
             onSend={onSend}
             models={modelsForSelect}
             modelId={modelId}

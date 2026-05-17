@@ -1,11 +1,17 @@
 import type { SubAgentRoleTemplateId } from './sub-agent-types';
 import {
   COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  EXPECTATION_PLANNING_AGENT_SLOT_ID,
   isSystemSubAgentSlotId,
   SKILL_AGENT_SLOT_ID,
 } from './system-agent-constants';
 
-export { COGNITIVE_ALLOCATION_AGENT_SLOT_ID, isSystemSubAgentSlotId, SKILL_AGENT_SLOT_ID };
+export {
+  COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  EXPECTATION_PLANNING_AGENT_SLOT_ID,
+  isSystemSubAgentSlotId,
+  SKILL_AGENT_SLOT_ID,
+};
 
 /** 固定委派槽位（主 Agent 可 delegate）；顺序即 UI / 持久化顺序 */
 export const STANDARD_SUB_AGENT_SLOT_IDS = [

@@ -6,6 +6,7 @@ import type { SystemAgentSettings } from '../../shared/system-agent-settings';
 import { SYSTEM_AGENT_SETTINGS_BROADCAST } from '../../shared/system-agent-settings';
 import {
   COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  EXPECTATION_PLANNING_AGENT_SLOT_ID,
   SKILL_AGENT_SLOT_ID,
 } from '../../shared/system-agent-constants';
 
@@ -155,6 +156,7 @@ const SystemAgentsSettingsPanel: FC = () => {
   const roleLabel = (roleId: string, slotId: string): string => {
     if (slotId === SKILL_AGENT_SLOT_ID) return t('settings.systemAgents.roleSkill');
     if (slotId === COGNITIVE_ALLOCATION_AGENT_SLOT_ID) return t('settings.systemAgents.roleCognitive');
+    if (slotId === EXPECTATION_PLANNING_AGENT_SLOT_ID) return t('settings.systemAgents.roleExpectation');
     return roleId;
   };
 
@@ -216,6 +218,42 @@ const SystemAgentsSettingsPanel: FC = () => {
         </select>
         <div className="cf-help" style={{ marginBottom: 14 }}>
           {t('settings.systemAgents.cognitiveModelHelp')}
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <Checkbox
+            checked={settings.expectationPlanningEnabled}
+            onChange={(e) =>
+              setSettings((s) => (s ? { ...s, expectationPlanningEnabled: e.target.checked } : s))
+            }
+          >
+            {t('settings.systemAgents.expectationEnabled')}
+          </Checkbox>
+          <div className="cf-help" style={{ marginTop: 6 }}>
+            {t('settings.systemAgents.expectationEnabledHelp')}
+          </div>
+        </div>
+
+        <div className="cf-sub" style={{ marginBottom: 6 }}>
+          {t('settings.systemAgents.expectationModel')}
+        </div>
+        <select
+          className="cf-input cf-select"
+          style={{ width: '100%', maxWidth: 420, marginBottom: 6 }}
+          value={settings.expectationPlanningModelId}
+          disabled={!settings.expectationPlanningEnabled}
+          onChange={(e) =>
+            setSettings((s) => (s ? { ...s, expectationPlanningModelId: e.target.value } : s))
+          }
+        >
+          {modelSelectOptions.map((o) => (
+            <option key={`exp-${o.value || '__default'}`} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <div className="cf-help" style={{ marginBottom: 14 }}>
+          {t('settings.systemAgents.expectationModelHelp')}
         </div>
 
         <div style={{ marginBottom: 14 }}>
@@ -301,6 +339,12 @@ const SystemAgentsSettingsPanel: FC = () => {
                 {row.slot.id === COGNITIVE_ALLOCATION_AGENT_SLOT_ID ? (
                   <div className="cf-help" style={{ marginTop: 8 }}>
                     {t('settings.systemAgents.cognitiveRoleHint')}
+                  </div>
+                ) : null}
+
+                {row.slot.id === EXPECTATION_PLANNING_AGENT_SLOT_ID ? (
+                  <div className="cf-help" style={{ marginTop: 8 }}>
+                    {t('settings.systemAgents.expectationRoleHint')}
                   </div>
                 ) : null}
 

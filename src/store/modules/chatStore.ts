@@ -8,6 +8,7 @@ import {
   heuristicConversationModeClassification,
   type ConversationModeClassification,
 } from '../../engine/conversation-mode-classifier';
+import { needsExpectationPlanning } from '../../shared/expectation-plan';
 import {
   finishOutboundTurn,
   getMergedOutboundText,
@@ -217,6 +218,12 @@ export interface ChatState {
   /** 最近一次发送前的模式分类（测试展示，不落消息列表） */
   activeModeClassification: ConversationModeClassification | null;
   isClassifyingMode: boolean;
+  /** M3/M4 预期规划进行中 */
+  isExpectationPlanning: boolean;
+  /** 规划流式原始输出（编排中） */
+  expectationPlanStream: string | null;
+  /** 规划完成后的展示文本（Markdown 风格纯文本） */
+  activeExpectationPlanDisplay: string | null;
   /** 模型回复中挂起、待自动发送的用户消息（当前会话） */
   pendingSendQueue: PendingSendDisplayItem[];
   /** Gateway 工具执行前待用户确认（仅当前连接会话） */
@@ -289,6 +296,38 @@ async function classifyConversationForSend(
     /* fallback below */
   }
   return heuristicConversationModeClassification(content);
+}
+
+async function planExpectationForSend(
+  content: string,
+  classification: ConversationModeClassification,
+  modelId: string | null | undefined,
+  onDelta: (accumulated: string) => void
+): Promise<{ contextForMain: string | null; displayMarkdown: string } | null> {
+  if (!needsExpectationPlanning(classification.category)) return null;
+  try {
+    let accumulated = '';
+    const res = await window.electronAPI?.systemAgentsPlanExpectation?.(
+      {
+        userText: content,
+        categoryLabel: classification.categoryLabel,
+        classificationSummary: classification.summary,
+        ...(modelId ? { modelId } : {}),
+      },
+      (chunk) => {
+        accumulated += chunk;
+        onDelta(accumulated);
+      }
+    );
+    if (res && 'ok' in res && res.ok) {
+      const display = String(res.displayMarkdown ?? '').trim() || accumulated.trim();
+      const ctx = typeof res.contextForMain === 'string' && res.contextForMain.trim() ? res.contextForMain : null;
+      return { contextForMain: ctx, displayMarkdown: display };
+    }
+  } catch {
+    /* skip planning */
+  }
+  return null;
 }
 
 type Pending = {
@@ -495,6 +534,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
   error: null,
   activeModeClassification: null,
   isClassifyingMode: false,
+  isExpectationPlanning: false,
+  expectationPlanStream: null,
+  activeExpectationPlanDisplay: null,
   pendingSendQueue: [],
   toolApprovalPending: null,
 
@@ -689,7 +731,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
           typeof window.electronAPI?.engineGatewayStatus === 'function' &&
           typeof window.electronAPI?.engineGatewayStart === 'function';
 
-        set({ isClassifyingMode: true, activeModeClassification: null });
+        set({
+          isClassifyingMode: true,
+          activeModeClassification: null,
+          isExpectationPlanning: false,
+          expectationPlanStream: null,
+          activeExpectationPlanDisplay: null,
+        });
         let classification: ConversationModeClassification;
         try {
           classification = await classifyConversationForSend(mergedContent, effectiveModelIdParam);
@@ -699,6 +747,33 @@ export const useChatStore = create<ChatState>()((set, get) => {
         if (abortSignal.aborted) return;
 
         set({ activeModeClassification: classification });
+
+        let textForMain = mergedContent;
+        if (needsExpectationPlanning(classification.category)) {
+          set({ isExpectationPlanning: true, expectationPlanStream: '' });
+          try {
+            const planned = await planExpectationForSend(
+              mergedContent,
+              classification,
+              effectiveModelIdParam,
+              (accumulated) => set({ expectationPlanStream: accumulated })
+            );
+            if (abortSignal.aborted) return;
+            if (planned?.displayMarkdown) {
+              set({
+                activeExpectationPlanDisplay: planned.displayMarkdown,
+                expectationPlanStream: null,
+              });
+            }
+            if (planned?.contextForMain) {
+              textForMain = `${planned.contextForMain}${mergedContent}`;
+            }
+          } finally {
+            set({ isExpectationPlanning: false });
+          }
+        }
+        if (abortSignal.aborted) return;
+
         const actualMode = classification.mode;
         const effectiveModelId = resolveModelIdForInteractionMode(actualMode, effectiveModelIdParam);
         const autoPick = {
@@ -785,7 +860,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
             type: 'chat:send',
             requestId,
             conversationId: sessionId,
-            text: mergedContent,
+            text: textForMain,
             mode: actualMode,
             autoPick,
             ...(policyOverrides ? { policyOverrides } : {}),
@@ -799,7 +874,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         if (abortSignal.aborted) return;
         const response = await window.electronAPI?.engineSendMessage?.({
           conversationId: sessionId,
-          userText: mergedContent,
+          userText: textForMain,
           mode: actualMode,
           modelId: effectiveModelId,
         });

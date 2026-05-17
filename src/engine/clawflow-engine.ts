@@ -159,7 +159,7 @@ export interface ClawFlowEngine {
   getProviderRouter(): ProviderRouter;
 
   /**
-   * Ask 单轮流式（SSE → onDelta）。Plan / Multitask 若需工具循环请用 sendMessage。
+   * Ask 单轮流式（SSE → onDelta），无工具循环。主对话请用 sendMessage（三种模式均支持工具）。
    */
   sendMessageTextStream(params: {
     conversationId: string;
@@ -661,22 +661,6 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     // - If a model provider is available and configured, use it
     // - Otherwise return a deterministic stub
     const mode = params.mode ?? 'ask';
-    if (mode === 'ask') {
-      const message = await this.sendMessageTextStream({
-        conversationId: params.conversationId,
-        userText: params.userText,
-        modelId: resolveModelIdForInteractionMode('ask', params.modelId),
-        mode: 'ask',
-        onDelta: params.onDelta ?? (() => {}),
-        abortSignal: params.abortSignal,
-        intent: params.intent,
-        policyOverrides: params.policyOverrides,
-        workspaceRoot: params.workspaceRoot,
-        assistantMessageChannel: params.assistantMessageChannel,
-        assistantMessageMeta: params.assistantMessageMeta,
-      });
-      return { message };
-    }
     const modelId = resolveModelIdForInteractionMode(mode, params.modelId);
     const effRoot = path.resolve(params.workspaceRoot ?? this.config.workspaceRoot);
     const store = this.getSessionStore(effRoot);
@@ -990,7 +974,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     }
 
     // Persist final assistant reply as its own message.
-    // (Tool-calls + tool results are persisted per-step above for plan/multitask.)
+    // (Tool-calls + tool results are persisted per-step above when tools run.)
     await this.appendAssistantMessage(store, {
       conversationId: params.conversationId,
       reply,
@@ -1439,39 +1423,18 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
 
       const mode = params.mode === 'plan' ? 'plan' : params.mode === 'multitask' ? 'multitask' : 'ask';
 
-      // Plan / Multitask may involve tools and long execution; stream a small status first,
-      // then chunk the final reply for a consistent streaming UX.
-      if (mode === 'multitask' || mode === 'plan') {
-        sendDelta('（执行中…）\n');
-        const res = await getGlobalClawFlowEngine().sendMessage({
-          conversationId: params.conversationId,
-          userText: params.userText,
-          modelId: params.modelId,
-          mode,
-          workspaceRoot,
-          onDelta: sendDelta,
-          openEmbeddedBrowser: (url: string) => {
-            event.sender.send('embedded-browser:navigate', { url });
-          },
-        });
-        const full = res.message ?? '';
-        const chunkSize = 28;
-        for (let i = 0; i < full.length; i += chunkSize) {
-          sendDelta(full.slice(i, i + chunkSize));
-          await new Promise((r) => setTimeout(r, 15));
-        }
-        return { success: true, message: full };
-      }
-
-      const full = await getGlobalClawFlowEngine().sendMessageTextStream({
+      const res = await getGlobalClawFlowEngine().sendMessage({
         conversationId: params.conversationId,
         userText: params.userText,
         modelId: params.modelId,
         mode,
         workspaceRoot,
-        onDelta: (text) => sendDelta(text),
+        onDelta: sendDelta,
+        openEmbeddedBrowser: (url: string) => {
+          event.sender.send('embedded-browser:navigate', { url });
+        },
       });
-      return { success: true, message: full };
+      return { success: true, message: res.message ?? '' };
     }
   );
 }

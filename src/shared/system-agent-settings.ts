@@ -5,6 +5,10 @@ export type SystemAgentSettings = {
   cognitiveAllocationEnabled: boolean;
   /** 认知分配专用模型；空则沿用发送时模型 / Ask 默认 */
   cognitiveAllocationModelId: string;
+  /** M3/M4 时是否在主对话前运行预期规划 Agent */
+  expectationPlanningEnabled: boolean;
+  /** 预期规划专用模型；空则沿用发送时模型 / Plan 默认 */
+  expectationPlanningModelId: string;
   /** 聊天输入区上方显示 M1–M5 分类调试条 */
   showModeClassificationDebug: boolean;
 };
@@ -12,6 +16,8 @@ export type SystemAgentSettings = {
 export const DEFAULT_SYSTEM_AGENT_SETTINGS: SystemAgentSettings = {
   cognitiveAllocationEnabled: true,
   cognitiveAllocationModelId: '',
+  expectationPlanningEnabled: true,
+  expectationPlanningModelId: '',
   showModeClassificationDebug: true,
 };
 

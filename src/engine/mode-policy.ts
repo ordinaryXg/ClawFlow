@@ -48,7 +48,7 @@ export function buildModeConfig(params: {
   if (typeof overrides.jsonMode === 'boolean') cfg.jsonMode = overrides.jsonMode;
   if (typeof overrides.useBetaBaseUrl === 'boolean') cfg.useBetaBaseUrl = overrides.useBetaBaseUrl;
 
-  const defaultToolsEnabled = params.mode === 'multitask' || params.mode === 'plan';
+  const defaultToolsEnabled = true;
   cfg.toolsEnabled =
     typeof overrides.toolsEnabled === 'boolean' ? overrides.toolsEnabled : defaultToolsEnabled;
   return cfg;

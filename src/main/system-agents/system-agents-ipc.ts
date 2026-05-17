@@ -4,6 +4,7 @@ import { getGlobalClawFlowEngine } from '../../engine/clawflow-engine';
 import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
 import type { SystemAgentSettings } from '../../shared/system-agent-settings';
 import { runCognitiveAllocationClassification } from './cognitive-allocation-agent';
+import { runExpectationPlanning } from './expectation-planning-agent';
 import {
   getSystemAgentOverview,
   reloadSystemAgentRoster,
@@ -23,11 +24,14 @@ function broadcastSystemAgentSettingsUpdated(): void {
 
 const CHANNELS = {
   classify: 'systemAgents:classifyConversation',
+  planExpectation: 'systemAgents:planExpectation',
   overview: 'systemAgents:getOverview',
   saveSettings: 'systemAgents:saveSettings',
   saveSlots: 'systemAgents:saveSlots',
   reloadRoster: 'systemAgents:reloadRoster',
 } as const;
+
+const DELTA_CHANNEL = 'systemAgents:expectationPlanDelta' as const;
 
 export function registerSystemAgentsIPC(): void {
   for (const ch of Object.values(CHANNELS)) {
@@ -56,6 +60,48 @@ export function registerSystemAgentsIPC(): void {
         settings,
       });
       return { ok: true as const, ...classification };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle(CHANNELS.planExpectation, async (event, payload: unknown) => {
+    const userText =
+      typeof (payload as { userText?: string })?.userText === 'string'
+        ? (payload as { userText: string }).userText
+        : '';
+    const modelId =
+      typeof (payload as { modelId?: string })?.modelId === 'string'
+        ? (payload as { modelId: string }).modelId
+        : undefined;
+    const categoryLabel =
+      typeof (payload as { categoryLabel?: string })?.categoryLabel === 'string'
+        ? (payload as { categoryLabel: string }).categoryLabel
+        : undefined;
+    const classificationSummary =
+      typeof (payload as { classificationSummary?: string })?.classificationSummary === 'string'
+        ? (payload as { classificationSummary: string }).classificationSummary
+        : undefined;
+    const sender = event.sender;
+    try {
+      const settings = await readSystemAgentSettings();
+      const result = await runExpectationPlanning({
+        userText,
+        modelId: settings.expectationPlanningModelId.trim() || modelId,
+        categoryLabel,
+        classificationSummary,
+        router: getGlobalClawFlowEngine().getProviderRouter(),
+        settings,
+        onDelta: (text) => {
+          try {
+            sender.send(DELTA_CHANNEL, { text });
+          } catch {
+            /* ignore */
+          }
+        },
+      });
+      return { ok: true as const, ...result };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return { ok: false as const, error: msg };

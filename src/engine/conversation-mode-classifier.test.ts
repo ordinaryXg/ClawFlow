@@ -13,8 +13,8 @@ function mockRouter(provider: ModelProvider | null, providerId = 'deepseek'): Pr
 describe('buildCognitiveAllocationSystemPrompt', () => {
   it('includes classifier methodology from agent role bundle', async () => {
     const prompt = await buildCognitiveAllocationSystemPrompt();
-    expect(prompt).toContain('conversation-mode classifier');
-    expect(prompt).toContain('Output contract');
+    expect(prompt).toContain('认知分配');
+    expect(prompt).toContain('输出契约');
     expect(prompt).toContain('M1');
   });
 });
@@ -40,7 +40,7 @@ describe('runCognitiveAllocationClassification', () => {
     const req = (provider.chatCompletion as jest.Mock).mock.calls[0][0];
     expect(req.modeConfig?.jsonMode).toBe(true);
     expect(req.modeConfig?.toolsEnabled).toBe(false);
-    expect(String(req.messages[0].content)).toContain('conversation-mode classifier');
+    expect(String(req.messages[0].content)).toContain('M1');
   });
 
   it('falls back heuristically when provider missing', async () => {

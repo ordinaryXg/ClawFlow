@@ -22,8 +22,8 @@ describe('defaultModeConfig', () => {
 });
 
 describe('buildModeConfig strong intent', () => {
-  it('plan and multitask enable tools by default', () => {
-    expect(buildModeConfig({ mode: 'ask', intent: 'strong' }).toolsEnabled).toBe(false);
+  it('all modes enable tools by default', () => {
+    expect(buildModeConfig({ mode: 'ask', intent: 'strong' }).toolsEnabled).toBe(true);
     expect(buildModeConfig({ mode: 'plan', intent: 'strong' }).toolsEnabled).toBe(true);
     expect(buildModeConfig({ mode: 'multitask', intent: 'strong' }).toolsEnabled).toBe(true);
   });

@@ -8,7 +8,8 @@ export type SubAgentRoleTemplateId =
   | 'data'
   | 'assistant'
   | 'skills'
-  | 'cognitive-allocation';
+  | 'cognitive-allocation'
+  | 'expectation-planning';
 
 export type SubAgentSlot = {
   id: string;

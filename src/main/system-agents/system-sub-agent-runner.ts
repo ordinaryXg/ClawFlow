@@ -7,7 +7,12 @@ import {
   systemSubclawflowSlotDirAbs,
   systemSubmemorySlotDirAbs,
 } from './system-agent-layout';
-import { COGNITIVE_ALLOCATION_AGENT_SLOT_ID, SKILL_AGENT_SLOT_ID } from '../../shared/system-agent-constants';
+import {
+  COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  EXPECTATION_PLANNING_AGENT_SLOT_ID,
+  SKILL_AGENT_SLOT_ID,
+} from '../../shared/system-agent-constants';
+import type { InteractionMode } from '../../engine/providers/types';
 import type { SubAgentRunRequest, SubAgentRunResult } from '../sub-agent/sub-agent-runner';
 import { writeSystemRunSnapshot } from './system-agent-run-snapshot';
 
@@ -86,10 +91,17 @@ export async function runSystemSubAgentOnce(req: SystemSubAgentRunRequest): Prom
 
     const userText = [systemPrefix, taskText].join('\n');
 
+    const mode: InteractionMode =
+      slotId === COGNITIVE_ALLOCATION_AGENT_SLOT_ID
+        ? 'ask'
+        : slotId === EXPECTATION_PLANNING_AGENT_SLOT_ID
+          ? 'plan'
+          : 'multitask';
+
     const out = await getGlobalClawFlowEngine().sendMessage({
       conversationId,
       userText,
-      mode: slotId === COGNITIVE_ALLOCATION_AGENT_SLOT_ID ? 'ask' : 'multitask',
+      mode,
       ...(req.modelId ? { modelId: req.modelId } : {}),
       workspaceRoot: ws,
       onDelta: req.onDelta ? (text) => req.onDelta?.({ runId, slotId, text }) : undefined,

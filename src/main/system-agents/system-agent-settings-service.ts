@@ -23,6 +23,14 @@ export function normalizeSystemAgentSettings(raw: Partial<SystemAgentSettings> |
       typeof src.cognitiveAllocationEnabled === 'boolean' ? src.cognitiveAllocationEnabled : d.cognitiveAllocationEnabled,
     cognitiveAllocationModelId:
       typeof src.cognitiveAllocationModelId === 'string' ? src.cognitiveAllocationModelId.trim() : d.cognitiveAllocationModelId,
+    expectationPlanningEnabled:
+      typeof src.expectationPlanningEnabled === 'boolean'
+        ? src.expectationPlanningEnabled
+        : d.expectationPlanningEnabled,
+    expectationPlanningModelId:
+      typeof src.expectationPlanningModelId === 'string'
+        ? src.expectationPlanningModelId.trim()
+        : d.expectationPlanningModelId,
     showModeClassificationDebug:
       typeof src.showModeClassificationDebug === 'boolean'
         ? src.showModeClassificationDebug

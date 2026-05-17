@@ -1,6 +1,6 @@
 /**
  * 认知分配 Agent：主对话发送前的模式分类（Ask + JSON）。
- * 角色与 CLASSIFIER 提示词见应用缓存 `system/.subagent-roles/cognitive-allocation/`。
+ * 角色提示词见应用缓存 `system/.subagent-roles/cognitive-allocation/`（AGENTS.md + SOUL.md + TOOLS.md）。
  */
 
 import type { ProviderRouter } from '../../engine/provider-router';
@@ -15,7 +15,7 @@ import {
   parseClassificationResponse,
   type ConversationModeClassification,
 } from '../../engine/conversation-mode-classifier';
-import { buildCognitiveAllocationSystemPrompt } from './system-agent-role-bootstrap';
+import { buildSystemSubAgentRoleSystemContent } from './system-agent-role-bootstrap';
 import { COGNITIVE_ALLOCATION_AGENT_SLOT_ID } from '../../shared/system-agent-constants';
 import type { SystemAgentSettings } from '../../shared/system-agent-settings';
 import { readSystemAgentSettings } from './system-agent-settings-service';
@@ -51,7 +51,7 @@ export async function runCognitiveAllocationClassification(params: {
     tools: undefined,
   };
 
-  const systemContent = await buildCognitiveAllocationSystemPrompt();
+  const systemContent = await buildSystemSubAgentRoleSystemContent('cognitive-allocation');
   const req: ChatCompletionRequest = {
     model: modelId,
     messages: [

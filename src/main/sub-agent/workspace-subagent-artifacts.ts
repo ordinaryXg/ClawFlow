@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  EXPECTATION_PLANNING_AGENT_SLOT_ID,
   SKILL_AGENT_SLOT_ID,
   SYSTEM_SUB_AGENT_SLOT_IDS_ORDERED,
 } from '../../shared/system-agent-constants';
@@ -13,7 +14,11 @@ import { subclawflowSlotDirAbs, submemorySlotDirAbs } from '../workspace/workspa
 import { workspaceSubagentRolesDirAbs } from '../workspace/workspace-agent-layout';
 
 /** 不得出现在工作区 `.subagent/.subroleAgent/` 下的角色模板 id（仅系统缓存托管） */
-export const FORBIDDEN_WORKSPACE_SUBROLE_TEMPLATE_IDS = ['skills', 'cognitive-allocation'] as const;
+export const FORBIDDEN_WORKSPACE_SUBROLE_TEMPLATE_IDS = [
+  'skills',
+  'cognitive-allocation',
+  'expectation-planning',
+] as const;
 
 const WORKSPACE_DELEGATE_SLOT_IDS = [
   'cf-sub-program',
@@ -87,7 +92,11 @@ function dirOnlyContainsSystemSlotIdsSync(base: string): boolean {
   try {
     const names = fs.readdirSync(base);
     if (names.length === 0) return true;
-    const systemSet = new Set<string>([SKILL_AGENT_SLOT_ID, COGNITIVE_ALLOCATION_AGENT_SLOT_ID]);
+    const systemSet = new Set<string>([
+      SKILL_AGENT_SLOT_ID,
+      COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+      EXPECTATION_PLANNING_AGENT_SLOT_ID,
+    ]);
     return names.every((n) => systemSet.has(n));
   } catch {
     return true;

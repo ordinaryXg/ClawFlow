@@ -212,23 +212,12 @@ class GatewayDaemon extends EventEmitter {
 
           this.emit('channel:message', { channelId: 'webhook', conversationId, text });
           this.pushLog('info', `[http] /message conv=${conversationId} mode=${mode} chars=${text.length}`);
-          const out =
-            mode === 'ask'
-              ? {
-                  message: await getGlobalClawFlowEngine().sendMessageTextStream({
-                    conversationId,
-                    userText: text,
-                    mode: 'ask',
-                    modelId,
-                    onDelta: () => {},
-                  }),
-                }
-              : await getGlobalClawFlowEngine().sendMessage({
-                  conversationId,
-                  userText: text,
-                  mode,
-                  modelId,
-                });
+          const out = await getGlobalClawFlowEngine().sendMessage({
+            conversationId,
+            userText: text,
+            mode,
+            modelId,
+          });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, message: out.message }));
           return;
@@ -405,46 +394,31 @@ class GatewayDaemon extends EventEmitter {
 
     try {
       const engine = getGlobalClawFlowEngine();
-      const out =
-        mode === 'ask'
-          ? {
-              message: await engine.sendMessageTextStream({
-                conversationId,
-                userText: text,
-                mode: 'ask',
-                modelId,
-                ...(workspaceRoot ? { workspaceRoot } : {}),
-                onDelta: sendDelta,
-                abortSignal: abort.signal,
-                intent,
-                ...(policyOverrides ? { policyOverrides } : {}),
-              }),
-            }
-          : await engine.sendMessage({
-              conversationId,
-              userText: text,
-              mode,
-              modelId,
-              ...(workspaceRoot ? { workspaceRoot } : {}),
-              onDelta: sendDelta,
-              abortSignal: abort.signal,
-              intent,
-              ...(policyOverrides ? { policyOverrides } : {}),
-              requestId,
-              onToolApprovalNeeded: (p) => {
-                if (abort.signal.aborted) return;
-                this.send(ws, {
-                  type: 'chat:toolApproval',
-                  requestId,
-                  conversationId,
-                  approvalId: p.approvalId,
-                  tools: p.tools,
-                  riskLevel: p.riskLevel,
-                  timeoutMs: p.timeoutMs,
-                  defaultApproved: p.defaultApproved,
-                });
-              },
-            });
+      const out = await engine.sendMessage({
+        conversationId,
+        userText: text,
+        mode,
+        modelId,
+        ...(workspaceRoot ? { workspaceRoot } : {}),
+        onDelta: sendDelta,
+        abortSignal: abort.signal,
+        intent,
+        ...(policyOverrides ? { policyOverrides } : {}),
+        requestId,
+        onToolApprovalNeeded: (p) => {
+          if (abort.signal.aborted) return;
+          this.send(ws, {
+            type: 'chat:toolApproval',
+            requestId,
+            conversationId,
+            approvalId: p.approvalId,
+            tools: p.tools,
+            riskLevel: p.riskLevel,
+            timeoutMs: p.timeoutMs,
+            defaultApproved: p.defaultApproved,
+          });
+        },
+      });
       this.abortByRequestId.delete(requestId);
       this.send(ws, { type: 'chat:final', requestId, conversationId, message: out.message ?? '' });
     } catch (e: any) {

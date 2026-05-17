@@ -8,7 +8,10 @@ import type { ToolApprovalPendingState } from '../../store/modules/chatStore';
 import type { SubAgentRoleTemplateId, SubAgentSlot } from '../../shared/sub-agent-types';
 import { isSystemSubAgentSlotId } from '../../shared/system-agent-constants';
 
-type WorkspaceDelegateRoleId = Exclude<SubAgentRoleTemplateId, 'skills' | 'cognitive-allocation'>;
+type WorkspaceDelegateRoleId = Exclude<
+  SubAgentRoleTemplateId,
+  'skills' | 'cognitive-allocation' | 'expectation-planning'
+>;
 
 const ROLE_LABELS: Record<WorkspaceDelegateRoleId, string> = {
   program: '程序 Agent（可运行/可验证交付）',
@@ -143,7 +146,7 @@ const SubAgentsHubPanel: FC = () => {
 
   const roleSelectOptions: { value: SubAgentRoleTemplateId; label: string }[] = useMemo(() => {
     const rt = editRoleTemplateId;
-    if (rt === 'skills' || rt === 'cognitive-allocation') {
+    if (rt === 'skills' || rt === 'cognitive-allocation' || rt === 'expectation-planning') {
       return [{ value: 'assistant' as const, label: ROLE_LABELS.assistant }];
     }
     return [{ value: rt, label: ROLE_LABELS[rt] }];
@@ -155,7 +158,7 @@ const SubAgentsHubPanel: FC = () => {
     setEditBehavior(a.behavior ?? '');
     const rt = a.roleTemplateId;
     setEditRoleTemplateId(
-      rt === 'skills' || rt === 'cognitive-allocation'
+      rt === 'skills' || rt === 'cognitive-allocation' || rt === 'expectation-planning'
         ? 'assistant'
         : rt === 'program' || rt === 'creative' || rt === 'data' || rt === 'assistant'
           ? rt

@@ -65,6 +65,25 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  systemAgentsPlanExpectation: (
+    params: {
+      userText: string;
+      modelId?: string;
+      categoryLabel?: string;
+      classificationSummary?: string;
+    },
+    onDelta?: (text: string) => void
+  ) => Promise<
+    | {
+        ok: true;
+        raw: string;
+        displayMarkdown: string;
+        contextForMain: string | null;
+        plan: Record<string, unknown> | null;
+        fallback?: boolean;
+      }
+    | { ok: false; error: string }
+  >;
   systemAgentsGetOverview: () => Promise<
     | {
         ok: true;
@@ -75,6 +94,8 @@ export interface IElectronAPI {
         settings: {
           cognitiveAllocationEnabled: boolean;
           cognitiveAllocationModelId: string;
+          expectationPlanningEnabled: boolean;
+          expectationPlanningModelId: string;
           showModeClassificationDebug: boolean;
         };
         slots: Array<{
@@ -104,6 +125,8 @@ export interface IElectronAPI {
   systemAgentsSaveSettings: (settings: {
     cognitiveAllocationEnabled?: boolean;
     cognitiveAllocationModelId?: string;
+    expectationPlanningEnabled?: boolean;
+    expectationPlanningModelId?: string;
     showModeClassificationDebug?: boolean;
   }) => Promise<
     | {
@@ -111,6 +134,8 @@ export interface IElectronAPI {
         settings: {
           cognitiveAllocationEnabled: boolean;
           cognitiveAllocationModelId: string;
+          expectationPlanningEnabled: boolean;
+          expectationPlanningModelId: string;
           showModeClassificationDebug: boolean;
         };
       }
@@ -524,6 +549,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
   systemAgentsClassifyConversation: (params: { userText: string; modelId?: string }) =>
     ipcRenderer.invoke('systemAgents:classifyConversation', params),
+  systemAgentsPlanExpectation: (params, onDelta) => {
+    const handler = (_ev: unknown, payload: { text?: string }) => {
+      const chunk = typeof payload?.text === 'string' ? payload.text : '';
+      if (chunk) onDelta?.(chunk);
+    };
+    if (onDelta) ipcRenderer.on('systemAgents:expectationPlanDelta', handler);
+    return ipcRenderer
+      .invoke('systemAgents:planExpectation', params)
+      .finally(() => {
+        if (onDelta) ipcRenderer.removeListener('systemAgents:expectationPlanDelta', handler);
+      });
+  },
   systemAgentsGetOverview: () => ipcRenderer.invoke('systemAgents:getOverview'),
   systemAgentsSaveSettings: (settings) => ipcRenderer.invoke('systemAgents:saveSettings', settings),
   systemAgentsSaveSlots: (params) => ipcRenderer.invoke('systemAgents:saveSlots', params),

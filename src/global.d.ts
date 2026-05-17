@@ -65,10 +65,31 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  systemAgentsPlanExpectation: (
+    params: {
+      userText: string;
+      modelId?: string;
+      categoryLabel?: string;
+      classificationSummary?: string;
+    },
+    onDelta?: (text: string) => void
+  ) => Promise<
+    | {
+        ok: true;
+        raw: string;
+        displayMarkdown: string;
+        contextForMain: string | null;
+        plan: Record<string, unknown> | null;
+        fallback?: boolean;
+      }
+    | { ok: false; error: string }
+  >;
   systemAgentsGetOverview: () => Promise<{ ok: true; [key: string]: unknown } | { ok: false; error: string }>;
   systemAgentsSaveSettings: (settings: {
     cognitiveAllocationEnabled?: boolean;
     cognitiveAllocationModelId?: string;
+    expectationPlanningEnabled?: boolean;
+    expectationPlanningModelId?: string;
     showModeClassificationDebug?: boolean;
   }) => Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }>;
   systemAgentsSaveSlots: (params: {

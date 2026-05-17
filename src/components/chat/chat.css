@@ -1153,6 +1153,57 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.cf-expectationPlan {
+  flex-shrink: 0;
+  margin: 8px 12px 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--panel) 92%, var(--accent) 8%);
+  max-height: min(42vh, 320px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cf-expectationPlan__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.cf-expectationPlan__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cf-expectationPlan__badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.cf-expectationPlan__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.cf-expectationPlan__pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: inherit;
+  color: var(--text);
+}
+
 .cf-pendingSendQueue {
   flex-shrink: 0;
   margin: 0 12px 6px;
