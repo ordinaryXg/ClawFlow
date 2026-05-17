@@ -76,6 +76,24 @@
   opacity: 0.72;
 }
 
+.cf-systemAgentsRoster {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cf-systemAgentsCard {
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cf-systemAgentsSnapshot summary {
+  cursor: pointer;
+  user-select: none;
+}
+
 .cf-messagingFeishuBotGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

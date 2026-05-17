@@ -3,7 +3,6 @@
 
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { ChatIntent } from '../../engine/mode-policy';
 import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
 import {
   heuristicConversationModeClassification,
@@ -60,7 +59,6 @@ type GatewayWsSend =
       conversationId: string;
       text: string;
       mode: 'ask' | 'plan' | 'multitask';
-      intent?: ChatIntent;
       autoPick?: {
         pickedMode: 'ask' | 'plan' | 'multitask';
         reason: string;
@@ -279,7 +277,7 @@ async function classifyConversationForSend(
   modelId?: string | null
 ): Promise<ConversationModeClassification> {
   try {
-    const res = await window.electronAPI?.engineClassifyConversationMode?.({
+    const res = await window.electronAPI?.systemAgentsClassifyConversation?.({
       userText: content,
       ...(modelId ? { modelId } : {}),
     });
@@ -718,7 +716,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
           } catch {
             sendWorkspaceRoot = '';
           }
-          const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
           const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
           let policyOverrides: any = null;
           try {
@@ -790,7 +787,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
             conversationId: sessionId,
             text: mergedContent,
             mode: actualMode,
-            intent,
             autoPick,
             ...(policyOverrides ? { policyOverrides } : {}),
             modelId: effectiveModelId,

@@ -715,12 +715,15 @@
   display:flex;
   flex-direction:column;
 }
-.cf-chatRight__body > *{
+.cf-chatRight__panel{
   flex:1;
   min-height:0;
   min-width:0;
-  display:flex;
   flex-direction:column;
+  display:none;
+}
+.cf-chatRight__panel--active{
+  display:flex;
 }
 .cf-chatRight__kv{display:flex;flex-direction:column;gap:6px}
 .cf-chatRight__k{font-size:11px;color:var(--muted)}
@@ -1106,13 +1109,19 @@
   gap:8px;
 }
 .cf-changeLog__toolbar{flex-shrink:0}
+.cf-changeLog__scroll{
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+}
 .cf-changeLog__list{
   list-style:none;
   margin:0;
   padding:0;
   flex:1;
   min-height:0;
-  overflow:auto;
 }
 .cf-changeLog__item{border-bottom:1px solid var(--border)}
 .cf-changeLog__item:last-child{border-bottom:0}

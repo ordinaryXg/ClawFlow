@@ -29,8 +29,8 @@ import { broadcastTodoTriggersUpdated } from './main/todo/todo-triggers-broadcas
 import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './main/sub-agent/sub-agent-service';
 import { broadcastSubAgentsUpdated } from './main/sub-agent/sub-agent-broadcast';
 import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './main/sub-agent/sub-agent-runner';
+import { registerSystemAgentsIPC } from './main/system-agents/system-agents-ipc';
 import { mergeSubAgentSlotsAfterEditorSave, ensureSubAgentRosterForWorkspace } from './main/sub-agent/sub-agent-roster-bootstrap';
-import { SKILL_AGENT_SLOT_ID } from './shared/skill-agent-constants';
 import { readScrapeJobs } from './main/scrape/scrape-service';
 import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './main/todo/todo-triggers-scheduler';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './engine/hermes-memory-db';
@@ -411,8 +411,9 @@ function registerSubAgentsIPC(): void {
     const conversationId = typeof p.conversationId === 'string' ? p.conversationId.trim() : '';
     const modelId = typeof p.modelId === 'string' && p.modelId.trim() ? p.modelId.trim() : undefined;
     if (!slotId || !taskText || !conversationId) return { ok: false as const, error: 'missing_fields' };
-    if (slotId === SKILL_AGENT_SLOT_ID) {
-      return { ok: false as const, error: 'skill_agent_run_not_supported' };
+    const { isSystemSubAgentSlotId } = await import('./shared/system-agent-constants');
+    if (isSystemSubAgentSlotId(slotId)) {
+      return { ok: false as const, error: 'system_agent_run_not_supported' };
     }
 
     const sender = event.sender;
@@ -441,6 +442,7 @@ function registerSubAgentsIPC(): void {
   });
 }
 registerSubAgentsIPC();
+registerSystemAgentsIPC();
 
 function registerScrapeIPC(): void {
   for (const ch of ['scrape:listJobs', 'scrape:readArtifact'] as const) {
@@ -1228,6 +1230,13 @@ app.whenReady().then(async () => {
   const active = reg.activeWorkspacePath ?? workspaceService.getDefaultWorkspacePath();
   workspaceService.removeLegacyExternalAgentStateDirsSync();
   await workspaceService.ensureWorkspaceInitialized(active);
+  try {
+    const { ensureSystemAgentsInitialized } = await import('./main/system-agents/system-agent-roster-bootstrap');
+    const tools = await workspaceService.readWorkspaceToolManifest(active);
+    await ensureSystemAgentsInitialized(Boolean(tools.skills));
+  } catch (e: unknown) {
+    console.warn('[system-agents] init failed:', e instanceof Error ? e.message : e);
+  }
   workspaceService.setActiveWorkspace(active);
   setActiveWorkspaceRoot(active);
   setMainShellLastWorkspacePath(active);

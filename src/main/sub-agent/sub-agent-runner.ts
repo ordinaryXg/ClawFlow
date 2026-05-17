@@ -7,7 +7,9 @@ import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
 import { writeRunSnapshot } from './sub-agent-run-snapshot';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
 import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+import { isSystemSubAgentSlotId } from '../../shared/system-agent-constants';
 import { isReservedSubAgentSlotId } from '../../shared/sub-agent-roster-constants';
+import { runSystemSubAgentOnce } from '../system-agents/system-sub-agent-runner';
 import { subclawflowSlotDirAbs, submemorySlotDirAbs } from '../workspace/workspace-service';
 import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 
@@ -46,6 +48,10 @@ export async function runSubAgentOnce(req: SubAgentRunRequest): Promise<SubAgent
   if (!slotId) return { ok: false, runId, error: 'missing_slotId' };
   if (!conversationId) return { ok: false, runId, error: 'missing_conversationId' };
   if (!taskText) return { ok: false, runId, error: 'missing_taskText' };
+
+  if (isSystemSubAgentSlotId(slotId)) {
+    return runSystemSubAgentOnce(req);
+  }
 
   const key = slotKey(ws, slotId);
   if (runningBySlot.has(key)) {

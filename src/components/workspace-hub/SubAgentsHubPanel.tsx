@@ -6,9 +6,11 @@ import './WorkspaceHubPanels.css';
 import ToolApprovalBar from '../chat/ToolApprovalBar';
 import type { ToolApprovalPendingState } from '../../store/modules/chatStore';
 import type { SubAgentRoleTemplateId, SubAgentSlot } from '../../shared/sub-agent-types';
-import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+import { isSystemSubAgentSlotId } from '../../shared/system-agent-constants';
 
-const ROLE_LABELS: Record<Exclude<SubAgentRoleTemplateId, 'skills'>, string> = {
+type WorkspaceDelegateRoleId = Exclude<SubAgentRoleTemplateId, 'skills' | 'cognitive-allocation'>;
+
+const ROLE_LABELS: Record<WorkspaceDelegateRoleId, string> = {
   program: '程序 Agent（可运行/可验证交付）',
   creative: '创意 Agent（方案/文案/脚本）',
   data: '数据 Agent（可复现分析/结论）',
@@ -35,7 +37,8 @@ function excerptConversationMessages(
 
 const SubAgentsHubPanel: FC = () => {
   const { t } = useTranslation();
-  const slots = useSubAgentStore((s) => s.slots);
+  const slotsRaw = useSubAgentStore((s) => s.slots);
+  const slots = useMemo(() => slotsRaw.filter((s) => !isSystemSubAgentSlotId(s.id)), [slotsRaw]);
   const runSnapshots = useSubAgentStore((s) => s.runSnapshots);
   const load = useSubAgentStore((s) => s.load);
 
@@ -139,13 +142,12 @@ const SubAgentsHubPanel: FC = () => {
   }, [detailOpen, detailSlotId, runSnapshots, t]);
 
   const roleSelectOptions: { value: SubAgentRoleTemplateId; label: string }[] = useMemo(() => {
-    if (editId === SKILL_AGENT_SLOT_ID) {
-      return [{ value: 'skills' as const, label: 'Skill Agent（技能进化，系统槽位）' }];
-    }
     const rt = editRoleTemplateId;
-    if (rt === 'skills') return [{ value: 'assistant' as const, label: ROLE_LABELS.assistant }];
+    if (rt === 'skills' || rt === 'cognitive-allocation') {
+      return [{ value: 'assistant' as const, label: ROLE_LABELS.assistant }];
+    }
     return [{ value: rt, label: ROLE_LABELS[rt] }];
-  }, [editId, editRoleTemplateId]);
+  }, [editRoleTemplateId]);
 
   const openEdit = (a: SubAgentSlot) => {
     setEditId(a.id);
@@ -153,7 +155,11 @@ const SubAgentsHubPanel: FC = () => {
     setEditBehavior(a.behavior ?? '');
     const rt = a.roleTemplateId;
     setEditRoleTemplateId(
-      rt === 'skills' || rt === 'program' || rt === 'creative' || rt === 'data' || rt === 'assistant' ? rt : 'assistant'
+      rt === 'skills' || rt === 'cognitive-allocation'
+        ? 'assistant'
+        : rt === 'program' || rt === 'creative' || rt === 'data' || rt === 'assistant'
+          ? rt
+          : 'assistant'
     );
     setEditOpen(true);
   };
@@ -214,23 +220,11 @@ const SubAgentsHubPanel: FC = () => {
             <div key={a.id} className="cf-hubCard">
               <div className="cf-hubCard__head">
                 <span className="cf-hubCard__name">{a.label || a.id}</span>
-                {a.id === SKILL_AGENT_SLOT_ID ? (
-                  <span
-                    className={`cf-hubBadge ${a.skillToolsEnabled === false ? 'cf-hubBadge--stopped' : 'cf-hubBadge--running'}`}
-                    style={{ marginRight: 6 }}
-                  >
-                    {t('chat.workspaceHub.subAgentsSkillBadge')}
-                  </span>
-                ) : null}
                 <span className={`cf-hubBadge ${badges[a.status]}`}>{t(`chat.workspaceHub.subAgentStatus.${a.status}`)}</span>
               </div>
               <div className="cf-hubCard__body">{a.behavior || t('chat.workspaceHub.subAgentNoBehavior')}</div>
               <div className="cf-hubCard__body cf-sub" style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-                {a.id === SKILL_AGENT_SLOT_ID
-                  ? a.skillToolsEnabled === false
-                    ? t('chat.workspaceHub.subAgentsSkillCaptionToolsOff')
-                    : t('chat.workspaceHub.subAgentsSkillCaption')
-                  : t('chat.workspaceHub.subAgentsDelegateCaption')}
+                {t('chat.workspaceHub.subAgentsDelegateCaption')}
               </div>
               <div className="cf-hubCard__body" style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => openEdit(a)}>

@@ -17,8 +17,6 @@ export interface SettingsState {
   uiFontSize: UiFontSizePreset;
   /** 对话页默认选中的模型 ID（如 `deepseek/deepseek-chat`） */
   builtinDefaultModelId: string | null;
-  /** 对话策略意图：更快/更强/更省钱 */
-  chatIntent: 'fast' | 'strong' | 'cheap';
   /**
    * 模式策略覆盖（JSON 字符串）
    * 结构示例：
@@ -43,7 +41,6 @@ const DEFAULT_SETTINGS: SettingsState = {
   closeButtonAction: 'quit',
   uiFontSize: 'md',
   builtinDefaultModelId: null,
-  chatIntent: 'strong',
   chatModePolicyOverridesJson: '',
 };
 
@@ -56,7 +53,6 @@ function persistSlice(state: SettingsState) {
     closeButtonAction: state.closeButtonAction,
     uiFontSize: state.uiFontSize,
     builtinDefaultModelId: state.builtinDefaultModelId,
-    chatIntent: state.chatIntent,
     chatModePolicyOverridesJson: state.chatModePolicyOverridesJson,
   };
 }
@@ -104,9 +100,6 @@ try {
         typeof p.builtinDefaultModelId === 'string' && p.builtinDefaultModelId.trim()
           ? p.builtinDefaultModelId.trim()
           : null,
-      chatIntent: ['fast', 'strong', 'cheap'].includes(String((p as any).chatIntent))
-        ? ((p as any).chatIntent as any)
-        : DEFAULT_SETTINGS.chatIntent,
       chatModePolicyOverridesJson:
         typeof (p as any).chatModePolicyOverridesJson === 'string' ? (p as any).chatModePolicyOverridesJson : '',
     });

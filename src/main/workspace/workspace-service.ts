@@ -24,7 +24,7 @@ import {
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
 import { launcherStashDirAbs, migrateWorkspaceTriadFromLegacyRootsSync, workspaceBlobDirAbs } from './workspace-blob-store';
-import { ensureSkillAgentSlotForWorkspace } from '../skill/skill-agent-bootstrap';
+import { refreshSystemSkillAgentForWorkspace } from '../skill/skill-agent-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
@@ -32,7 +32,7 @@ import {
   type WorkspaceToolSelection,
   type WorkspaceToolSelectionInput,
 } from '../../shared/workspace-tools';
-import { ALL_SUBAGENT_SLOT_IDS_ORDERED } from '../../shared/sub-agent-roster-constants';
+import { WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED } from '../../shared/sub-agent-roster-constants';
 import {
   buildWorkspaceToolBrowserMd,
   buildWorkspaceToolDocsMd,
@@ -193,7 +193,7 @@ export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<
 /** 更新能力勾选并写入 `.agent/.tool/manifest.json`（并确保说明文件存在） */
 export async function writeWorkspaceToolSelection(workspaceRoot: string, tools: WorkspaceToolSelection): Promise<void> {
   await ensureWorkspaceToolBundle(workspaceRoot, tools);
-  await ensureSkillAgentSlotForWorkspace(workspaceRoot);
+  await refreshSystemSkillAgentForWorkspace(workspaceRoot);
 }
 
 export interface WorkspaceMeta {
@@ -306,7 +306,7 @@ export async function ensureSubagentWorkspaceTree(workspaceRoot: string): Promis
     await fs.promises.mkdir(workspaceSubagentRolesDirAbs(root), { recursive: true });
     await fs.promises.mkdir(subclawflowDir(root), { recursive: true });
     await fs.promises.mkdir(submemoryDir(root), { recursive: true });
-    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+    for (const sid of WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED) {
       await fs.promises.mkdir(subclawflowSlotDirAbs(root, sid), { recursive: true });
       await fs.promises.mkdir(submemorySlotDirAbs(root, sid), { recursive: true });
     }
@@ -323,7 +323,7 @@ export async function ensureSubclawflowWorkspaceCaches(workspaceRoot: string): P
   try {
     await fs.promises.mkdir(subagentRootDir(root), { recursive: true });
     await fs.promises.mkdir(subclawflowDir(root), { recursive: true });
-    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+    for (const sid of WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED) {
       await fs.promises.mkdir(subclawflowSlotDirAbs(root, sid), { recursive: true });
     }
   } catch (e: unknown) {
@@ -339,7 +339,7 @@ export async function ensureSubmemoryWorkspaceCaches(workspaceRoot: string): Pro
   try {
     await fs.promises.mkdir(subagentRootDir(root), { recursive: true });
     await fs.promises.mkdir(submemoryDir(root), { recursive: true });
-    for (const sid of ALL_SUBAGENT_SLOT_IDS_ORDERED) {
+    for (const sid of WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED) {
       await fs.promises.mkdir(submemorySlotDirAbs(root, sid), { recursive: true });
     }
   } catch (e: unknown) {
@@ -568,21 +568,16 @@ export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
   }
 }
 
-/** 工作区根下 `.agent`、`.subagent` 均已存在为目录时，视为已有 ClawFlow 布局：跳过目录迁移与角色/记忆/默认技能等「新建」引导，仅补齐必要子目录与工具清单（若用户传入 tools）。 */
+/** 工作区根下已有 `.agent/` 时视为既有布局（`.subagent/` 在启用委派子 Agent 时懒创建，系统 Agent 不占工作区目录）。 */
 export async function workspaceHasExistingAgentAndSubagent(workspaceRoot: string): Promise<boolean> {
   const root = path.resolve(String(workspaceRoot ?? '').trim());
   if (!root) return false;
-  const agent = workspaceAgentRootAbs(root);
-  const subagent = workspaceSubagentRootAbs(root);
-  const isDir = async (p: string) => {
-    try {
-      const st = await fs.promises.stat(p);
-      return st.isDirectory();
-    } catch {
-      return false;
-    }
-  };
-  return (await isDir(agent)) && (await isDir(subagent));
+  try {
+    const st = await fs.promises.stat(workspaceAgentRootAbs(root));
+    return st.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function readOriginUrlFromDotGitConfig(workspaceRoot: string): string | null {
@@ -640,7 +635,7 @@ export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Prom
 }
 
 /**
- * 创建工作区根下 **`.agent/.clawflow/`**、**`.subagent/`**（含 `.subclawflow/`、`.submemory/`）与 `workspace.json`。
+ * 创建工作区根下 **`.agent/.clawflow/`** 与 `workspace.json`；**`.subagent/`** 仅在启用 `tools.subagents` 时懒创建（系统 Skill Agent 不占工作区 `.subagent/`）。
  * 同时在 **`.agent/.roleAgent/`** 按需生成 agent 角色模板（AGENTS.md、SOUL.md 等，缺失才写入）。
  * 若工作区根下已同时存在 `.agent/` 与 `.subagent/` 目录，则视为既有工作区：**不**执行历史布局迁移与模板/默认技能补写，仅更新 `workspace.json`、必要子目录与（若传入的）工具清单。
  * 打开时会先迁移：**根下 `.clawflow-launcher-stash` → 应用缓存**；**缓存内旧版 `.agent` / `.subagent` → 工作区根**（若根下尚无对应目录）。
@@ -651,9 +646,12 @@ export async function ensureWorkspaceInitialized(
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
   migrateWorkspaceTriadFromLegacyRootsSync(root);
+  const { pruneSystemSubagentArtifactsFromWorkspaceSync } = await import('../sub-agent/workspace-subagent-artifacts');
+  pruneSystemSubagentArtifactsFromWorkspaceSync(root);
   const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
   if (!preserveExistingLayout) {
     migrateLegacyWorkspaceAgentBundleSync(root);
+    pruneSystemSubagentArtifactsFromWorkspaceSync(root);
   }
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
@@ -672,8 +670,6 @@ export async function ensureWorkspaceInitialized(
       console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
     }
   }
-  await ensureSubagentWorkspaceTree(root);
-
   migrateLegacyConversationsOnce(root);
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
@@ -685,21 +681,14 @@ export async function ensureWorkspaceInitialized(
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
     }
+  }
 
-    // 子 Agent 的角色模板，缺失才补写到 `.subagent/.subroleAgent/`
-    try {
-      await ensureWorkspaceSubAgentRoleTemplates(root);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[workspace-service] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
-    }
-
-    try {
-      await ensureSkillAgentSlotForWorkspace(root);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[workspace-service] ensureSkillAgentSlotForWorkspace failed:', msg);
-    }
+  try {
+    const { ensureSubAgentRosterForWorkspace } = await import('../sub-agent/sub-agent-roster-bootstrap');
+    await ensureSubAgentRosterForWorkspace(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureSubAgentRosterForWorkspace failed:', msg);
   }
 
   // 新建与既有工作区：若缺失则补写内置 `skill-creator/SKILL.md`（wx，不覆盖用户编辑）

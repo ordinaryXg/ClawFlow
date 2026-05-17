@@ -1,3 +1,4 @@
+import { providerIdFromCatalogModelId } from './chat-model-catalog';
 import type { InteractionMode } from './providers/types';
 
 /** 内置 DeepSeek 对话：各交互模式绑定的 catalog model id */
@@ -8,7 +9,7 @@ export const BUILTIN_MODEL_ID_BY_MODE: Record<InteractionMode, string> = {
 };
 
 export function isDeepSeekBuiltinChatModelId(modelId: string): boolean {
-  return String(modelId ?? '').trim().startsWith('deepseek/');
+  return providerIdFromCatalogModelId(modelId) === 'deepseek';
 }
 
 /** 按模式解析实际下发模型：未指定或非 DeepSeek 目录模型时沿用显式选择；DeepSeek 目录内由模式绑定。 */

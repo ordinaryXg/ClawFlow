@@ -1,15 +1,16 @@
 /**
- * 工作区子 Agent 固定名册：始终包含 4 个委派槽 + Skill Agent；不提供任意新建/删除。
- * `tools.skills` 关闭时 Skill 槽位仍存在（`skillToolsEnabled: false`，状态 stopped），便于 UI 一览。
+ * 工作区子 Agent 固定名册：仅 4 个可委派槽位。系统级 Agent（Skill / 认知分配）见 `system-agent-roster-bootstrap`。
  */
 
 import type { SubAgentSlot } from '../../shared/sub-agent-types';
 import { readSubAgentSlots, writeSubAgentSlots } from './sub-agent-service';
-import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { broadcastSubAgentsUpdated } from './sub-agent-broadcast';
-import { SKILL_AGENT_SLOT_ID } from '../../shared/skill-agent-constants';
+import { isSystemSubAgentSlotId } from '../../shared/system-agent-constants';
 import { STANDARD_SUB_AGENT_ROSTER } from '../../shared/sub-agent-roster-constants';
-import { buildDefaultSkillAgentSlot } from '../skill/skill-agent-defaults';
+import { readWorkspaceToolManifest } from '../workspace/workspace-service';
+import { ensureSubagentWorkspaceTree } from '../workspace/workspace-service';
+import { ensureWorkspaceSubAgentRoleTemplates } from '../workspace/workspace-subagent-role-bootstrap';
+import { pruneSystemSubagentArtifactsFromWorkspace } from './workspace-subagent-artifacts';
 
 function normalizeStatus(st: unknown): SubAgentSlot['status'] | undefined {
   if (st === 'stopped' || st === 'starting' || st === 'running' || st === 'error') return st;
@@ -30,50 +31,17 @@ function mergeStandardSlot(def: (typeof STANDARD_SUB_AGENT_ROSTER)[number], prev
   };
 }
 
-function mergeSkillSlot(prev: SubAgentSlot | undefined, skillsEnabled: boolean): SubAgentSlot {
-  const d = buildDefaultSkillAgentSlot();
-  const label = (prev?.label ?? '').trim() || d.label;
-  const behavior = (prev?.behavior ?? '').trim() || d.behavior;
-  if (!skillsEnabled) {
-    return {
-      ...d,
-      label,
-      behavior,
-      status: 'stopped',
-      roleTemplateId: 'skills',
-      delegatable: false,
-      skillToolsEnabled: false,
-    };
-  }
-  const st = normalizeStatus(prev?.status);
-  let status: SubAgentSlot['status'];
-  if (st === 'starting' || st === 'running') status = st;
-  else if (st === 'error') status = 'error';
-  else status = 'running';
-  return {
-    ...d,
-    label,
-    behavior,
-    status,
-    roleTemplateId: 'skills',
-    delegatable: false,
-    skillToolsEnabled: true,
-  };
-}
-
-/** 生成当前工作区应有的完整槽位列表（不写盘） */
+/** 生成当前工作区应有的委派槽位列表（不含系统级 Agent） */
 export async function buildCanonicalSubAgentSlots(workspaceRoot: string): Promise<SubAgentSlot[]> {
   const root = String(workspaceRoot || '').trim();
   if (!root) return [];
-  const tools = await readWorkspaceToolManifest(root);
-  const existing = await readSubAgentSlots(root);
+  const existing = (await readSubAgentSlots(root)).filter((s) => !isSystemSubAgentSlotId(s.id));
   const byId = new Map(existing.map((s) => [s.id, s]));
 
   const out: SubAgentSlot[] = [];
   for (const def of STANDARD_SUB_AGENT_ROSTER) {
     out.push(mergeStandardSlot(def, byId.get(def.id)));
   }
-  out.push(mergeSkillSlot(byId.get(SKILL_AGENT_SLOT_ID), Boolean(tools.skills)));
   return out;
 }
 
@@ -86,12 +54,30 @@ function slotsEqual(a: SubAgentSlot[], b: SubAgentSlot[]): boolean {
 export async function ensureSubAgentRosterForWorkspace(workspaceRoot: string): Promise<void> {
   const root = String(workspaceRoot || '').trim();
   if (!root) return;
+
+  await pruneSystemSubagentArtifactsFromWorkspace(root);
+
+  const tools = await readWorkspaceToolManifest(root);
+  if (tools.subagents) {
+    await ensureSubagentWorkspaceTree(root);
+    try {
+      await ensureWorkspaceSubAgentRoleTemplates(root);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[sub-agent-roster] ensureWorkspaceSubAgentRoleTemplates failed:', msg);
+    }
+  }
+
+  await pruneSystemSubagentArtifactsFromWorkspace(root);
+
   const next = await buildCanonicalSubAgentSlots(root);
-  const cur = await readSubAgentSlots(root);
+  const cur = (await readSubAgentSlots(root)).filter((s) => !isSystemSubAgentSlotId(s.id));
   if (!slotsEqual(cur, next)) {
     await writeSubAgentSlots(root, next);
     broadcastSubAgentsUpdated(root);
   }
+  const { refreshSystemSkillAgentForWorkspace } = await import('../system-agents/system-agent-roster-bootstrap');
+  await refreshSystemSkillAgentForWorkspace(root);
 }
 
 /**

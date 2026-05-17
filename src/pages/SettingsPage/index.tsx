@@ -12,6 +12,7 @@ import { useChatStore } from '../../store/modules/chatStore';
 import { CfSelectWithHints } from '../../components/CfSelectWithHints';
 import WorkspaceNewToolsModal from '../../components/workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../../components/workspace/WorkspaceCreateModal';
+import SystemAgentsSettingsPanel from './SystemAgentsSettingsPanel';
 import {
   DEFAULT_WORKSPACE_TOOL_SELECTION,
   WORKSPACE_TOOL_IDS,
@@ -23,11 +24,12 @@ import {
   OUTBOUND_MERGE_WINDOW_PREFS_EVENT,
   setCachedOutboundMergeWindowMs,
 } from '../../shared/outbound-merge-window-client';
-const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
+const SETTINGS_SECTION_IDS = ['account', 'agents', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
 const NAV_LABEL_KEYS: Record<SettingsSectionId, string> = {
   account: 'settings.navAccount',
+  agents: 'settings.navAgents',
   system: 'settings.navSystem',
   memory: 'settings.navMemory',
   models: 'settings.navModels',
@@ -38,6 +40,7 @@ const NAV_LABEL_KEYS: Record<SettingsSectionId, string> = {
 
 const SECTION_META: Record<SettingsSectionId, { titleKey: string }> = {
   account: { titleKey: 'settings.sectionAccountTitle' },
+  agents: { titleKey: 'settings.sectionAgentsTitle' },
   system: { titleKey: 'settings.sectionSystemTitle' },
   memory: { titleKey: 'settings.sectionMemoryTitle' },
   models: { titleKey: 'settings.sectionModelsTitle' },
@@ -1251,6 +1254,8 @@ const SettingsPage: FC = () => {
         </div>
       </>
     );
+  } else if (activeSection === 'agents') {
+    detailPanels = <SystemAgentsSettingsPanel />;
   } else if (activeSection === 'system') {
     detailPanels = (
       <>
@@ -2149,6 +2154,11 @@ const SettingsPage: FC = () => {
         <div className="cf-settingsDetail">
           <header className="cf-settingsDetail__head">
             <h2>{t(sectionHead.titleKey)}</h2>
+            {activeSection === 'agents' ? (
+              <p className="cf-help" style={{ marginTop: 0 }}>
+                {t('settings.sectionAgentsHint')}
+              </p>
+            ) : null}
           </header>
           <div className="cf-settingsDetail__panels">{detailPanels}</div>
         </div>

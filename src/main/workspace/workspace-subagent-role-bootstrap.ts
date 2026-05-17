@@ -22,15 +22,15 @@ import templateAssistantAgents from '../../workspace-templates/subagent-roles/as
 import templateAssistantSoul from '../../workspace-templates/subagent-roles/assistant/SOUL.md';
 import templateAssistantTools from '../../workspace-templates/subagent-roles/assistant/TOOLS.md';
 
-import templateSkillsAgents from '../../workspace-templates/subagent-roles/skills/AGENTS.md';
-import templateSkillsSoul from '../../workspace-templates/subagent-roles/skills/SOUL.md';
-import templateSkillsTools from '../../workspace-templates/subagent-roles/skills/TOOLS.md';
 import type { SubAgentRoleTemplateId } from '../../shared/sub-agent-types';
 import { WORKSPACE_SUBAGENT_ROLE_DIR, workspaceSubagentRolesDirAbs } from './workspace-agent-layout';
 
 type SubagentRoleMd = 'AGENTS.md' | 'SOUL.md' | 'TOOLS.md';
 
-const TEMPLATE_SETS: Record<SubAgentRoleTemplateId, Array<{ name: SubagentRoleMd; content: string }>> = {
+const TEMPLATE_SETS: Record<
+  'program' | 'creative' | 'data' | 'assistant',
+  Array<{ name: SubagentRoleMd; content: string }>
+> = {
   program: [
     { name: 'AGENTS.md', content: templateProgramAgents },
     { name: 'SOUL.md', content: templateProgramSoul },
@@ -51,12 +51,10 @@ const TEMPLATE_SETS: Record<SubAgentRoleTemplateId, Array<{ name: SubagentRoleMd
     { name: 'SOUL.md', content: templateAssistantSoul },
     { name: 'TOOLS.md', content: templateAssistantTools },
   ],
-  skills: [
-    { name: 'AGENTS.md', content: templateSkillsAgents },
-    { name: 'SOUL.md', content: templateSkillsSoul },
-    { name: 'TOOLS.md', content: templateSkillsTools },
-  ],
 };
+
+/** 工作区仅托管 4 个可委派槽位角色；Skill Agent 模板在系统缓存 `system/.subagent/.subroleAgent/skills/` */
+const WORKSPACE_ROLE_TEMPLATE_IDS = Object.keys(TEMPLATE_SETS) as Array<keyof typeof TEMPLATE_SETS>;
 
 async function writeFileIfMissing(filePath: string, content: string): Promise<boolean> {
   try {
@@ -70,11 +68,15 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
 
 export async function ensureWorkspaceSubAgentRoleTemplates(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
+  const { pruneSystemSubagentArtifactsFromWorkspace } = await import('../sub-agent/workspace-subagent-artifacts');
+  await pruneSystemSubagentArtifactsFromWorkspace(root);
   const roleDir = workspaceSubagentRolesDirAbs(root);
   await fs.promises.mkdir(roleDir, { recursive: true });
 
   const created: string[] = [];
-  for (const [id, files] of Object.entries(TEMPLATE_SETS) as Array<[SubAgentRoleTemplateId, Array<{ name: SubagentRoleMd; content: string }>]>) {
+  for (const id of WORKSPACE_ROLE_TEMPLATE_IDS) {
+    const files = TEMPLATE_SETS[id];
+    if (!files) continue;
     const dir = path.join(roleDir, id);
     await fs.promises.mkdir(dir, { recursive: true });
     for (const f of files) {

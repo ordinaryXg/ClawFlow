@@ -91,6 +91,13 @@ export function migrateWorkspaceTriadFromLegacyRootsSync(workspaceRoot: string):
   tryMovePathSync(path.join(blob, LEGACY_AGENT), path.join(root, LEGACY_AGENT));
   tryMovePathSync(path.join(blob, LEGACY_SUBAGENT), path.join(root, LEGACY_SUBAGENT));
 
+  try {
+    const { pruneSystemSubagentArtifactsFromWorkspaceSync } = require('../sub-agent/workspace-subagent-artifacts');
+    pruneSystemSubagentArtifactsFromWorkspaceSync(root);
+  } catch (e) {
+    console.warn('[workspace-blob-store] prune system subagent artifacts failed:', e);
+  }
+
   ensureWorkspaceBlobPointerSync(workspaceRoot);
 }
 

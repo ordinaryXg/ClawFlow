@@ -28,7 +28,8 @@ function isSlot(x: unknown): x is SubAgentSlot {
     o.roleTemplateId !== 'creative' &&
     o.roleTemplateId !== 'data' &&
     o.roleTemplateId !== 'assistant' &&
-    o.roleTemplateId !== 'skills'
+    o.roleTemplateId !== 'skills' &&
+    o.roleTemplateId !== 'cognitive-allocation'
   )
     return false;
   const st = o.status;

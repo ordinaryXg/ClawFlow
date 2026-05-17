@@ -1,7 +1,4 @@
 import type { InteractionMode } from './providers/types';
-import CONVERSATION_MODE_CLASSIFIER_SYSTEM from './prompts/conversation-mode-classifier-system.md';
-
-export { CONVERSATION_MODE_CLASSIFIER_SYSTEM };
 
 /** 复杂度分类字母（后续可扩展） */
 export type ConversationModeCategory = 'a' | 'b' | 'c' | 'd' | 'e';
@@ -17,11 +14,11 @@ export type ConversationModeClassification = {
 };
 
 export const CONVERSATION_MODE_CATEGORY_LABELS: Record<ConversationModeCategory, string> = {
-  a: '简单的日常对话',
-  b: '不需要执行的思考对话',
-  c: '直接执行不需要思考的任务',
-  d: '仅要深度思考的复杂任务',
-  e: '需要提供方案，多步骤执行的任务',
+  a: 'M1 闲谈',
+  b: 'M2 即办',
+  c: 'M3 推演',
+  d: 'M4 规划',
+  e: 'M5 审视',
 };
 
 export function buildConversationModeClassifierUserMessage(userText: string): string {

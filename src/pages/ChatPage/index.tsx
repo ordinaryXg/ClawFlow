@@ -22,12 +22,16 @@ import {
   resolveContextTokenLimit,
 } from '../../utils/context-saturation';
 import { formatUtf8Bytes } from '../../utils/format-bytes';
-import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import { normalizeToProviderRepresentative, pickGroupedCatalogModelId } from '../../engine/chat-model-catalog';
 import {
   OUTBOUND_MERGE_WINDOW_PREFS_EVENT,
   refreshOutboundMergeWindowMsFromEngine,
 } from '../../shared/outbound-merge-window-client';
 import ModeClassificationDebug from '../../components/chat/ModeClassificationDebug';
+import {
+  DEFAULT_SYSTEM_AGENT_SETTINGS,
+  SYSTEM_AGENT_SETTINGS_BROADCAST,
+} from '../../shared/system-agent-settings';
 import PendingSendQueue from '../../components/chat/PendingSendQueue';
 import './styles.css';
 
@@ -70,6 +74,9 @@ const ChatPage: FC = () => {
       ? toolApprovalPending
       : null;
 
+  const [showModeClassificationDebug, setShowModeClassificationDebug] = useState(
+    DEFAULT_SYSTEM_AGENT_SETTINGS.showModeClassificationDebug
+  );
   const [modelRows, setModelRows] = useState<Array<{ id: string; label: string; available: boolean }>>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const [nextCtx, setNextCtx] = useState<{
@@ -86,7 +93,6 @@ const ChatPage: FC = () => {
   const hubBranch = useWorkspaceHubStore((s) => s.getHubBranch(activeWorkspacePath));
   const setWorkspaceHubBranch = useWorkspaceHubStore((s) => s.setHubBranch);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
-  const chatIntent = useSettingsStore((s) => s.chatIntent);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [messagesScrollEl, setMessagesScrollEl] = useState<HTMLDivElement | null>(null);
@@ -115,6 +121,28 @@ const ChatPage: FC = () => {
     /** 为消息区至少保留 MIN_CHAT_MESSAGES_PX；窗口极小时允许输入区略低于理想最小值 */
     const maxFooter = Math.max(96, inner - MIN_CHAT_MESSAGES_PX);
     return Math.max(96, Math.min(maxFooter, h));
+  }, []);
+
+  useEffect(() => {
+    const applyFromOverview = async () => {
+      try {
+        const res = await window.electronAPI?.systemAgentsGetOverview?.();
+        if (res && 'ok' in res && res.ok && res.settings && typeof res.settings === 'object') {
+          const dbg = (res.settings as { showModeClassificationDebug?: boolean }).showModeClassificationDebug;
+          if (typeof dbg === 'boolean') setShowModeClassificationDebug(dbg);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void applyFromOverview();
+    const onCustom = () => void applyFromOverview();
+    window.addEventListener(SYSTEM_AGENT_SETTINGS_BROADCAST, onCustom);
+    const offIpc = window.electronAPI?.onSystemAgentsSettingsUpdated?.(onCustom);
+    return () => {
+      window.removeEventListener(SYSTEM_AGENT_SETTINGS_BROADCAST, onCustom);
+      offIpc?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -153,8 +181,9 @@ const ChatPage: FC = () => {
 
   const handleModelChange = useCallback(
     (id: string | null) => {
-      setModelId(id);
-      if (id && id.trim()) updateSettings({ builtinDefaultModelId: id.trim() });
+      const norm = id?.trim() ? normalizeToProviderRepresentative(id.trim()) : null;
+      setModelId(norm);
+      if (norm) updateSettings({ builtinDefaultModelId: norm });
     },
     [updateSettings]
   );
@@ -217,17 +246,14 @@ const ChatPage: FC = () => {
         : [];
       const filtered = list.filter((m) => m.id);
       setModelRows(filtered);
-      const ids = new Set(filtered.map((o) => o.id));
       const savedId = useSettingsStore.getState().builtinDefaultModelId?.trim() ?? '';
       const defaultFromEngine = typeof res?.defaultModelId === 'string' ? res.defaultModelId.trim() : '';
-      const firstAvail = filtered.find((m) => m.available)?.id;
-      let picked: string | null = null;
-      if (savedId && ids.has(savedId)) picked = savedId;
-      else if (defaultFromEngine && ids.has(defaultFromEngine)) picked = defaultFromEngine;
-      else if (firstAvail && ids.has(firstAvail)) picked = firstAvail;
-      else picked = filtered[0]?.id ?? null;
+      const picked = pickGroupedCatalogModelId(savedId, filtered, defaultFromEngine);
       setModelId((prev) => {
-        if (prev && ids.has(prev)) return prev;
+        if (!prev) return picked;
+        const normPrev = normalizeToProviderRepresentative(prev);
+        const ids = new Set(filtered.map((o) => o.id));
+        if (ids.has(normPrev)) return normPrev;
         return picked;
       });
     } catch {
@@ -246,11 +272,6 @@ const ChatPage: FC = () => {
     window.addEventListener(OUTBOUND_MERGE_WINDOW_PREFS_EVENT, onPrefs);
     return () => window.removeEventListener(OUTBOUND_MERGE_WINDOW_PREFS_EVENT, onPrefs);
   }, []);
-
-  useEffect(() => {
-    if (!activeModeClassification) return;
-    setModelId((prev) => resolveModelIdForInteractionMode(activeModeClassification.mode, prev));
-  }, [activeModeClassification]);
 
   const modelsForSelect = useMemo(
     () =>
@@ -541,7 +562,9 @@ const ChatPage: FC = () => {
 
       <footer className="cf-chatCenter__input" style={{ height: inputPanelHeightPx }}>
         <div className="cf-chatCenter__inputInner">
-          <ModeClassificationDebug classifying={isClassifyingMode} classification={activeModeClassification} />
+          {showModeClassificationDebug ? (
+            <ModeClassificationDebug classifying={isClassifyingMode} classification={activeModeClassification} />
+          ) : null}
           <PendingSendQueue items={pendingSendQueue} onRemove={removePendingSend} />
           <ChatApiKeyBar
             visible={showApiKeyBar}
@@ -554,8 +577,6 @@ const ChatPage: FC = () => {
             models={modelsForSelect}
             modelId={modelId}
             onModelChange={handleModelChange}
-            intent={chatIntent}
-            onIntentChange={(v) => updateSettings({ chatIntent: v })}
             contextSaturation={contextSaturation}
             contextUsedApprox={contextUsedApprox}
             contextLimitApprox={contextLimitApprox}

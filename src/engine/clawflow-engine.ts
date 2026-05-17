@@ -25,14 +25,8 @@ import type {
 import { getAuthStoreSummary, getAuthToken, setActiveAuthProfile } from './auth-store';
 import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
+import { buildGroupedChatModelCatalog } from './chat-model-catalog';
 import { resolveModelIdForInteractionMode } from './mode-defaults';
-import {
-  buildConversationModeClassifierUserMessage,
-  CONVERSATION_MODE_CLASSIFIER_SYSTEM,
-  heuristicConversationModeClassification,
-  parseClassificationResponse,
-  type ConversationModeClassification,
-} from './conversation-mode-classifier';
 import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
 import {
   resolveWebSearchConfig,
@@ -162,14 +156,7 @@ export interface ClawFlowEngine {
   /** Gateway / 主进程在用户确认或拒绝后调用，解除 sendMessage 内工具前等待 */
   resolveToolApproval(approvalId: string, approved: boolean): void;
 
-  /**
-   * 发送主对话前：Ask + JSON，对用户消息做 a–e 复杂度分类（不落盘、不写入会话历史）。
-   */
-  classifyConversationMode(params: {
-    userText: string;
-    modelId?: string;
-    abortSignal?: AbortSignal;
-  }): Promise<ConversationModeClassification>;
+  getProviderRouter(): ProviderRouter;
 
   /**
    * Ask 单轮流式（SSE → onDelta）。Plan / Multitask 若需工具循环请用 sendMessage。
@@ -614,44 +601,41 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       }
     }
 
-    const models: Array<{ id: string; label: string; available: boolean }> = [];
-    const registered = this.router.listRegisteredIds();
+    const registered = this.router.listRegisteredIds().filter((providerId) => BUILTIN_CHAT_MODEL_CATALOG[providerId]?.length);
 
-    for (const providerId of registered) {
-      const mids = BUILTIN_CHAT_MODEL_CATALOG[providerId];
-      if (!mids?.length) continue;
-
-      let hasKey = false;
+    const providerHasKey = async (providerId: string): Promise<boolean> => {
       if (providerId === 'deepseek') {
-        hasKey = Boolean((await getAuthToken('deepseek')) || process.env.DEEPSEEK_API_KEY);
-      } else if (providerId === 'openai') {
-        hasKey = Boolean((await getAuthToken('openai')) || process.env.OPENAI_API_KEY);
-      } else if (providerId === 'anthropic') {
-        hasKey = Boolean((await getAuthToken('anthropic')) || process.env.ANTHROPIC_API_KEY);
+        return Boolean((await getAuthToken('deepseek')) || process.env.DEEPSEEK_API_KEY);
       }
+      if (providerId === 'openai') {
+        return Boolean((await getAuthToken('openai')) || process.env.OPENAI_API_KEY);
+      }
+      if (providerId === 'anthropic') {
+        return Boolean((await getAuthToken('anthropic')) || process.env.ANTHROPIC_API_KEY);
+      }
+      return false;
+    };
 
-      const extra = labelByProvider.get(providerId);
-      for (const id of mids) {
-        models.push({
-          id,
-          label: extra ? `${id} · ${extra}` : id,
-          available: hasKey,
-        });
-      }
+    const hasKeyByProvider = new Map<string, boolean>();
+    for (const providerId of registered) {
+      hasKeyByProvider.set(providerId, await providerHasKey(providerId));
     }
 
-    const firstAvail = models.find((m) => m.available) ?? null;
+    const models = buildGroupedChatModelCatalog({
+      registeredProviderIds: registered,
+      providerHasKey: (providerId) => hasKeyByProvider.get(providerId) === true,
+      profileLabelByProvider: labelByProvider,
+    });
+
     const preferred =
-      models.find((m) => m.available && m.id === 'deepseek/deepseek-v4-pro') ??
       models.find((m) => m.available && m.id === 'deepseek/deepseek-v4-flash') ??
-      models.find((m) => m.available && m.id === 'deepseek/deepseek-reasoner') ??
-      models.find((m) => m.available && m.id === 'deepseek/deepseek-chat') ??
-      firstAvail ??
+      models.find((m) => m.available) ??
       models[0] ??
       null;
+    const defaultModelId = preferred?.id ?? null;
 
     return {
-      defaultModelId: preferred?.id ?? null,
+      defaultModelId,
       models,
     };
   }
@@ -1026,47 +1010,8 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return { message: reply };
   }
 
-  async classifyConversationMode(params: {
-    userText: string;
-    modelId?: string;
-    abortSignal?: AbortSignal;
-  }): Promise<ConversationModeClassification> {
-    const userText = String(params.userText ?? '').trim();
-    if (!userText) return heuristicConversationModeClassification('');
-
-    const modelId = resolveModelIdForInteractionMode('ask', params.modelId);
-    const providerId = this.router.resolveProviderIdFromModelId(modelId);
-    const provider = providerId ? this.router.get(providerId) : null;
-    if (!provider || !providerId) return heuristicConversationModeClassification(userText);
-
-    const baseModeConfig = buildModeConfig({ mode: 'ask', intent: 'fast' });
-    const modeConfig: ModeConfig = {
-      ...baseModeConfig,
-      jsonMode: true,
-      toolsEnabled: false,
-      tools: undefined,
-    };
-
-    const req: ChatCompletionRequest = {
-      model: modelId,
-      messages: [
-        { role: 'system', content: CONVERSATION_MODE_CLASSIFIER_SYSTEM },
-        { role: 'user', content: buildConversationModeClassifierUserMessage(userText) },
-      ],
-      modeConfig,
-    };
-
-    try {
-      const res = await provider.chatCompletion(req, { signal: params.abortSignal });
-      const merged = mergeCompletionReasoning(res.content, res.reasoning_content);
-      const raw = merged.displayContent.trim() || merged.reasoningCombined.trim();
-      const parsed = parseClassificationResponse(raw);
-      if (parsed) return parsed;
-    } catch (e: any) {
-      console.warn('[ClawFlowEngine] classifyConversationMode failed:', e?.message ?? e);
-    }
-
-    return heuristicConversationModeClassification(userText);
+  getProviderRouter(): ProviderRouter {
+    return this.router;
   }
 
   async sendMessageTextStream(params: {
@@ -1357,17 +1302,6 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
     }
   );
   ipcMain.handle('engine:getChatModels', async () => getGlobalClawFlowEngine().listChatModelCatalog());
-  ipcMain.handle('engine:classifyConversationMode', async (_e, payload: unknown) => {
-    const userText = typeof (payload as { userText?: string })?.userText === 'string' ? (payload as { userText: string }).userText : '';
-    const modelId =
-      typeof (payload as { modelId?: string })?.modelId === 'string' ? (payload as { modelId: string }).modelId : undefined;
-    try {
-      const classification = await getGlobalClawFlowEngine().classifyConversationMode({ userText, modelId });
-      return { ok: true as const, ...classification };
-    } catch (e: any) {
-      return { ok: false as const, error: e?.message ?? String(e) };
-    }
-  });
   ipcMain.handle('engine:upsertConversation', async (event, conversation: StoredConversation) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     await getGlobalClawFlowEngine().upsertConversation(conversation, root);

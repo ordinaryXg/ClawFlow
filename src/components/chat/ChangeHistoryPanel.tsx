@@ -1,4 +1,4 @@
-import { FC, useCallback, useEffect, useState } from 'react';
+import { FC, ReactNode, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export type ChangeLogKind =
@@ -79,31 +79,19 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
     };
   }, [load]);
 
-  if (!workspacePath) {
-    return <div className="cf-sub">{t('chat.rightTabs.changeLogNoWs')}</div>;
-  }
-
-  if (loading && entries.length === 0) {
-    return <div className="cf-sub">{t('chat.rightTabs.changeLogLoading')}</div>;
-  }
-
-  if (error) {
-    return <div className="cf-errorText">{error}</div>;
-  }
-
-  if (entries.length === 0) {
-    return <div className="cf-sub">{t('chat.rightTabs.changeLogEmpty')}</div>;
-  }
-
   const locale = i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US';
 
-  return (
-    <div className="cf-changeLog">
-      <div className="cf-changeLog__toolbar">
-        <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={() => void load()}>
-          {t('common.refresh')}
-        </button>
-      </div>
+  let body: ReactNode;
+  if (!workspacePath) {
+    body = <div className="cf-sub">{t('chat.rightTabs.changeLogNoWs')}</div>;
+  } else if (loading && entries.length === 0) {
+    body = <div className="cf-sub">{t('chat.rightTabs.changeLogLoading')}</div>;
+  } else if (error) {
+    body = <div className="cf-errorText">{error}</div>;
+  } else if (entries.length === 0) {
+    body = <div className="cf-sub">{t('chat.rightTabs.changeLogEmpty')}</div>;
+  } else {
+    body = (
       <ul className="cf-changeLog__list">
         {entries.map((e) => {
           const open = openId === e.id;
@@ -145,6 +133,22 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
           );
         })}
       </ul>
+    );
+  }
+
+  return (
+    <div className="cf-changeLog">
+      <div className="cf-changeLog__toolbar">
+        <button
+          type="button"
+          className="cf-btn cf-btnGhost cf-btnSmall"
+          onClick={() => void load()}
+          disabled={!workspacePath}
+        >
+          {t('common.refresh')}
+        </button>
+      </div>
+      <div className="cf-changeLog__scroll">{body}</div>
     </div>
   );
 };

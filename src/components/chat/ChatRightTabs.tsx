@@ -13,6 +13,10 @@ type Props = {
 
 type TabKey = 'workspace' | 'browser' | 'changes' | 'scrape';
 
+function panelClass(active: TabKey, key: TabKey): string {
+  return active === key ? 'cf-chatRight__panel cf-chatRight__panel--active' : 'cf-chatRight__panel';
+}
+
 const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
   const [active, setActive] = useState<TabKey>('workspace');
@@ -65,19 +69,19 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
       </div>
 
       <div className="cf-chatRight__body" role="tabpanel">
-        <div style={{ display: active === 'workspace' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+        <div className={panelClass(active, 'workspace')}>
           <WorkspaceFilesSplit workspacePath={workspacePath} />
         </div>
-        <div style={{ display: active === 'browser' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+        <div className={panelClass(active, 'browser')}>
           <SimpleEmbeddedBrowser
             externalNavigateUrl={embeddedNavigateUrl}
             onConsumedExternalNavigate={clearEmbeddedNavigate}
           />
         </div>
-        <div style={{ display: active === 'changes' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+        <div className={panelClass(active, 'changes')}>
           <ChangeHistoryPanel workspacePath={workspacePath} />
         </div>
-        <div style={{ display: active === 'scrape' ? 'block' : 'none', height: '100%', minHeight: 0 }}>
+        <div className={panelClass(active, 'scrape')}>
           <ScrapePanel workspacePath={workspacePath} />
         </div>
       </div>
@@ -86,4 +90,3 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
 };
 
 export default ChatRightTabs;
-

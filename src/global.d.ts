@@ -54,7 +54,7 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
-  engineClassifyConversationMode: (params: { userText: string; modelId?: string }) => Promise<
+  systemAgentsClassifyConversation: (params: { userText: string; modelId?: string }) => Promise<
     | {
         ok: true;
         category: 'a' | 'b' | 'c' | 'd' | 'e';
@@ -65,6 +65,17 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  systemAgentsGetOverview: () => Promise<{ ok: true; [key: string]: unknown } | { ok: false; error: string }>;
+  systemAgentsSaveSettings: (settings: {
+    cognitiveAllocationEnabled?: boolean;
+    cognitiveAllocationModelId?: string;
+    showModeClassificationDebug?: boolean;
+  }) => Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }>;
+  systemAgentsSaveSlots: (params: {
+    patches: Array<{ id: string; label?: string; behavior?: string }>;
+  }) => Promise<{ ok: true; slots: unknown[] } | { ok: false; error: string }>;
+  systemAgentsReloadRoster: () => Promise<{ ok: true; slots: unknown[] } | { ok: false; error: string }>;
+  onSystemAgentsSettingsUpdated: (cb: () => void) => () => void;
   engineEstimateNextRequestContext: (params: {
     conversationId: string;
     pendingUserText: string;

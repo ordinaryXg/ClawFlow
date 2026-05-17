@@ -24,17 +24,6 @@ function pushChatToast(type: 'success' | 'error', title: string, message?: strin
   else api.error(title, message);
 }
 
-/** 偏好/强度：递升柱形，象征更快 / 更强 / 更省钱的梯度 */
-function IconIntent() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="5" y="14" width="3.5" height="6" rx="0.75" fill="currentColor" />
-      <rect x="10.25" y="10" width="3.5" height="10" rx="0.75" fill="currentColor" />
-      <rect x="15.5" y="6" width="3.5" height="14" rx="0.75" fill="currentColor" />
-    </svg>
-  );
-}
-
 /** 模型：同心圆靶心，与原先 ⊚ 语义一致 */
 function IconModel() {
   return (
@@ -56,8 +45,6 @@ interface Props {
   models?: Array<{ id: string; label: string }>;
   modelId?: string | null;
   onModelChange?: (modelId: string | null) => void;
-  intent: 'fast' | 'strong' | 'cheap';
-  onIntentChange: (intent: 'fast' | 'strong' | 'cheap') => void;
   /** 0–1，当前会话相对模型上下文上限的粗略饱和度 */
   contextSaturation?: number;
   contextUsedApprox?: number;
@@ -84,8 +71,6 @@ const ChatInput: FC<Props> = ({
   models,
   modelId,
   onModelChange,
-  intent,
-  onIntentChange,
   showStarterPrompts,
   contextSaturation = 0,
   contextUsedApprox,
@@ -110,25 +95,12 @@ const ChatInput: FC<Props> = ({
     return !disabled && !isSending && (value.trim().length > 0 || pendingAttachments.length > 0);
   }, [disabled, isSending, value, pendingAttachments.length]);
 
-  const intentOptions = useMemo(
-    () => [
-      { value: 'fast', label: t('chat.intentFast'), hint: t('chat.intentHintFast') },
-      { value: 'strong', label: t('chat.intentStrong'), hint: t('chat.intentHintStrong') },
-      { value: 'cheap', label: t('chat.intentCheap'), hint: t('chat.intentHintCheap') },
-    ],
-    [t],
-  );
-
   const modelOptions = useMemo(() => {
-    const opts = [{ value: '', label: t('chat.modelAuto'), hint: t('chat.modelAutoHint') }];
-    for (const m of models ?? []) {
-      opts.push({
-        value: m.id,
-        label: m.label,
-        hint: t('chat.modelIdHint', { label: m.label }),
-      });
-    }
-    return opts;
+    return (models ?? []).map((m) => ({
+      value: m.id,
+      label: m.label,
+      hint: t('chat.modelProviderHint', { label: m.label }),
+    }));
   }, [models, t]);
 
   useEffect(() => {
@@ -365,23 +337,6 @@ const ChatInput: FC<Props> = ({
       </div>
       <div className="cf-chatInput__footer">
         <div className="cf-chatInput__footerLeft">
-          <div className="cf-chatInput__fieldGroup" title={t('chat.intentLabel')}>
-            <span className="cf-chatInput__fieldIco" aria-hidden>
-              <IconIntent />
-            </span>
-            <CfSelectWithHints
-              id="cf-chat-intent"
-              className="cf-selectHint--compact"
-              popupClassName={stickyCompactRow ? 'cf-selectHintDropdown--sticky' : ''}
-              value={intent}
-              onChange={(v) => onIntentChange(v as 'fast' | 'strong' | 'cheap')}
-              options={intentOptions}
-              disabled={disabled || isSending}
-              aria-label={t('chat.intentLabel')}
-              hintIconAriaBase={t('common.selectOptionHintAria')}
-              popupMatchSelectWidth={false}
-            />
-          </div>
           <div className="cf-chatInput__fieldGroup cf-chatInput__fieldGroup--modelMeter" title={t('chat.model')}>
             <span className="cf-chatInput__fieldIco" aria-hidden>
               <IconModel />

@@ -1,11 +1,12 @@
 /**
- * Skill Agent 与工作区子 Agent 名册同步入口（manifest skills 开关由名册逻辑统一处理）。
+ * Skill Agent：系统级子 Agent，由 ensureSystemAgentsInitialized 统一初始化。
  */
 
-import { ensureSubAgentRosterForWorkspace } from '../sub-agent/sub-agent-roster-bootstrap';
-
 export { buildDefaultSkillAgentSlot } from './skill-agent-defaults';
+export { ensureSystemAgentsInitialized, refreshSystemSkillAgentForWorkspace } from '../system-agents/system-agent-roster-bootstrap';
 
+/** @deprecated 使用 ensureSystemAgentsInitialized */
 export async function ensureSkillAgentSlotForWorkspace(workspaceRoot: string): Promise<void> {
-  await ensureSubAgentRosterForWorkspace(workspaceRoot);
+  const { refreshSystemSkillAgentForWorkspace } = await import('../system-agents/system-agent-roster-bootstrap');
+  await refreshSystemSkillAgentForWorkspace(workspaceRoot);
 }

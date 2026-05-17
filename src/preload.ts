@@ -54,7 +54,7 @@ export interface IElectronAPI {
     defaultModelId: string | null;
     models: Array<{ id: string; label: string; available: boolean }>;
   }>;
-  engineClassifyConversationMode: (params: { userText: string; modelId?: string }) => Promise<
+  systemAgentsClassifyConversation: (params: { userText: string; modelId?: string }) => Promise<
     | {
         ok: true;
         category: 'a' | 'b' | 'c' | 'd' | 'e';
@@ -65,6 +65,62 @@ export interface IElectronAPI {
       }
     | { ok: false; error: string }
   >;
+  systemAgentsGetOverview: () => Promise<
+    | {
+        ok: true;
+        systemRoot: string;
+        rosterPath: string;
+        rolesDir: string;
+        settingsPath: string;
+        settings: {
+          cognitiveAllocationEnabled: boolean;
+          cognitiveAllocationModelId: string;
+          showModeClassificationDebug: boolean;
+        };
+        slots: Array<{
+          slot: {
+            id: string;
+            label: string;
+            behavior: string;
+            status: string;
+            roleTemplateId?: string;
+            skillToolsEnabled?: boolean;
+          };
+          roleTemplateId: string;
+          subclawflowDir: string;
+          submemoryDir: string;
+          snapshot: {
+            status: string;
+            taskText: string;
+            conversationId: string;
+            logTail: string;
+            updatedAt: number;
+          } | null;
+        }>;
+        activeWorkspaceSkillsEnabled: boolean | null;
+      }
+    | { ok: false; error: string }
+  >;
+  systemAgentsSaveSettings: (settings: {
+    cognitiveAllocationEnabled?: boolean;
+    cognitiveAllocationModelId?: string;
+    showModeClassificationDebug?: boolean;
+  }) => Promise<
+    | {
+        ok: true;
+        settings: {
+          cognitiveAllocationEnabled: boolean;
+          cognitiveAllocationModelId: string;
+          showModeClassificationDebug: boolean;
+        };
+      }
+    | { ok: false; error: string }
+  >;
+  systemAgentsSaveSlots: (params: {
+    patches: Array<{ id: string; label?: string; behavior?: string }>;
+  }) => Promise<{ ok: true; slots: unknown[] } | { ok: false; error: string }>;
+  systemAgentsReloadRoster: () => Promise<{ ok: true; slots: unknown[] } | { ok: false; error: string }>;
+  onSystemAgentsSettingsUpdated: (cb: () => void) => () => void;
   engineEstimateNextRequestContext: (params: {
     conversationId: string;
     pendingUserText: string;
@@ -466,8 +522,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineAuthTestConnection: (params: { provider: 'deepseek' | 'openai' | 'anthropic'; profileId: string }) =>
     ipcRenderer.invoke('engineAuth:testConnection', params),
   engineGetChatModels: () => ipcRenderer.invoke('engine:getChatModels'),
-  engineClassifyConversationMode: (params: { userText: string; modelId?: string }) =>
-    ipcRenderer.invoke('engine:classifyConversationMode', params),
+  systemAgentsClassifyConversation: (params: { userText: string; modelId?: string }) =>
+    ipcRenderer.invoke('systemAgents:classifyConversation', params),
+  systemAgentsGetOverview: () => ipcRenderer.invoke('systemAgents:getOverview'),
+  systemAgentsSaveSettings: (settings) => ipcRenderer.invoke('systemAgents:saveSettings', settings),
+  systemAgentsSaveSlots: (params) => ipcRenderer.invoke('systemAgents:saveSlots', params),
+  systemAgentsReloadRoster: () => ipcRenderer.invoke('systemAgents:reloadRoster'),
+  onSystemAgentsSettingsUpdated: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('systemAgents:settingsUpdated', fn);
+    return () => ipcRenderer.removeListener('systemAgents:settingsUpdated', fn);
+  },
   engineEstimateNextRequestContext: (params) => ipcRenderer.invoke('engine:estimateNextRequestContext', params),
   engineGetRuntimeSettings: () => ipcRenderer.invoke('engine:getRuntimeSettings'),
   engineSaveRuntimeSettings: (params: { maxSendMessageToolLoopSteps?: number }) =>

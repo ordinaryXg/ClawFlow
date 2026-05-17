@@ -1,5 +1,11 @@
 import type { SubAgentRoleTemplateId } from './sub-agent-types';
-import { SKILL_AGENT_SLOT_ID } from './skill-agent-constants';
+import {
+  COGNITIVE_ALLOCATION_AGENT_SLOT_ID,
+  isSystemSubAgentSlotId,
+  SKILL_AGENT_SLOT_ID,
+} from './system-agent-constants';
+
+export { COGNITIVE_ALLOCATION_AGENT_SLOT_ID, isSystemSubAgentSlotId, SKILL_AGENT_SLOT_ID };
 
 /** 固定委派槽位（主 Agent 可 delegate）；顺序即 UI / 持久化顺序 */
 export const STANDARD_SUB_AGENT_SLOT_IDS = [
@@ -48,16 +54,17 @@ export const STANDARD_SUB_AGENT_ROSTER: readonly SubAgentRosterDef[] = [
 
 const STANDARD_ID_SET = new Set<string>(STANDARD_SUB_AGENT_SLOT_IDS);
 
-/** 用于 `.subagent/.subclawflow/<slotId>/` 等工作区缓存子目录（与 `.agent/.clawflow/` 主会话元数据分离） */
-export const ALL_SUBAGENT_SLOT_IDS_ORDERED: readonly string[] = [
-  ...STANDARD_SUB_AGENT_SLOT_IDS,
-  SKILL_AGENT_SLOT_ID,
-];
+/** 工作区 `.subagent/` 下仅创建委派槽位的缓存子目录 */
+export const WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED: readonly string[] = [...STANDARD_SUB_AGENT_SLOT_IDS];
 
-/** 不可从工作区删除的槽位 id（含 Skill Agent） */
+/** @deprecated 使用 WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED */
+export const ALL_SUBAGENT_SLOT_IDS_ORDERED = WORKSPACE_SUBAGENT_SLOT_IDS_ORDERED;
+
+/** 不可从工作区名册删除的槽位（仅 4 个标准委派槽；系统 Agent 不在工作区名册） */
 export function isReservedSubAgentSlotId(id: string): boolean {
   const s = String(id || '').trim();
-  return s === SKILL_AGENT_SLOT_ID || STANDARD_ID_SET.has(s);
+  if (isSystemSubAgentSlotId(s)) return false;
+  return STANDARD_ID_SET.has(s);
 }
 
 export function isStandardSubAgentSlotId(id: string): boolean {

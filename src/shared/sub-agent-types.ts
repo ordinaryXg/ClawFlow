@@ -2,7 +2,13 @@
 
 export type SubAgentRunStatus = 'stopped' | 'starting' | 'running' | 'error';
 
-export type SubAgentRoleTemplateId = 'program' | 'creative' | 'data' | 'assistant' | 'skills';
+export type SubAgentRoleTemplateId =
+  | 'program'
+  | 'creative'
+  | 'data'
+  | 'assistant'
+  | 'skills'
+  | 'cognitive-allocation';
 
 export type SubAgentSlot = {
   id: string;
