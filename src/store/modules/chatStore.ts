@@ -9,8 +9,26 @@ import {
   heuristicConversationModeClassification,
   type ConversationModeClassification,
 } from '../../engine/conversation-mode-classifier';
+import {
+  finishOutboundTurn,
+  getMergedOutboundText,
+  getPendingSends,
+  removePendingSend as removePendingSendFromOrchestrator,
+  routeOutboundSend,
+  startOutboundTurnFromPending,
+  takePendingSends,
+  clearOutboundStateForConversation,
+  type OutboundTurn,
+} from './chat-outbound-orchestrator';
+import { getCachedOutboundMergeWindowMs } from '../../shared/outbound-merge-window-client';
 
 export type { ConversationModeClassification };
+
+export type PendingSendDisplayItem = {
+  id: string;
+  content: string;
+  enqueuedAt: number;
+};
 import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
@@ -201,6 +219,8 @@ export interface ChatState {
   /** 最近一次发送前的模式分类（测试展示，不落消息列表） */
   activeModeClassification: ConversationModeClassification | null;
   isClassifyingMode: boolean;
+  /** 模型回复中挂起、待自动发送的用户消息（当前会话） */
+  pendingSendQueue: PendingSendDisplayItem[];
   /** Gateway 工具执行前待用户确认（仅当前连接会话） */
   toolApprovalPending: ToolApprovalPendingState | null;
 
@@ -216,6 +236,7 @@ export interface ChatState {
   deleteConversation: (id: string) => void;
   clearMessages: () => void;
   setError: (error: string | null) => void;
+  removePendingSend: (id: string) => void;
   respondToolApproval: (approved: boolean) => void;
   /** 待办触发器：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
   applyTodoTrigger: (payload: {
@@ -293,6 +314,31 @@ let wsClient: WebSocket | null = null;
 let wsConnecting: Promise<WebSocket> | null = null;
 const pendingById = new Map<string, Pending>();
 const activeRequestByConversation = new Map<string, string>();
+
+function syncPendingSendQueueToStore(
+  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
+  conversationId: string | null
+) {
+  const items = conversationId ? getPendingSends(conversationId) : [];
+  set({
+    pendingSendQueue: items.map(({ id, content, enqueuedAt }) => ({ id, content, enqueuedAt })),
+  });
+}
+
+function cancelOutboundWsForConversation(sessionId: string) {
+  const prevId = activeRequestByConversation.get(sessionId);
+  if (!prevId) return;
+  try {
+    if (wsClient?.readyState === WebSocket.OPEN) {
+      wsClient.send(JSON.stringify({ type: 'chat:cancel', requestId: prevId }));
+    }
+  } catch {
+    /* ignore */
+  }
+  pendingById.delete(prevId);
+  clearToolApprovalForRequest(prevId);
+  activeRequestByConversation.delete(sessionId);
+}
 
 let applyGatewayToolApproval: (payload: Extract<GatewayWsEvent, { type: 'chat:toolApproval' }>) => void =
   () => undefined;
@@ -451,7 +497,15 @@ export const useChatStore = create<ChatState>()((set, get) => {
   error: null,
   activeModeClassification: null,
   isClassifyingMode: false,
+  pendingSendQueue: [],
   toolApprovalPending: null,
+
+  removePendingSend: (id) => {
+    const sessionId = get().activeConversationId;
+    if (!sessionId) return;
+    removePendingSendFromOrchestrator(sessionId, id);
+    syncPendingSendQueueToStore(set, sessionId);
+  },
 
   respondToolApproval: (approved: boolean) => {
     const pending = get().toolApprovalPending;
@@ -532,8 +586,284 @@ export const useChatStore = create<ChatState>()((set, get) => {
     modelId?: string | null,
     opts?: { userChannel?: MessageChannel; todoFireReceipt?: { triggerId: string } }
   ) => {
+    const executeOutboundTurn = async (turn: OutboundTurn) => {
+      const sessionId = turn.conversationId;
+      const generation = turn.generation;
+      const mergedContent = getMergedOutboundText(turn);
+      const effectiveModelIdParam = turn.modelId;
+      const todoReceiptTriggerId = turn.opts?.todoFireReceipt?.triggerId?.trim() ?? null;
+      const abortSignal = turn.abortController.signal;
+
+      const flushPendingAfterTurn = async () => {
+        const pending = takePendingSends(sessionId);
+        syncPendingSendQueueToStore(set, sessionId);
+        if (!pending.length) return;
+        const nextTurn = startOutboundTurnFromPending(sessionId, pending);
+        await executeOutboundTurn(nextTurn);
+      };
+
+      cancelAssistantReveal();
+      set({ streamingActivity: '', streamingThinking: null, isLoading: true });
+
+      try {
+        const t0 = performance.now();
+
+        const finalizeReply = async (
+          fullText: string,
+          log?: { ipcMs: number; label: string },
+          reasoningText?: string | null
+        ) => {
+          if (!finishOutboundTurn(sessionId, generation)) return;
+
+          set({
+            isLoading: false,
+            streamingActivity: null,
+            streamingThinking: null,
+          });
+
+          const assistantText = String(fullText ?? '');
+          const assistantReasoning = String(reasoningText ?? '').trim();
+          if (assistantText.trim()) {
+            const nowTs = Date.now();
+            const msg: Message = {
+              id: uuidv4(),
+              role: 'assistant',
+              content: assistantText,
+              timestamp: nowTs,
+              ...(assistantReasoning ? { reasoningContent: assistantReasoning } : {}),
+            };
+            set((state) => {
+              const nextConvs = state.conversations.map((c) => {
+                if (c.id !== sessionId) return c;
+                const last = c.messages[c.messages.length - 1];
+                const dup = last?.role === 'assistant' && String(last.content ?? '') === assistantText;
+                if (dup) return c;
+                return { ...c, messages: [...c.messages, msg], updatedAt: nowTs };
+              });
+              const active = state.activeConversationId === sessionId;
+              return {
+                conversations: nextConvs,
+                messages: active ? [...state.messages, msg] : state.messages,
+              };
+            });
+            try {
+              const conv = get().conversations.find((c) => c.id === sessionId);
+              if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
+            } catch {
+              /* best-effort */
+            }
+          }
+
+          await get().fetchConversations();
+
+          void Promise.resolve(
+            window.electronAPI?.workspaceAppendChangeLog?.({
+              conversationId: sessionId,
+              userPreview: mergedContent,
+              assistantExcerpt: fullText,
+            })
+          );
+
+          if (todoReceiptTriggerId) {
+            void window.electronAPI?.todoTriggersSetAiReceipt?.({
+              triggerId: todoReceiptTriggerId,
+              receiptText: String(fullText ?? ''),
+            }).then((res) => {
+              if (res && typeof res === 'object' && 'ok' in res && res.ok) {
+                void useTodoTriggerStore.getState().load();
+              }
+            });
+          }
+
+          try {
+            window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+          } catch {
+            /* ignore */
+          }
+
+          await flushPendingAfterTurn();
+        };
+
+        if (abortSignal.aborted) return;
+
+        const useBuiltinStream =
+          typeof WebSocket !== 'undefined' &&
+          typeof window.electronAPI?.engineGatewayStatus === 'function' &&
+          typeof window.electronAPI?.engineGatewayStart === 'function';
+
+        set({ isClassifyingMode: true, activeModeClassification: null });
+        let classification: ConversationModeClassification;
+        try {
+          classification = await classifyConversationForSend(mergedContent, effectiveModelIdParam);
+        } finally {
+          set({ isClassifyingMode: false });
+        }
+        if (abortSignal.aborted) return;
+
+        set({ activeModeClassification: classification });
+        const actualMode = classification.mode;
+        const effectiveModelId = resolveModelIdForInteractionMode(actualMode, effectiveModelIdParam);
+        const autoPick = {
+          pickedMode: classification.mode,
+          reason: classification.summary,
+          category: classification.category,
+          categoryLabel: classification.categoryLabel,
+        };
+
+        if (useBuiltinStream) {
+          let sendWorkspaceRoot = '';
+          try {
+            const wa = await window.electronAPI?.workspaceGetActive?.();
+            sendWorkspaceRoot = normWorkspacePath(typeof wa?.path === 'string' ? wa.path : '');
+          } catch {
+            sendWorkspaceRoot = '';
+          }
+          const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
+          const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
+          let policyOverrides: any = null;
+          try {
+            policyOverrides = overridesJson ? JSON.parse(overridesJson) : null;
+          } catch {
+            policyOverrides = null;
+          }
+          const requestId = uuidv4();
+          const ws = await ensureGatewayWs();
+          if (abortSignal.aborted) return;
+
+          cancelOutboundWsForConversation(sessionId);
+          const demuxer = new ReasoningStreamDemux();
+          let deltaBuf = '';
+          let rafId = 0;
+          const flushDeltaBuf = () => {
+            rafId = 0;
+            if (!deltaBuf) return;
+            const chunk = deltaBuf;
+            deltaBuf = '';
+            demuxer.push(chunk);
+            set({
+              streamingActivity: demuxer.getActivity(),
+              streamingThinking: demuxer.getThinkingDisplay() || null,
+            });
+            if (/\[tool:(start|done|fail)\]/.test(chunk)) {
+              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
+              scheduleSyncConversationsAfterTool(get);
+            }
+          };
+          pendingById.set(requestId, {
+            conversationId: sessionId,
+            demuxer,
+            onDelta: (text) => {
+              deltaBuf += String(text ?? '');
+              if (!rafId) rafId = requestAnimationFrame(flushDeltaBuf);
+            },
+            onFinal: (full) => {
+              if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = 0;
+              }
+              if (deltaBuf) {
+                demuxer.push(deltaBuf);
+                deltaBuf = '';
+                set({
+                  streamingActivity: demuxer.getActivity(),
+                  streamingThinking: demuxer.getThinkingDisplay() || null,
+                });
+              }
+              if (activeRequestByConversation.get(sessionId) === requestId) {
+                activeRequestByConversation.delete(sessionId);
+              }
+              clearToolApprovalForRequest(requestId);
+              const t1 = performance.now();
+              const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
+              void finalizeReply(
+                full || `这是对"${mergedContent}"的回复（模拟）`,
+                { ipcMs: Math.round(t1 - t0), label: 'ws' },
+                reasoningPersist
+              );
+            },
+          });
+          activeRequestByConversation.set(sessionId, requestId);
+
+          const msg: GatewayWsSend = {
+            type: 'chat:send',
+            requestId,
+            conversationId: sessionId,
+            text: mergedContent,
+            mode: actualMode,
+            intent,
+            autoPick,
+            ...(policyOverrides ? { policyOverrides } : {}),
+            modelId: effectiveModelId,
+            ...(sendWorkspaceRoot ? { workspaceRoot: sendWorkspaceRoot } : {}),
+          };
+          ws.send(JSON.stringify(msg));
+          return;
+        }
+
+        if (abortSignal.aborted) return;
+        const response = await window.electronAPI?.engineSendMessage?.({
+          conversationId: sessionId,
+          userText: mergedContent,
+          mode: actualMode,
+          modelId: effectiveModelId,
+        });
+        if (abortSignal.aborted) return;
+        const t1 = performance.now();
+
+        const replyText =
+          (typeof response?.message === 'string' && response.message) ||
+          (typeof response === 'string' && response) ||
+          `这是对"${mergedContent}"的回复（模拟）`;
+
+        cancelAssistantReveal();
+        set({ streamingActivity: '', streamingThinking: null });
+        let raf = 0;
+        let stopped = false;
+        const cleanup = () => {
+          stopped = true;
+          if (raf) cancelAnimationFrame(raf);
+          raf = 0;
+        };
+        revealCleanup = cleanup;
+
+        const revealStart = performance.now();
+        const revealDurationMs = Math.min(900, Math.max(280, Math.floor(replyText.length * 0.45)));
+
+        const tick = () => {
+          if (stopped || abortSignal.aborted) return;
+          const u = Math.min(1, (performance.now() - revealStart) / revealDurationMs);
+          const smooth = u * u * (3 - 2 * u);
+          const n = Math.min(replyText.length, Math.max(0, Math.round(replyText.length * smooth)));
+          set({ streamingActivity: replyText.slice(0, n), streamingThinking: null });
+          if (u >= 1) {
+            revealCleanup = null;
+            void finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
+            return;
+          }
+          raf = requestAnimationFrame(tick);
+        };
+
+        raf = requestAnimationFrame(tick);
+      } catch (error: any) {
+        if (finishOutboundTurn(sessionId, generation)) {
+          cancelAssistantReveal();
+          set({
+            isLoading: false,
+            streamingActivity: null,
+            streamingThinking: null,
+            error: error?.message || '发送消息失败',
+          });
+          const pending = takePendingSends(sessionId);
+          syncPendingSendQueueToStore(set, sessionId);
+          if (pending.length) {
+            const nextTurn = startOutboundTurnFromPending(sessionId, pending);
+            void executeOutboundTurn(nextTurn);
+          }
+        }
+      }
+    };
+
     cancelAssistantReveal();
-    const now = Date.now();
     const { activeConversationId } = get();
 
     let conversationId = activeConversationId;
@@ -547,7 +877,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
       return;
     }
     const sessionId = conversationId;
-    const todoReceiptTriggerId = opts?.todoFireReceipt?.triggerId?.trim() ?? null;
 
     const userMessage: Message = {
       id: uuidv4(),
@@ -586,260 +915,31 @@ export const useChatStore = create<ChatState>()((set, get) => {
       // best-effort
     }
 
-    try {
-      const t0 = performance.now();
-
-      const finalizeReply = async (
-        fullText: string,
-        log?: { ipcMs: number; label: string },
-        reasoningText?: string | null
-      ) => {
-        set({
-          isLoading: false,
-          streamingActivity: null,
-          streamingThinking: null,
-        });
-
-        // Ensure the user sees a final message even when the engine failed
-        // before persisting an assistant reply (e.g. network fetch failed).
-        const assistantText = String(fullText ?? '');
-        const assistantReasoning = String(reasoningText ?? '').trim();
-        if (assistantText.trim()) {
-          const now = Date.now();
-          const msg: Message = {
-            id: uuidv4(),
-            role: 'assistant',
-            content: assistantText,
-            timestamp: now,
-            ...(assistantReasoning ? { reasoningContent: assistantReasoning } : {}),
-          };
-          set((state) => {
-            const nextConvs = state.conversations.map((c) => {
-              if (c.id !== sessionId) return c;
-              const last = c.messages[c.messages.length - 1];
-              const dup = last?.role === 'assistant' && String(last.content ?? '') === assistantText;
-              if (dup) return c;
-              return { ...c, messages: [...c.messages, msg], updatedAt: now };
-            });
-            const active = state.activeConversationId === sessionId;
-            return {
-              conversations: nextConvs,
-              messages: active ? [...state.messages, msg] : state.messages,
-            };
-          });
-          try {
-            const conv = get().conversations.find((c) => c.id === sessionId);
-            if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
-          } catch {
-            // best-effort
+    const route = routeOutboundSend({
+      conversationId: sessionId,
+      content,
+      modelId,
+      mergeWindowMs: getCachedOutboundMergeWindowMs(),
+      opts: opts
+        ? {
+            ...(opts.userChannel ? { userChannel: opts.userChannel } : {}),
+            ...(opts.todoFireReceipt ? { todoFireReceipt: opts.todoFireReceipt } : {}),
           }
-        }
+        : undefined,
+    });
+    syncPendingSendQueueToStore(set, sessionId);
 
-        await get().fetchConversations();
-
-        void Promise.resolve(
-          window.electronAPI?.workspaceAppendChangeLog?.({
-            conversationId: sessionId,
-            userPreview: content,
-            assistantExcerpt: fullText,
-          })
-        );
-
-        if (todoReceiptTriggerId) {
-          void window.electronAPI?.todoTriggersSetAiReceipt?.({
-            triggerId: todoReceiptTriggerId,
-            receiptText: String(fullText ?? ''),
-          }).then((res) => {
-            if (res && typeof res === 'object' && 'ok' in res && res.ok) {
-              void useTodoTriggerStore.getState().load();
-            }
-          });
-        }
-
-        // 内置 IPC 引擎路径不走 WS 流式分片，须在此统一通知右侧工作区文件树刷新（工具写入后等）
-        try {
-          window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
-        } catch {
-          /* ignore */
-        }
-      };
-
-      const useBuiltinStream =
-        typeof WebSocket !== 'undefined' &&
-        typeof window.electronAPI?.engineGatewayStatus === 'function' &&
-        typeof window.electronAPI?.engineGatewayStart === 'function';
-
-      set({ isClassifyingMode: true, activeModeClassification: null });
-      let classification: ConversationModeClassification;
-      try {
-        classification = await classifyConversationForSend(content, modelId);
-      } finally {
-        set({ isClassifyingMode: false });
-      }
-      set({ activeModeClassification: classification });
-      const actualMode = classification.mode;
-      const effectiveModelId = resolveModelIdForInteractionMode(actualMode, modelId);
-      const autoPick = {
-        pickedMode: classification.mode,
-        reason: classification.summary,
-        category: classification.category,
-        categoryLabel: classification.categoryLabel,
-      };
-
-      if (useBuiltinStream) {
-        cancelAssistantReveal();
-        set({ streamingActivity: '', streamingThinking: null });
-        let sendWorkspaceRoot = '';
-        try {
-          const wa = await window.electronAPI?.workspaceGetActive?.();
-          sendWorkspaceRoot = normWorkspacePath(typeof wa?.path === 'string' ? wa.path : '');
-        } catch {
-          sendWorkspaceRoot = '';
-        }
-        const intent = (useSettingsStore.getState().chatIntent ?? 'strong') as ChatIntent;
-        const overridesJson = String(useSettingsStore.getState().chatModePolicyOverridesJson ?? '').trim();
-        let policyOverrides: any = null;
-        try {
-          policyOverrides = overridesJson ? JSON.parse(overridesJson) : null;
-        } catch {
-          policyOverrides = null;
-        }
-        const requestId = uuidv4();
-        const ws = await ensureGatewayWs();
-
-        // Cancel previous in-flight request for this conversation (best-effort).
-        const prevId = activeRequestByConversation.get(sessionId);
-        if (prevId) {
-          try {
-            ws.send(JSON.stringify({ type: 'chat:cancel', requestId: prevId }));
-          } catch {
-            // ignore
-          }
-          pendingById.delete(prevId);
-          clearToolApprovalForRequest(prevId);
-        }
-        activeRequestByConversation.set(sessionId, requestId);
-
-        const demuxer = new ReasoningStreamDemux();
-        let deltaBuf = '';
-        let rafId = 0;
-        const flushDeltaBuf = () => {
-          rafId = 0;
-          if (!deltaBuf) return;
-          const chunk = deltaBuf;
-          deltaBuf = '';
-          demuxer.push(chunk);
-          set({
-            streamingActivity: demuxer.getActivity(),
-            streamingThinking: demuxer.getThinkingDisplay() || null,
-          });
-          if (/\[tool:(start|done|fail)\]/.test(chunk)) {
-            window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
-            scheduleSyncConversationsAfterTool(get);
-          }
-        };
-        pendingById.set(requestId, {
-          conversationId: sessionId,
-          demuxer,
-          onDelta: (text) => {
-            deltaBuf += String(text ?? '');
-            if (!rafId) rafId = requestAnimationFrame(flushDeltaBuf);
-          },
-          onFinal: (full) => {
-            if (rafId) {
-              cancelAnimationFrame(rafId);
-              rafId = 0;
-            }
-            if (deltaBuf) {
-              demuxer.push(deltaBuf);
-              deltaBuf = '';
-              set({
-                streamingActivity: demuxer.getActivity(),
-                streamingThinking: demuxer.getThinkingDisplay() || null,
-              });
-            }
-            if (activeRequestByConversation.get(sessionId) === requestId) {
-              activeRequestByConversation.delete(sessionId);
-            }
-            clearToolApprovalForRequest(requestId);
-            const t1 = performance.now();
-            const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
-            void finalizeReply(
-              full || `这是对"${content}"的回复（模拟）`,
-              { ipcMs: Math.round(t1 - t0), label: 'ws' },
-              reasoningPersist
-            );
-          },
-        });
-
-        const msg: GatewayWsSend = {
-          type: 'chat:send',
-          requestId,
-          conversationId: sessionId,
-          text: content,
-          mode: actualMode,
-          intent,
-          autoPick,
-          ...(policyOverrides ? { policyOverrides } : {}),
-          modelId: effectiveModelId,
-          ...(sendWorkspaceRoot ? { workspaceRoot: sendWorkspaceRoot } : {}),
-        };
-        ws.send(JSON.stringify(msg));
-        return;
-      }
-
-      const response = await window.electronAPI?.engineSendMessage?.({
-        conversationId: sessionId,
-        userText: content,
-        mode: actualMode,
-        modelId: effectiveModelId,
-      });
-      const t1 = performance.now();
-
-      const replyText =
-        (typeof response?.message === 'string' && response.message) ||
-        (typeof response === 'string' && response) ||
-        `这是对"${content}"的回复（模拟）`;
-
-      cancelAssistantReveal();
-
-      set({ streamingActivity: '', streamingThinking: null });
-      let raf = 0;
-      let stopped = false;
-      const cleanup = () => {
-        stopped = true;
-        if (raf) cancelAnimationFrame(raf);
-        raf = 0;
-      };
-      revealCleanup = cleanup;
-
-      const revealStart = performance.now();
-      const revealDurationMs = Math.min(900, Math.max(280, Math.floor(replyText.length * 0.45)));
-
-      const tick = () => {
-        if (stopped) return;
-        const u = Math.min(1, (performance.now() - revealStart) / revealDurationMs);
-        const smooth = u * u * (3 - 2 * u);
-        const n = Math.min(replyText.length, Math.max(0, Math.round(replyText.length * smooth)));
-        set({ streamingActivity: replyText.slice(0, n), streamingThinking: null });
-        if (u >= 1) {
-          revealCleanup = null;
-          void finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
-          return;
-        }
-        raf = requestAnimationFrame(tick);
-      };
-
-      raf = requestAnimationFrame(tick);
-    } catch (error: any) {
-      cancelAssistantReveal();
-      set({
-        isLoading: false,
-        streamingActivity: null,
-        streamingThinking: null,
-        error: error?.message || '发送消息失败',
-      });
+    if (route.action === 'queue') {
+      return;
     }
+
+    if (route.action === 'merge') {
+      cancelOutboundWsForConversation(sessionId);
+      cancelAssistantReveal();
+      set({ streamingActivity: null, streamingThinking: null });
+    }
+
+    await executeOutboundTurn(route.turn);
   },
 
   createConversation: async () => {
@@ -860,6 +960,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         streamingThinking: null,
         error: null,
       });
+      syncPendingSendQueueToStore(set, id);
     }
   },
 
@@ -888,6 +989,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
     });
 
     void window.electronAPI?.engineDeleteConversation?.(id);
+    clearOutboundStateForConversation(id);
+    if (get().activeConversationId === id) syncPendingSendQueueToStore(set, get().activeConversationId);
   },
 
   clearMessages: () => {

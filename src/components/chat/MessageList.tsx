@@ -16,6 +16,7 @@ import {
   buildGroupedRows,
   computeTailWindowStart,
 } from './message-list-rows';
+import type { Message } from '../../store/modules/chatStore';
 
 export const CHAT_MSG_LIST_INITIAL_MAX_ROWS = 5;
 export const CHAT_MSG_LIST_INITIAL_MAX_CHARS = 32_000;

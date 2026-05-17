@@ -19,6 +19,10 @@ import {
   type WorkspaceToolSelection,
 } from '../../shared/workspace-tools';
 import { PLACEHOLDER_MESSAGING_CHANNELS } from '../../shared/messaging-channels';
+import {
+  OUTBOUND_MERGE_WINDOW_PREFS_EVENT,
+  setCachedOutboundMergeWindowMs,
+} from '../../shared/outbound-merge-window-client';
 const SETTINGS_SECTION_IDS = ['account', 'system', 'memory', 'models', 'integrations', 'data', 'help'] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
 
@@ -108,6 +112,10 @@ const SettingsPage: FC = () => {
   const [toolLoopStepsMin, setToolLoopStepsMin] = useState(1);
   const [toolLoopStepsMax, setToolLoopStepsMax] = useState(24);
   const [toolLoopStepsDefault, setToolLoopStepsDefault] = useState(9);
+  const [outboundMergeWindowMs, setOutboundMergeWindowMs] = useState(3000);
+  const [outboundMergeWindowMin, setOutboundMergeWindowMin] = useState(500);
+  const [outboundMergeWindowMax, setOutboundMergeWindowMax] = useState(60_000);
+  const [outboundMergeWindowDefault, setOutboundMergeWindowDefault] = useState(3000);
   const [engineRuntimeSaving, setEngineRuntimeSaving] = useState(false);
 
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('account');
@@ -319,6 +327,11 @@ const SettingsPage: FC = () => {
           setToolLoopStepsMin(rt.minMaxSendMessageToolLoopSteps);
           setToolLoopStepsMax(rt.maxMaxSendMessageToolLoopSteps);
           setToolLoopStepsDefault(rt.defaultMaxSendMessageToolLoopSteps);
+          setOutboundMergeWindowMs(rt.outboundMergeWindowMs);
+          setOutboundMergeWindowMin(rt.minOutboundMergeWindowMs);
+          setOutboundMergeWindowMax(rt.maxOutboundMergeWindowMs);
+          setOutboundMergeWindowDefault(rt.defaultOutboundMergeWindowMs);
+          setCachedOutboundMergeWindowMs(rt.outboundMergeWindowMs);
         }
       } catch {
         /* ignore */
@@ -363,6 +376,7 @@ const SettingsPage: FC = () => {
 
   const onSaveEngineRuntimeSettings = async () => {
     const n = Math.floor(Number(toolLoopSteps));
+    const mergeMs = Math.floor(Number(outboundMergeWindowMs));
     if (!Number.isFinite(n) || n < toolLoopStepsMin || n > toolLoopStepsMax) {
       (window as any).__cf_toast?.error?.(
         t('settings.engineRuntimeSaveFail'),
@@ -370,20 +384,41 @@ const SettingsPage: FC = () => {
       );
       return;
     }
+    if (!Number.isFinite(mergeMs) || mergeMs < outboundMergeWindowMin || mergeMs > outboundMergeWindowMax) {
+      (window as any).__cf_toast?.error?.(
+        t('settings.engineRuntimeSaveFail'),
+        t('settings.engineRuntimeErr_invalid_merge_window', {
+          min: outboundMergeWindowMin,
+          max: outboundMergeWindowMax,
+        }),
+      );
+      return;
+    }
     setEngineRuntimeSaving(true);
     try {
-      const res = await window.electronAPI?.engineSaveRuntimeSettings?.({ maxSendMessageToolLoopSteps: n });
+      const res = await window.electronAPI?.engineSaveRuntimeSettings?.({
+        maxSendMessageToolLoopSteps: n,
+        outboundMergeWindowMs: mergeMs,
+      });
       if (res && 'ok' in res && res.ok === false) {
         const err = String((res as { error?: string }).error ?? '');
         const msg =
           err === 'invalid_steps'
             ? t('settings.engineRuntimeErr_invalid_steps', { min: toolLoopStepsMin, max: toolLoopStepsMax })
-            : err || t('common.sampleOpFailBody');
+            : err === 'invalid_merge_window'
+              ? t('settings.engineRuntimeErr_invalid_merge_window', {
+                  min: outboundMergeWindowMin,
+                  max: outboundMergeWindowMax,
+                })
+              : err || t('common.sampleOpFailBody');
         (window as any).__cf_toast?.error?.(t('settings.engineRuntimeSaveFail'), msg);
         return;
       }
       if (res && 'ok' in res && res.ok) {
         setToolLoopSteps(res.maxSendMessageToolLoopSteps);
+        setOutboundMergeWindowMs(res.outboundMergeWindowMs);
+        setCachedOutboundMergeWindowMs(res.outboundMergeWindowMs);
+        window.dispatchEvent(new CustomEvent(OUTBOUND_MERGE_WINDOW_PREFS_EVENT));
       }
       (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.engineRuntimeSavedBody'));
     } catch (e: any) {
@@ -1358,15 +1393,53 @@ const SettingsPage: FC = () => {
                 }}
                 aria-label={t('settings.engineRuntimeToolLoopSteps')}
               />
-              <button
-                type="button"
-                className="cf-btn cf-btnPrimary cf-btnSmall"
-                disabled={engineRuntimeSaving}
-                onClick={() => void onSaveEngineRuntimeSettings()}
-              >
-                {engineRuntimeSaving ? t('settings.engineRuntimeSaving') : t('settings.engineRuntimeSave')}
-              </button>
             </div>
+          </div>
+
+          <div style={{ height: 10 }} />
+
+          <div className="cf-row cf-settingsPage__row" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="cf-sub">
+                <strong style={{ color: 'var(--text)' }}>{t('settings.engineRuntimeOutboundMergeWindow')}</strong>
+              </div>
+              <div className="cf-help">{t('settings.engineRuntimeOutboundMergeWindowHelp')}</div>
+              <div className="cf-help" style={{ marginTop: 6 }}>
+                {t('settings.engineRuntimeOutboundMergeWindowRange', {
+                  min: outboundMergeWindowMin,
+                  max: outboundMergeWindowMax,
+                  default: outboundMergeWindowDefault,
+                })}
+              </div>
+            </div>
+            <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <input
+                className="cf-input"
+                type="number"
+                min={outboundMergeWindowMin}
+                max={outboundMergeWindowMax}
+                step={100}
+                style={{ width: 100 }}
+                value={outboundMergeWindowMs}
+                onChange={(e) => {
+                  const v = Number.parseInt(e.target.value, 10);
+                  if (Number.isFinite(v)) setOutboundMergeWindowMs(v);
+                }}
+                aria-label={t('settings.engineRuntimeOutboundMergeWindow')}
+              />
+              <span className="cf-help">ms</span>
+            </div>
+          </div>
+
+          <div className="cf-row" style={{ justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="cf-btn cf-btnPrimary cf-btnSmall"
+              disabled={engineRuntimeSaving}
+              onClick={() => void onSaveEngineRuntimeSettings()}
+            >
+              {engineRuntimeSaving ? t('settings.engineRuntimeSaving') : t('settings.engineRuntimeSave')}
+            </button>
           </div>
         </div>
 

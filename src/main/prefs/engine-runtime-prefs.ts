@@ -1,5 +1,5 @@
 /**
- * 引擎运行时偏好（userData）：如 Multitask/Plan 单次 sendMessage 内工具循环轮次上限。
+ * 引擎运行时偏好（userData）：工具循环上限、连续发送合并窗口等。
  */
 
 import * as fs from 'fs';
@@ -10,8 +10,14 @@ export const DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS = 9;
 export const MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS = 1;
 export const MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS = 24;
 
+/** 连续发送在此时间窗内则合并并取消当前模型请求（毫秒） */
+export const DEFAULT_OUTBOUND_MERGE_WINDOW_MS = 3000;
+export const MIN_OUTBOUND_MERGE_WINDOW_MS = 500;
+export const MAX_OUTBOUND_MERGE_WINDOW_MS = 60_000;
+
 export type EngineRuntimePrefsStored = {
   maxSendMessageToolLoopSteps?: number;
+  outboundMergeWindowMs?: number;
 };
 
 const FILENAME = 'cf.engine-runtime-prefs.json';
@@ -45,4 +51,12 @@ export function resolveMaxSendMessageToolLoopSteps(prefs?: EngineRuntimePrefsSto
     );
   }
   return DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS;
+}
+
+export function resolveOutboundMergeWindowMs(prefs?: EngineRuntimePrefsStored | null): number {
+  const n = prefs?.outboundMergeWindowMs;
+  if (typeof n === 'number' && Number.isFinite(n)) {
+    return Math.min(MAX_OUTBOUND_MERGE_WINDOW_MS, Math.max(MIN_OUTBOUND_MERGE_WINDOW_MS, Math.floor(n)));
+  }
+  return DEFAULT_OUTBOUND_MERGE_WINDOW_MS;
 }

@@ -44,10 +44,14 @@ import {
 import { resolveWorkspaceRootForWebContents } from '../main/electron-workspace-context';
 import {
   DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  DEFAULT_OUTBOUND_MERGE_WINDOW_MS,
   MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MAX_OUTBOUND_MERGE_WINDOW_MS,
   MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MIN_OUTBOUND_MERGE_WINDOW_MS,
   readEngineRuntimePrefsFile,
   resolveMaxSendMessageToolLoopSteps,
+  resolveOutboundMergeWindowMs,
   writeEngineRuntimePrefsFile,
   type EngineRuntimePrefsStored,
 } from '../main/prefs/engine-runtime-prefs';
@@ -66,8 +70,12 @@ export type { ClawFlowWebSearchUserConfig, PublicWebSearchConfig } from './web-s
 export const MAX_SEND_MESSAGE_TOOL_LOOP_STEPS = DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS;
 export {
   DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  DEFAULT_OUTBOUND_MERGE_WINDOW_MS,
   MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MAX_OUTBOUND_MERGE_WINDOW_MS,
   MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+  MIN_OUTBOUND_MERGE_WINDOW_MS,
+  resolveOutboundMergeWindowMs,
 } from '../main/prefs/engine-runtime-prefs';
 
 /** Chat 下拉：内置引擎可用模型 ID（`/ 前即为 provider router id） */
@@ -1219,14 +1227,22 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       defaultMaxSendMessageToolLoopSteps: DEFAULT_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
       minMaxSendMessageToolLoopSteps: MIN_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
       maxMaxSendMessageToolLoopSteps: MAX_MAX_SEND_MESSAGE_TOOL_LOOP_STEPS,
+      outboundMergeWindowMs: resolveOutboundMergeWindowMs(file),
+      defaultOutboundMergeWindowMs: DEFAULT_OUTBOUND_MERGE_WINDOW_MS,
+      minOutboundMergeWindowMs: MIN_OUTBOUND_MERGE_WINDOW_MS,
+      maxOutboundMergeWindowMs: MAX_OUTBOUND_MERGE_WINDOW_MS,
     };
   });
 
   ipcMain.handle('engine:saveRuntimeSettings', async (_e, payload: unknown) => {
     const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
     const raw = p.maxSendMessageToolLoopSteps;
+    const rawMerge = p.outboundMergeWindowMs;
     if (raw !== undefined && (typeof raw !== 'number' || !Number.isFinite(raw))) {
       return { ok: false as const, error: 'invalid_steps' };
+    }
+    if (rawMerge !== undefined && (typeof rawMerge !== 'number' || !Number.isFinite(rawMerge))) {
+      return { ok: false as const, error: 'invalid_merge_window' };
     }
     const cur = readEngineRuntimePrefsFile() ?? {};
     const next: EngineRuntimePrefsStored = { ...cur };
@@ -1235,10 +1251,14 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
         maxSendMessageToolLoopSteps: raw,
       });
     }
+    if (rawMerge !== undefined) {
+      next.outboundMergeWindowMs = resolveOutboundMergeWindowMs({ outboundMergeWindowMs: rawMerge });
+    }
     writeEngineRuntimePrefsFile(next);
     return {
       ok: true as const,
       maxSendMessageToolLoopSteps: resolveMaxSendMessageToolLoopSteps(next),
+      outboundMergeWindowMs: resolveOutboundMergeWindowMs(next),
     };
   });
 

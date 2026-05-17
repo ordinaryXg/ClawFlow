@@ -1152,3 +1152,61 @@
   padding: 4px 12px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+.cf-pendingSendQueue {
+  flex-shrink: 0;
+  margin: 0 12px 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.cf-pendingSendQueue__head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.cf-pendingSendQueue__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cf-pendingSendQueue__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cf-pendingSendQueue__index {
+  flex-shrink: 0;
+  width: 18px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cf-pendingSendQueue__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cf-pendingSendQueue__remove {
+  flex-shrink: 0;
+  min-width: 28px;
+  padding: 0 6px;
+}

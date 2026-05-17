@@ -23,7 +23,12 @@ import {
 } from '../../utils/context-saturation';
 import { formatUtf8Bytes } from '../../utils/format-bytes';
 import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import {
+  OUTBOUND_MERGE_WINDOW_PREFS_EVENT,
+  refreshOutboundMergeWindowMsFromEngine,
+} from '../../shared/outbound-merge-window-client';
 import ModeClassificationDebug from '../../components/chat/ModeClassificationDebug';
+import PendingSendQueue from '../../components/chat/PendingSendQueue';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -52,6 +57,8 @@ const ChatPage: FC = () => {
     setError,
     activeModeClassification,
     isClassifyingMode,
+    pendingSendQueue,
+    removePendingSend,
     toolApprovalPending,
     respondToolApproval,
   } = useChatStore();
@@ -232,6 +239,13 @@ const ChatPage: FC = () => {
   useEffect(() => {
     void reloadChatModels();
   }, [reloadChatModels, activeWorkspacePath]);
+
+  useEffect(() => {
+    void refreshOutboundMergeWindowMsFromEngine();
+    const onPrefs = () => void refreshOutboundMergeWindowMsFromEngine();
+    window.addEventListener(OUTBOUND_MERGE_WINDOW_PREFS_EVENT, onPrefs);
+    return () => window.removeEventListener(OUTBOUND_MERGE_WINDOW_PREFS_EVENT, onPrefs);
+  }, []);
 
   useEffect(() => {
     if (!activeModeClassification) return;
@@ -528,13 +542,14 @@ const ChatPage: FC = () => {
       <footer className="cf-chatCenter__input" style={{ height: inputPanelHeightPx }}>
         <div className="cf-chatCenter__inputInner">
           <ModeClassificationDebug classifying={isClassifyingMode} classification={activeModeClassification} />
+          <PendingSendQueue items={pendingSendQueue} onRemove={removePendingSend} />
           <ChatApiKeyBar
             visible={showApiKeyBar}
             onSaved={() => void reloadChatModels()}
             onOpenFullSettings={() => navigate('/settings')}
           />
           <ChatInput
-            disabled={isLoading}
+            disabled={isClassifyingMode}
             onSend={onSend}
             models={modelsForSelect}
             modelId={modelId}

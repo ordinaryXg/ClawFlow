@@ -86,9 +86,17 @@ export interface IElectronAPI {
     defaultMaxSendMessageToolLoopSteps: number;
     minMaxSendMessageToolLoopSteps: number;
     maxMaxSendMessageToolLoopSteps: number;
+    outboundMergeWindowMs: number;
+    defaultOutboundMergeWindowMs: number;
+    minOutboundMergeWindowMs: number;
+    maxOutboundMergeWindowMs: number;
   }>;
-  engineSaveRuntimeSettings: (params: { maxSendMessageToolLoopSteps?: number }) => Promise<
-    { ok: true; maxSendMessageToolLoopSteps: number } | { ok: false; error: string }
+  engineSaveRuntimeSettings: (params: {
+    maxSendMessageToolLoopSteps?: number;
+    outboundMergeWindowMs?: number;
+  }) => Promise<
+    | { ok: true; maxSendMessageToolLoopSteps: number; outboundMergeWindowMs: number }
+    | { ok: false; error: string }
   >;
   engineGetWebSearchSettings: () => Promise<{
     enabled: boolean;
