@@ -13,13 +13,60 @@ import { rendererConfig } from './webpack.renderer.config';
 import fs from 'fs-extra';
 import path from 'path';
 
+/** 与 webpack.main.config.ts `externals` 一致；打包后须出现在 app 的 node_modules 中 */
+const MAIN_PROCESS_EXTERNAL_PACKAGES = [
+  'ws',
+  'better-sqlite3',
+  '@larksuiteoapi/node-sdk',
+] as const;
+
+async function copyExternalPackage(
+  packageName: string,
+  projectRoot: string,
+  buildPath: string,
+  visited: Set<string>
+): Promise<void> {
+  if (visited.has(packageName)) return;
+  visited.add(packageName);
+
+  const srcDir = path.join(projectRoot, 'node_modules', packageName);
+  if (!(await fs.pathExists(srcDir))) {
+    console.warn(`[ClawFlow pack] missing external package: ${packageName}`);
+    return;
+  }
+
+  const destDir = path.join(buildPath, 'node_modules', packageName);
+  await fs.mkdirp(path.dirname(destDir));
+  await fs.copy(srcDir, destDir, { overwrite: true, dereference: true });
+
+  let pkgJson: { dependencies?: Record<string, string> } = {};
+  try {
+    pkgJson = await fs.readJson(path.join(srcDir, 'package.json'));
+  } catch {
+    return;
+  }
+
+  for (const depName of Object.keys(pkgJson.dependencies ?? {})) {
+    if (depName.startsWith('@types/')) continue;
+    await copyExternalPackage(depName, projectRoot, buildPath, visited);
+  }
+}
+
 const config: ForgeConfig = {
   /** Windows 常见 app.asar 占用；每次输出到不同目录，避免 EBUSY 无法 unlink */
   outDir: `dist-pack-build-${Date.now()}`,
   packagerConfig: {
     asar: true,
   },
-  hooks: {},
+  hooks: {
+    packageAfterCopy: async (_forgeConfig, buildPath) => {
+      const projectRoot = path.resolve(__dirname);
+      const visited = new Set<string>();
+      for (const name of MAIN_PROCESS_EXTERNAL_PACKAGES) {
+        await copyExternalPackage(name, projectRoot, buildPath, visited);
+      }
+    },
+  },
   // 注意：不配置 rebuildConfig；原生依赖由 Electron / 运行时按需处理
   makers: [
     new MakerSquirrel({}),
