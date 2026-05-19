@@ -36,6 +36,7 @@ const ManualEvolutionFab: FC<Props> = ({ variant = 'fab' }) => {
     }
     runningRef.current = true;
     setBusy(true);
+    toast?.success?.(t('layout.evolutionTest.runningTitle'), t('layout.evolutionTest.runningBody'));
     try {
       const res = (await window.electronAPI?.intelligenceTriggerEvolutionTest?.({
         conversationId: activeConversationId ?? undefined,
@@ -49,14 +50,19 @@ const ManualEvolutionFab: FC<Props> = ({ variant = 'fab' }) => {
               ? t('layout.evolutionTest.err_skills_disabled')
               : key === 'no_conversation'
                 ? t('layout.evolutionTest.err_no_conversation')
-                : key && key !== 'run_failed'
-                  ? key.slice(0, 2000)
-                  : t('layout.evolutionTest.err_generic');
+                : key === 'slot_already_running'
+                  ? t('layout.evolutionTest.err_slot_already_running')
+                  : key === 'evolution_timeout'
+                    ? t('layout.evolutionTest.err_evolution_timeout')
+                    : key && key !== 'run_failed'
+                      ? key.slice(0, 2000)
+                      : t('layout.evolutionTest.err_generic');
         toast?.error?.(t('layout.evolutionTest.errTitle'), mapped);
         return;
       }
       toast?.success?.(t('layout.evolutionTest.okTitle'), t('layout.evolutionTest.okBody'));
       window.dispatchEvent(new CustomEvent('cf-intelligence-profile-reload'));
+      window.dispatchEvent(new CustomEvent('cf-workspace-changelog-updated'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('layout.evolutionTest.err_generic');
       toastApi()?.error?.(t('layout.evolutionTest.errTitle'), msg);

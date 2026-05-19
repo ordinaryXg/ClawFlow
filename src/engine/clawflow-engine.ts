@@ -147,7 +147,6 @@ export interface ClawFlowEngine {
     requestId?: string;
     /** 若提供：在每次执行工具前暂停并回调；未提供则视为自动同意（如 IPC 无 UI 场景） */
     onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
-    openEmbeddedBrowser?: (url: string) => void;
     /** 多窗口：会话与工具以此根目录为准；缺省用引擎当前 config */
     workspaceRoot?: string;
     /** 可选：覆盖 assistant 消息的 channel（用于子 Agent 等产物与主对话区分） */
@@ -655,8 +654,6 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     abortSignal?: AbortSignal;
     intent?: ChatIntent;
     policyOverrides?: unknown;
-    /** 工具 open_embedded_browser：在主进程通过 IPC 通知渲染进程打开右侧内嵌浏览器 */
-    openEmbeddedBrowser?: (url: string) => void;
     requestId?: string;
     onToolApprovalNeeded?: (payload: ToolApprovalNeededPayload) => void | Promise<void>;
     workspaceRoot?: string;
@@ -851,7 +848,6 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
               onDelta: params.onDelta,
               onToolEvent: appendToolEvent,
               abortSignal: params.abortSignal,
-              openEmbeddedBrowser: params.openEmbeddedBrowser,
               workspaceToolSelection,
             }
           );

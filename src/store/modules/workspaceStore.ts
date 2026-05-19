@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
+import { workspacePathsLikelyEqual } from '../../utils/workspace-path';
 
 export interface WorkspaceMetaLite {
   id: string;
@@ -48,7 +49,12 @@ interface WorkspaceState {
     tools: WorkspaceToolSelection,
     opts?: { gitRemoteUrl?: string }
   ) => Promise<void>;
-  removeWorkspace: (folderPath: string) => Promise<{ ok: true; deletedFromDisk: boolean } | { ok: false; error: string }>;
+  removeWorkspace: (
+    folderPath: string
+  ) => Promise<
+    | { ok: true; deletedFromDisk: boolean; newActivePath: string | null }
+    | { ok: false; error: string }
+  >;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -117,8 +123,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       if (!res.ok) {
         return res;
       }
+      const newActive = res.newActivePath ?? null;
+      set((s) => ({
+        recentEntries: s.recentEntries.filter((e) => !workspacePathsLikelyEqual(e.path, folderPath)),
+        activePath:
+          s.activePath && workspacePathsLikelyEqual(s.activePath, folderPath) ? newActive : s.activePath,
+        meta:
+          s.activePath && workspacePathsLikelyEqual(s.activePath, folderPath) ? null : s.meta,
+      }));
       await get().refresh();
-      return { ok: true as const, deletedFromDisk: res.deletedFromDisk };
+      return { ok: true as const, deletedFromDisk: res.deletedFromDisk, newActivePath: newActive };
     } finally {
       set({ loading: false });
     }

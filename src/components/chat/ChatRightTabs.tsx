@@ -1,8 +1,7 @@
-import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChangeHistoryPanel from './ChangeHistoryPanel';
 import ScrapePanel from './ScrapePanel';
-import SimpleEmbeddedBrowser from './SimpleEmbeddedBrowser';
 import WorkspaceFilesSplit from './WorkspaceFilesSplit';
 
 type Props = {
@@ -11,7 +10,7 @@ type Props = {
   widthPx?: number;
 };
 
-type TabKey = 'workspace' | 'browser' | 'changes' | 'scrape';
+type TabKey = 'workspace' | 'changes' | 'scrape';
 
 function panelClass(active: TabKey, key: TabKey): string {
   return active === key ? 'cf-chatRight__panel cf-chatRight__panel--active' : 'cf-chatRight__panel';
@@ -20,25 +19,10 @@ function panelClass(active: TabKey, key: TabKey): string {
 const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
   const { t } = useTranslation();
   const [active, setActive] = useState<TabKey>('workspace');
-  const [embeddedNavigateUrl, setEmbeddedNavigateUrl] = useState<string | null>(null);
-
-  const clearEmbeddedNavigate = useCallback(() => setEmbeddedNavigateUrl(null), []);
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    const off = api?.onEmbeddedBrowserNavigate?.((p) => {
-      if (p?.url && typeof p.url === 'string') {
-        setEmbeddedNavigateUrl(p.url);
-        setActive('browser');
-      }
-    });
-    return () => off?.();
-  }, []);
 
   const tabs = useMemo(
     () => [
       { key: 'workspace' as const, label: t('chat.rightTabs.workspaceDir') },
-      { key: 'browser' as const, label: t('chat.rightTabs.headlessBrowser') },
       { key: 'changes' as const, label: t('chat.rightTabs.changeLog') },
       { key: 'scrape' as const, label: t('chat.rightTabs.scrape') },
     ],
@@ -72,21 +56,23 @@ const ChatRightTabs: FC<Props> = ({ workspacePath, widthPx }) => {
         <div className={panelClass(active, 'workspace')}>
           <WorkspaceFilesSplit workspacePath={workspacePath} />
         </div>
-        <div className={panelClass(active, 'browser')}>
-          <SimpleEmbeddedBrowser
-            externalNavigateUrl={embeddedNavigateUrl}
-            onConsumedExternalNavigate={clearEmbeddedNavigate}
-          />
-        </div>
-        <div className={panelClass(active, 'changes')}>
-          <ChangeHistoryPanel workspacePath={workspacePath} />
-        </div>
-        <div className={panelClass(active, 'scrape')}>
-          <ScrapePanel workspacePath={workspacePath} />
-        </div>
+        <RightTabPanels active={active} workspacePath={workspacePath} />
       </div>
     </aside>
   );
 };
+
+function RightTabPanels({ active, workspacePath }: { active: TabKey; workspacePath: string | null }) {
+  return (
+    <>
+      <div className={panelClass(active, 'changes')}>
+        <ChangeHistoryPanel workspacePath={workspacePath} />
+      </div>
+      <div className={panelClass(active, 'scrape')}>
+        <ScrapePanel workspacePath={workspacePath} />
+      </div>
+    </>
+  );
+}
 
 export default ChatRightTabs;

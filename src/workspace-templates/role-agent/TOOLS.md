@@ -12,9 +12,9 @@
 
 | 文件 | 作用 |
 |------|------|
-| **`manifest.json`** | 能力开关（`version: 2`）：`tools.docs`、`tools.git`、`tools.shell`、`tools.web_search`、`tools.web_scrape`、`tools.embedded_browser`、`tools.todos`、`tools.skills`、`tools.knowledge_base` 等。引擎按此过滤模型工具；创建/设置工作区时的勾选会写回此文件。 |
+| **`manifest.json`** | 能力开关（`version: 2`）：`tools.docs`、`tools.git`、`tools.shell`、`tools.web_search`、`tools.web_scrape`、`tools.todos`、`tools.skills`、`tools.knowledge_base` 等。引擎按此过滤模型工具；创建/设置工作区时的勾选会写回此文件。 |
 | **`docs.md`** | 文档类工具清单（与 `tools.docs` 对应）。 |
-| **`browser.md`** | 网络搜索 / 爬取 / 内嵌打开（与 `web_search`、`web_scrape`、`embedded_browser` 对应）。 |
+| **`browser.md`** | 网络搜索 / 爬取（与 `web_search`、`web_scrape` 对应）。 |
 | **`git.md`** | Git 类工具说明（与 `tools.git` 对应）。 |
 | **`shell.md`** | 工作区内命令行执行（与 `tools.shell` 对应）。 |
 | **`todos.md`** | 待办与**定时/周期调度**（与 `tools.todos` 对应）：无人格、结构化触发。 |

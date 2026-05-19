@@ -125,14 +125,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   /** 知识库条目：能力接入前占位为 0 */
   const kbHubCount = 0;
 
-  const workspaceRows = useMemo(() => {
-    const r = recentEntries.map((e) => e.path);
-    const act = activeWorkspacePath;
-    if (act && !r.some((x) => workspacePathsLikelyEqual(x, act))) {
-      r.unshift(act);
-    }
-    return r;
-  }, [recentEntries, activeWorkspacePath]);
+  const workspaceRows = useMemo(() => recentEntries.map((e) => e.path), [recentEntries]);
   const workspaceRowsRef = useRef(workspaceRows);
   workspaceRowsRef.current = workspaceRows;
 

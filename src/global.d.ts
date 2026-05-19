@@ -209,7 +209,6 @@ export interface IElectronAPI {
   onEngineChatStream: (
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
-  onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -259,7 +258,7 @@ export interface IElectronAPI {
   workspaceRemove: (
     folderPath: string
   ) => Promise<
-    | { ok: true; newActivePath: string; deletedFromDisk: boolean }
+    | { ok: true; newActivePath: string | null; deletedFromDisk: boolean }
     | { ok: false; error: string }
   >;
   workspaceSetActive: (

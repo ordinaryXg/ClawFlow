@@ -282,9 +282,6 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       const res = await getGlobalClawFlowEngine().sendMessage({
         ...params,
         workspaceRoot,
-        openEmbeddedBrowser: (url: string) => {
-          event.sender.send('embedded-browser:navigate', { url });
-        },
       });
       return { success: true, message: res.message };
     }
@@ -313,9 +310,6 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
         mode,
         workspaceRoot,
         onDelta: sendDelta,
-        openEmbeddedBrowser: (url: string) => {
-          event.sender.send('embedded-browser:navigate', { url });
-        },
       });
       return { success: true, message: res.message ?? '' };
     }

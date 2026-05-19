@@ -8,7 +8,7 @@ import type { StoredMessage } from '../../engine/session-store';
 import { SessionStore } from '../../engine/session-store';
 import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
-import { runSystemSubAgentOnce } from '../system-agents/system-sub-agent-runner';
+import { releaseSystemSubAgentSlot, runSystemSubAgentOnce } from '../system-agents/system-sub-agent-runner';
 import {
   SKILL_AGENT_SLOT_ID,
   SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
@@ -296,12 +296,37 @@ export async function runManualSkillEvolutionTest(params: {
     meta: { dispatch: 'skill_evolution_manual', manual: true },
   }).catch(() => undefined);
 
-  const res = await runSystemSubAgentOnce({
+  releaseSystemSubAgentSlot(SKILL_AGENT_SLOT_ID);
+
+  const EVOLUTION_RUN_TIMEOUT_MS = 20 * 60 * 1000;
+  const runPromise = runSystemSubAgentOnce({
     workspaceRoot: root,
     slotId: SKILL_AGENT_SLOT_ID,
     taskText,
     conversationId: SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
   });
+
+  let res: Awaited<ReturnType<typeof runSystemSubAgentOnce>>;
+  try {
+    res = await Promise.race([
+      runPromise,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('evolution_timeout')), EVOLUTION_RUN_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const errKey = msg === 'evolution_timeout' ? 'evolution_timeout' : msg;
+    void appendWorkspaceChangeLog(root, {
+      kind: 'evolution',
+      title: '主动进化（测试）失败',
+      conversationId: convId,
+      userPreview: msg === 'evolution_timeout' ? '进化任务超时（20 分钟）。' : '手动触发的 Skill Agent 异常结束。',
+      assistantExcerpt: msg.slice(0, 3500),
+      meta: { evolutionOk: false, manual: true, error: errKey },
+    }).catch(() => undefined);
+    return { ok: false, error: errKey };
+  }
 
   if (!res.ok) {
     void appendWorkspaceChangeLog(root, {

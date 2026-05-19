@@ -14,6 +14,7 @@ import {
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
 } from './workspace-office-preview';
 import { clawflowDir } from './workspace-service';
+import { getBetterSqliteCtor } from '../../engine/hermes-memory-db';
 
 const TEXT_PREVIEW_MAX = 256 * 1024;
 const FILE_HARD_MAX = 1024 * 1024;
@@ -33,6 +34,79 @@ const IMAGE_EXT_TO_MIME: Record<string, string> = {
 };
 
 const IMAGE_PREVIEW_TOO_LARGE = 'IMAGE_PREVIEW_TOO_LARGE';
+
+const SQLITE_FILE_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3', '.db3']);
+
+function isSqliteMagicHeader(buf: Buffer): boolean {
+  return buf.length >= 16 && buf.subarray(0, 16).toString('utf8') === 'SQLite format 3\u0000';
+}
+
+function quoteSqliteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+function previewSqliteDatabaseFile(full: string, sizeBytes: number): FilePreviewResult {
+  const Ctor = getBetterSqliteCtor();
+  const base = path.basename(full);
+  if (!Ctor) {
+    return {
+      ok: true,
+      content: `# SQLite: ${base}\n\nSize: ${sizeBytes} bytes\n\n（未加载 better-sqlite3，无法解析表结构。）`,
+      truncated: false,
+      isBinary: false,
+    };
+  }
+  let db: InstanceType<typeof Ctor> | null = null;
+  try {
+    db = new Ctor(full, { readonly: true, fileMustExist: true });
+    const tables = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name COLLATE NOCASE`
+      )
+      .all() as { name: string }[];
+    const lines = [`# SQLite: ${base}`, `Size: ${sizeBytes} bytes`, '', '## Tables', ''];
+    const maxTables = 80;
+    for (const row of tables.slice(0, maxTables)) {
+      const name = row.name;
+      let count = '?';
+      try {
+        const got = db.prepare(`SELECT COUNT(*) AS c FROM ${quoteSqliteIdent(name)}`).get() as { c: number };
+        count = String(got?.c ?? '?');
+      } catch {
+        /* locked or virtual */
+      }
+      lines.push(`- **${name}** — ${count} rows`);
+    }
+    if (tables.length > maxTables) {
+      lines.push('', `… and ${tables.length - maxTables} more tables`);
+    }
+    if (tables.length === 0) {
+      lines.push('_(no user tables)_');
+    }
+    return {
+      ok: true,
+      content: lines.join('\n'),
+      truncated: tables.length > maxTables,
+      isBinary: false,
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: true,
+      content: `# SQLite: ${base}\n\nSize: ${sizeBytes} bytes\n\n无法打开预览：${msg}\n\n若文件正被其它进程占用，请关闭后重试。`,
+      truncated: false,
+      isBinary: false,
+    };
+  } finally {
+    if (db) {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
 
 function tryDecodeUtf16Le(buf: Buffer): string | null {
   if (buf.length % 2 !== 0 || buf.length === 0) return null;
@@ -426,6 +500,21 @@ export async function readWorkspaceFilePreview(
     if (st.size > FILE_HARD_MAX) {
       return { ok: false, error: 'File too large' };
     }
+
+    const headLen = Math.min(16, st.size);
+    const head = Buffer.alloc(headLen);
+    if (headLen > 0) {
+      const fh = await fs.promises.open(full, 'r');
+      try {
+        await fh.read(head, 0, headLen, 0);
+      } finally {
+        await fh.close();
+      }
+    }
+    if (SQLITE_FILE_EXTENSIONS.has(ext) || isSqliteMagicHeader(head)) {
+      return previewSqliteDatabaseFile(full, st.size);
+    }
+
     const buf = await fs.promises.readFile(full);
     const truncated = buf.length > TEXT_PREVIEW_MAX;
     const slice = truncated ? buf.subarray(0, TEXT_PREVIEW_MAX) : buf;

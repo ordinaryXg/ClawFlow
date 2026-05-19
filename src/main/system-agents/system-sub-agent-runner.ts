@@ -18,6 +18,13 @@ import { writeSystemRunSnapshot } from './system-agent-run-snapshot';
 
 const runningBySlot = new Map<string, string>();
 
+/** 主动进化测试等场景：解除异常退出遗留的槽位占用 */
+export function releaseSystemSubAgentSlot(slotId: string): void {
+  const id = String(slotId ?? '').trim();
+  if (!id) return;
+  runningBySlot.delete(id);
+}
+
 export type SystemSubAgentRunRequest = SubAgentRunRequest;
 
 export async function runSystemSubAgentOnce(req: SystemSubAgentRunRequest): Promise<SubAgentRunResult> {

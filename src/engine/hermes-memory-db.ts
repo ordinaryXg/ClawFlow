@@ -11,8 +11,6 @@ import { workspaceAgentDotMemoryDirAbs, workspaceSkillsDirAbs } from '../main/wo
 import { clawflowDir } from '../main/workspace/workspace-service';
 import { parseWorkspaceMemoryMarkdown } from '../shared/workspace-memory-frontmatter';
 
-const requireSqlite = createRequire(__filename);
-
 /** CJS `export =`：类型上无 `.default`，运行时仍兼容 `default` 包装 */
 type BetterSqliteCtor = typeof import('better-sqlite3');
 type BetterSqliteDb = InstanceType<BetterSqliteCtor>;
@@ -20,17 +18,43 @@ type BetterSqliteDb = InstanceType<BetterSqliteCtor>;
 let ctorCache: BetterSqliteCtor | null | undefined;
 let ctorLoadError: string | undefined;
 
-function getBetterSqliteCtor(): BetterSqliteCtor | null {
+function resolveBetterSqliteCtor(mod: BetterSqliteCtor | { default: BetterSqliteCtor }): BetterSqliteCtor {
+  return (mod as { default?: BetterSqliteCtor }).default ?? (mod as BetterSqliteCtor);
+}
+
+/** Webpack 主进程将 better-sqlite3 标为 commonjs external，优先用运行时 require。 */
+export function getBetterSqliteCtor(): BetterSqliteCtor | null {
   if (ctorCache !== undefined) return ctorCache;
-  try {
-    const mod = requireSqlite('better-sqlite3') as BetterSqliteCtor | { default: BetterSqliteCtor };
-    ctorCache = (mod as { default?: BetterSqliteCtor }).default ?? (mod as BetterSqliteCtor);
-    return ctorCache;
-  } catch (e) {
-    ctorLoadError = e instanceof Error ? e.message : String(e);
-    ctorCache = null;
-    return null;
+
+  const loaders: Array<() => BetterSqliteCtor | { default: BetterSqliteCtor }> = [
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require('better-sqlite3') as BetterSqliteCtor | { default: BetterSqliteCtor };
+    },
+    () => {
+      const req = createRequire(path.join(process.cwd(), 'package.json'));
+      return req('better-sqlite3') as BetterSqliteCtor | { default: BetterSqliteCtor };
+    },
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { app } = require('electron') as typeof import('electron');
+      const req = createRequire(path.join(app.getAppPath(), 'package.json'));
+      return req('better-sqlite3') as BetterSqliteCtor | { default: BetterSqliteCtor };
+    },
+  ];
+
+  for (const load of loaders) {
+    try {
+      ctorCache = resolveBetterSqliteCtor(load());
+      ctorLoadError = undefined;
+      return ctorCache;
+    } catch (e) {
+      ctorLoadError = e instanceof Error ? e.message : String(e);
+    }
   }
+
+  ctorCache = null;
+  return null;
 }
 
 export function isHermesMemoryNativeLoaded(): boolean {

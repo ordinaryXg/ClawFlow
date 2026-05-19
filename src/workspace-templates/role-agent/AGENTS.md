@@ -84,7 +84,7 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 **`.agent/.roleAgent/`**（�
 - **文档（`tools.docs`）**：`docs.md`
 - **Git（`tools.git`）**：`git.md`
 - **命令行（`tools.shell`）**：`shell.md`（`workspace_run_shell`；高风险，通常需用户审批）
-- **网络（`web_search` / `web_scrape` / `embedded_browser`）**：`browser.md`
+- **网络（`web_search` / `web_scrape`）**：`browser.md`
 - **技能只读（`tools.skills`）、知识库（`tools.knowledge_base`）**：`skills.md`、`knowledge_base.md`
 
 ## 按需定制

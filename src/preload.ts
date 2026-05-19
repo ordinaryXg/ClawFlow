@@ -258,7 +258,6 @@ export interface IElectronAPI {
   onEngineChatStream: (
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
-  onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -610,15 +609,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('engine:chatStream', handler);
     return () => ipcRenderer.removeListener('engine:chatStream', handler);
-  },
-  onEmbeddedBrowserNavigate: (cb: (p: { url: string }) => void) => {
-    const handler = (_event: unknown, payload: unknown) => {
-      if (payload && typeof payload === 'object' && typeof (payload as { url?: string }).url === 'string') {
-        cb({ url: (payload as { url: string }).url });
-      }
-    };
-    ipcRenderer.on('embedded-browser:navigate', handler);
-    return () => ipcRenderer.removeListener('embedded-browser:navigate', handler);
   },
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => {
     const handler = (_event: unknown, payload: unknown) => {

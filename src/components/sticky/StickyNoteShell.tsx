@@ -156,10 +156,6 @@ const StickyNoteShell: FC = () => {
       return [stickyBootstrap.satelliteWorkspace];
     }
     const r = recentEntries.map((e) => e.path);
-    const act = activeWorkspacePath;
-    if (act && !r.some((p) => workspacePathsLikelyEqual(p, act))) {
-      r.unshift(act);
-    }
     return r.filter((p) => !detachedPaths.some((d) => workspacePathsLikelyEqual(d, p)));
   }, [recentEntries, activeWorkspacePath, detachedPaths, isSatellite, stickyBootstrap?.satelliteWorkspace]);
 

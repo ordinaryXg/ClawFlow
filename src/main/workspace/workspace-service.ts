@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
+import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
 import { ensureWorkspaceSkillCreatorHermesSkill } from './workspace-hermes-skill-bootstrap';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import {
@@ -58,15 +59,43 @@ export const SUBAGENT_ROOT_DIR = '.subagent';
  * 仅从工作区根及缓存 blob 删除 ClawFlow 管理的目录，不删除用户项目文件。
  * 含工作区根 `.agent/`、遗留 `.subagent/`、根下 `.clawflow-launcher-stash/`、blob 内 stash，以及历史遗留根目录等；各目录不存在时忽略。
  */
+async function rmPathWithRetry(target: string, attempts = 4): Promise<void> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await fs.promises.rm(target, { recursive: true, force: true });
+      return;
+    } catch (e: unknown) {
+      lastErr = e;
+      const code = e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
+      if (code === 'ENOENT') return;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+async function pathIsExistingDir(p: string): Promise<boolean> {
+  try {
+    const st = await fs.promises.stat(p);
+    return st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string): Promise<void> {
   const root = path.resolve(workspaceRoot);
+  invalidateHermesMemoryDbCache(root);
   const blob = workspaceBlobDirAbs(workspaceRoot);
   const dirs = [
-    blob,
+    path.join(root, WORKSPACE_AGENT_DIR),
     path.join(blob, WORKSPACE_AGENT_DIR),
     path.join(blob, SUBAGENT_ROOT_DIR),
-    path.join(root, WORKSPACE_AGENT_DIR),
     path.join(root, SUBAGENT_ROOT_DIR),
+    blob,
     path.join(root, '.clawflow-launcher-stash'),
     path.join(root, '.clawflow'),
     path.join(root, WORKSPACE_TODO_DATA_DIR),
@@ -75,11 +104,15 @@ export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string):
     path.join(root, '.roleAgent'),
     path.join(root, '.tool'),
   ];
+  const seen = new Set<string>();
   for (const d of dirs) {
+    const key = path.resolve(d).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     try {
-      await fs.promises.rm(d, { recursive: true, force: true });
+      await rmPathWithRetry(d);
     } catch {
-      /* ENOENT 等 */
+      /* 单目录失败不阻断其余；`.agent` 由 removeWorkspaceForUser 终检 */
     }
   }
 }
@@ -572,25 +605,22 @@ export async function ensureWorkspaceInitialized(
   } catch {
     /* ignore */
   }
-  if (!preserveExistingLayout) {
-    try {
-      await ensureWorkspaceMainMemoryTemplates(root);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
-    }
-  }
   migrateLegacyConversationsOnce(root);
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
 
-  if (!preserveExistingLayout) {
-    try {
-      await ensureWorkspaceAgentRoleTemplates(root);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
-    }
+  // 缺失则补写（wx，不覆盖）；勿因已有 `.agent/` 而跳过 `.roleAgent` 模板
+  try {
+    await ensureWorkspaceMainMemoryTemplates(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
+  }
+  try {
+    await ensureWorkspaceAgentRoleTemplates(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceAgentRoleTemplates failed:', msg);
   }
 
   try {
@@ -720,6 +750,7 @@ export async function resetWorkspaceCacheDirs(
   | { ok: false; error: string }
 > {
   const root = path.resolve(String(workspaceRoot || ''));
+  invalidateHermesMemoryDbCache(root);
   const agentDir = workspaceAgentRootAbs(root);
   const subagentDir = workspaceSubagentRootAbs(root);
   const stashDir = launcherStashDirAbs(root);
@@ -730,7 +761,7 @@ export async function resetWorkspaceCacheDirs(
       try {
         const st = await fs.promises.stat(p);
         if (st.isDirectory()) {
-          await fs.promises.rm(p, { recursive: true, force: true });
+          await rmPathWithRetry(p);
           return true;
         }
       } catch {
@@ -803,9 +834,20 @@ export type RemoveWorkspaceUserResult =
  */
 export async function removeWorkspaceForUser(workspacePath: string): Promise<RemoveWorkspaceUserResult> {
   const abs = path.resolve(workspacePath);
+  if (!isWorkspaceKnownInRegistry(abs, loadRegistry())) {
+    return { ok: false, error: 'Workspace is not in registry' };
+  }
   try {
-    const { newActivePath } = detachWorkspaceFromRegistry(abs);
     await removeWorkspaceManagedMetadataDirs(abs);
+    const agentDir = workspaceAgentRootAbs(abs);
+    if (await pathIsExistingDir(agentDir)) {
+      return {
+        ok: false,
+        error:
+          '无法删除 `.agent/`（文件可能被占用）。请关闭使用该工作区的窗口后重试。',
+      };
+    }
+    const { newActivePath } = detachWorkspaceFromRegistry(abs);
     return { ok: true, newActivePath, deletedFromDisk: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -7,7 +7,6 @@ export type WorkspaceToolId =
   | 'shell'
   | 'web_search'
   | 'web_scrape'
-  | 'embedded_browser'
   | 'todos'
   | 'skills'
   | 'knowledge_base';
@@ -18,7 +17,6 @@ export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'shell',
   'web_search',
   'web_scrape',
-  'embedded_browser',
   'todos',
   'skills',
   'knowledge_base',
@@ -35,7 +33,6 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   shell: true,
   web_search: true,
   web_scrape: true,
-  embedded_browser: true,
   todos: true,
   /** 新建工作区 / 未在 manifest 中显式写入时默认开启 Hermes 工作区技能 */
   skills: true,
@@ -43,21 +40,17 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
 };
 
 /**
- * 合并默认与勾选；支持 v1 manifest 的 `browser`：在未见分项开关时，`browser` 同时作用于 web_search / web_scrape / embedded_browser。
+ * 合并默认与勾选；支持 v1 manifest 的 `browser`：在未见分项开关时，`browser` 同时作用于 web_search / web_scrape。
  */
 export function mergeToolSelection(sel?: WorkspaceToolSelectionInput): Record<WorkspaceToolId, boolean> {
   const out: Record<WorkspaceToolId, boolean> = { ...DEFAULT_WORKSPACE_TOOL_SELECTION };
   if (!sel || typeof sel !== 'object') return out;
 
-  const hasGranularBrowser =
-    typeof sel.web_search === 'boolean' ||
-    typeof sel.web_scrape === 'boolean' ||
-    typeof sel.embedded_browser === 'boolean';
+  const hasGranularBrowser = typeof sel.web_search === 'boolean' || typeof sel.web_scrape === 'boolean';
 
   if (!hasGranularBrowser && typeof sel.browser === 'boolean') {
     out.web_search = sel.browser;
     out.web_scrape = sel.browser;
-    out.embedded_browser = sel.browser;
   }
 
   for (const id of WORKSPACE_TOOL_IDS) {

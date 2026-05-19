@@ -96,8 +96,15 @@ export function registerWorkspaceIPC(): void {
   });
 
   ipcMain.handle('workspace:remove', async (_event, folderPath: string) => {
-    const res = await workspaceService.removeWorkspaceForUser(String(folderPath || ''));
+    const removedResolved = path.resolve(String(folderPath || ''));
+    const res = await workspaceService.removeWorkspaceForUser(removedResolved);
     if (!res.ok) return res;
+
+    const mainLast = getMainShellLastWorkspacePath();
+    if (mainLast && workspaceService.isSameWorkspacePath(mainLast, removedResolved)) {
+      setMainShellLastWorkspacePath(res.newActivePath);
+    }
+
     if (res.newActivePath) {
       syncActiveWorkspaceRootToEngine(res.newActivePath);
       await workspaceService.ensureWorkspaceInitialized(res.newActivePath);
