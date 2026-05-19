@@ -1,0 +1,120 @@
+---
+name: <skill-name>
+description: <一句话描述技能功能与触发场景，不超过 120 字>
+version: 1.0.0
+author: <作者>
+category: <user|workflow|integration|example>
+tags: [<标签1>, <标签2>]
+agent_created: true
+---
+
+# <技能名称>
+
+_<一句话说明这个 Hermes 技能解决什么问题>_
+
+## 快速开始 (Quick Start)
+
+**用户输入示例：**
+```
+<典型用户请求>
+```
+
+**AI 执行流程（ClawFlow）：**
+1. `workspace_skill_list` / `workspace_skill_view` — 确认无重复技能
+2. `workspace_skill_create` — 在 `.agent/.skills/<skill-name>/` 创建 `SKILL.md`
+3. （可选）`workspace_skill_write_aux` — 在 `references/` 写长文
+4. `workspace_memory_search` — 验证可被检索（需 manifest 开启 `tools.skills`）
+
+---
+
+## 触发词与适用场景 (Triggers & Use Cases)
+
+### 触发词
+- `<关键词1>` — <场景>
+- `<关键词2>` — <场景>
+
+### 适用场景
+1. **<场景1>：** <说明>
+
+### 不适用场景
+- <场景> — 请用 `<其它技能或工具>`
+
+---
+
+## 工作流程 (Workflow)
+
+### 步骤1：<名称>
+**目的：** <目的>
+
+**操作：** <相对工作区根的路径、命令、工具名>
+
+**异常处理：**
+- 若 <情况>，则 <处理>
+
+### 步骤2：<名称>
+...
+
+---
+
+## 参数说明 (Parameters)
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `<param>` | string | 是/否 | <说明> |
+
+---
+
+## 示例 (Examples)
+
+### 示例1：<场景>
+**用户输入：**
+```
+<输入>
+```
+
+**期望行为：**
+<输出或动作>
+
+---
+
+## 错误处理 (Error Handling)
+
+| 情况 | 处理 | 用户提示 |
+|------|------|----------|
+| <情况> | <策略> | `<提示>` |
+
+---
+
+## 依赖与集成 (Dependencies)
+
+### ClawFlow 工具
+- `workspace_skill_*` — 读写技能
+- `workspace_memory_search` — 检索已索引技能正文
+
+### 其它 Hermes 技能
+- `<skill-name>` — <用途>
+
+---
+
+## 安全考虑 (Security)
+
+### P0（必须修复）
+- [ ] 命令注入、路径穿越、SSRF、密钥硬编码
+
+### P1（强烈建议）
+- [ ] 输入验证、错误信息不泄露堆栈
+
+### P2（可后续优化）
+- [ ] 文档与示例完整性
+
+---
+
+## 版本历史 (Changelog)
+
+### [1.0.0] - <YYYY-MM-DD>
+#### Added
+- 初始版本
+
+---
+
+_本文件位于 `.agent/.skills/<skill-name>/SKILL.md`，随工作区版本管理。_

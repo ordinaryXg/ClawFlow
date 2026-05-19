@@ -21,6 +21,7 @@ import {
   syncActiveWorkspaceRootToEngine,
 } from '../workspace/active-workspace-sync';
 import { rescheduleAllTodoTriggers } from '../todo/todo-triggers-scheduler';
+import { evictClawFlowSessionStore } from '../../engine/clawflow-engine';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes-memory-db';
 import { listKnowledgeManifestEntries, rebuildKnowledgeManifest } from '../workspace/workspace-knowledge-manifest';
 import { createKnowledgeNote } from '../workspace/workspace-knowledge-bootstrap';
@@ -36,6 +37,11 @@ import { deleteHermesSkillDirectory } from '../workspace/workspace-skills-delete
 import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from '../workspace/workspace-git';
 import { readSkillEvolutionState } from '../skill/skill-evolution-state';
 import { runManualSkillEvolutionTest } from '../skill/skill-evolution-scheduler';
+import {
+  getEvolutionRun,
+  listEvolutionRuns,
+  revertEvolutionRun,
+} from '../skill/skill-evolution-runs';
 import { intelligenceLevelFromXp, intelligenceLevelProgress } from '../../shared/intelligence-profile';
 
 export function registerWorkspaceIPC(): void {
@@ -90,6 +96,36 @@ export function registerWorkspaceIPC(): void {
     }
   });
 
+  ipcMain.handle('evolution:listRuns', async (event, limit?: number) => {
+    const root = requireWorkspaceRootForWebContents(event.sender);
+    const lim = typeof limit === 'number' && Number.isFinite(limit) ? limit : 24;
+    const runs = await listEvolutionRuns(root, lim);
+    return { ok: true as const, runs };
+  });
+
+  ipcMain.handle('evolution:getRun', async (event, runId: string) => {
+    const root = requireWorkspaceRootForWebContents(event.sender);
+    const run = await getEvolutionRun(root, String(runId ?? '').trim());
+    if (!run) return { ok: false as const, error: 'run_not_found' };
+    return { ok: true as const, run };
+  });
+
+  ipcMain.handle('evolution:revertRun', async (event, runId: string) => {
+    const root = requireWorkspaceRootForWebContents(event.sender);
+    const res = await revertEvolutionRun(root, String(runId ?? '').trim());
+    if (!res.ok) return res;
+    void workspaceChangeLog
+      .appendWorkspaceChangeLog(root, {
+        kind: 'evolution',
+        title: '已撤销进化',
+        userPreview: `runId: ${String(runId ?? '').trim()}`,
+        assistantExcerpt: '工作区记忆/技能/角色文档已恢复至该次进化前的备份。',
+        meta: { evolutionReverted: true, evolutionRunId: String(runId ?? '').trim() },
+      })
+      .catch(() => undefined);
+    return { ok: true as const };
+  });
+
   ipcMain.handle('workspace:listRecent', async () => {
     return workspaceService.listRecentWorkspaceEntries();
   });
@@ -107,6 +143,8 @@ export function registerWorkspaceIPC(): void {
     const removedResolved = path.resolve(String(folderPath || ''));
     const res = await workspaceService.removeWorkspaceForUser(removedResolved);
     if (!res.ok) return res;
+
+    evictClawFlowSessionStore(removedResolved);
 
     const mainLast = getMainShellLastWorkspacePath();
     if (mainLast && workspaceService.isSameWorkspacePath(mainLast, removedResolved)) {

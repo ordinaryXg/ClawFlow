@@ -48,6 +48,10 @@ const ManualEvolutionFab: FC<Props> = ({ variant = 'fab' }) => {
             ? t('layout.evolutionTest.err_no_workspace')
             : key === 'skills_disabled'
               ? t('layout.evolutionTest.err_skills_disabled')
+              : key === 'docs_disabled'
+                ? t('layout.evolutionTest.err_docs_disabled')
+                : key === 'no_disk_diff'
+                  ? t('layout.evolutionTest.err_no_disk_diff')
               : key === 'no_conversation'
                 ? t('layout.evolutionTest.err_no_conversation')
                 : key === 'slot_already_running'

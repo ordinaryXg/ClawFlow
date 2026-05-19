@@ -13,7 +13,7 @@ import * as path from 'path';
 import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
-import { ensureWorkspaceSkillCreatorHermesSkill } from './workspace-hermes-skill-bootstrap';
+import { installWorkspaceSkillCreatorPackage } from './workspace-hermes-skill-bootstrap';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
@@ -637,12 +637,14 @@ export async function ensureWorkspaceInitialized(
     console.warn('[workspace-service] refreshSystemSkillAgentForWorkspace failed:', msg);
   }
 
-  // 新建与既有工作区：若缺失则补写内置 `skill-creator/SKILL.md`（wx，不覆盖用户编辑）
-  try {
-    await ensureWorkspaceSkillCreatorHermesSkill(root);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceSkillCreatorHermesSkill failed:', msg);
+  // 新建工作区（尚无 `.agent/`）：安装 skill-creator v2 整包；既有工作区不补写（无 v1 增量逻辑）
+  if (!preserveExistingLayout) {
+    try {
+      await installWorkspaceSkillCreatorPackage(root);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] installWorkspaceSkillCreatorPackage failed:', msg);
+    }
   }
 
   try {

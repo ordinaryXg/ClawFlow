@@ -47,6 +47,7 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [revertingRunId, setRevertingRunId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!workspacePath) {
@@ -73,11 +74,29 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
     const onUpd = () => void load();
     window.addEventListener('cf-workspace-changelog-updated', onUpd);
     const offIpc = window.electronAPI?.onWorkspaceChangelogUpdated?.(() => void load());
+    const offEvo = window.electronAPI?.onEvolutionRunsUpdated?.(() => void load());
     return () => {
       window.removeEventListener('cf-workspace-changelog-updated', onUpd);
       offIpc?.();
+      offEvo?.();
     };
   }, [load]);
+
+  const revertEvolution = async (runId: string) => {
+    if (revertingRunId) return;
+    setRevertingRunId(runId);
+    try {
+      const res = await window.electronAPI?.evolutionRevertRun?.(runId);
+      if (!res?.ok) {
+        setError(String(res?.error ?? t('chat.rightTabs.evolutionRevertFailed')));
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('cf-workspace-changelog-updated'));
+      await load();
+    } finally {
+      setRevertingRunId(null);
+    }
+  };
 
   const locale = i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US';
 
@@ -127,6 +146,23 @@ const ChangeHistoryPanel: FC<{ workspacePath: string | null }> = ({ workspacePat
                   <div className="cf-changeLog__meta cf-sub">
                     {t('chat.rightTabs.changeConvId')}: {e.conversationId || '—'}
                   </div>
+                  {kind === 'evolution' &&
+                  typeof e.meta?.evolutionRunId === 'string' &&
+                  e.meta?.evolutionOk === true &&
+                  e.meta?.revertible === true &&
+                  !e.meta?.evolutionReverted ? (
+                    <button
+                      type="button"
+                      className="cf-btn cf-btnGhost cf-btnSmall"
+                      style={{ marginTop: 8 }}
+                      disabled={revertingRunId === e.meta.evolutionRunId}
+                      onClick={() => void revertEvolution(String(e.meta?.evolutionRunId))}
+                    >
+                      {revertingRunId === e.meta.evolutionRunId
+                        ? t('chat.rightTabs.evolutionReverting')
+                        : t('chat.rightTabs.evolutionRevert')}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </li>

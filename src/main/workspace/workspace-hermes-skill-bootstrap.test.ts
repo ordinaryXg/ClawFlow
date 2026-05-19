@@ -3,7 +3,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { workspaceBlobDirAbs } from './workspace-blob-store';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';
-import { ensureWorkspaceSkillCreatorHermesSkill, WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD } from './workspace-hermes-skill-bootstrap';
+import {
+  installWorkspaceSkillCreatorPackage,
+  WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD,
+} from './workspace-hermes-skill-bootstrap';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
 
 describe('workspace-hermes-skill-bootstrap', () => {
@@ -35,22 +38,36 @@ describe('workspace-hermes-skill-bootstrap', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('creates skill-creator when other skills already exist', async () => {
+  it('installs full skill-creator v2 package on new workspace', async () => {
     fs.mkdirSync(path.join(workspaceSkillsDirAbs(dir), 'alpha'), { recursive: true });
     fs.writeFileSync(path.join(workspaceSkillsDirAbs(dir), 'alpha', 'SKILL.md'), '# A\n', 'utf8');
-    const r = await ensureWorkspaceSkillCreatorHermesSkill(dir);
-    expect(r.created.length).toBe(1);
-    expect(r.created[0]).toBe(WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD);
-    const md = fs.readFileSync(path.join(workspaceSkillsDirAbs(dir), 'skill-creator', 'SKILL.md'), 'utf8');
+    const r = await installWorkspaceSkillCreatorPackage(dir);
+    expect(r.created.length).toBeGreaterThanOrEqual(5);
+    expect(r.created).toContain(WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD);
+    const sc = path.join(workspaceSkillsDirAbs(dir), 'skill-creator');
+    expect(fs.existsSync(path.join(sc, '_meta.json'))).toBe(true);
+    expect(fs.existsSync(path.join(sc, 'templates', 'SKILL.md.template'))).toBe(true);
+    expect(fs.existsSync(path.join(sc, 'scripts', 'validate_skill.py'))).toBe(true);
+    const md = fs.readFileSync(path.join(sc, 'SKILL.md'), 'utf8');
     expect(md).toContain('skill-creator');
     const list = listWorkspaceHermesSkills(dir);
     expect(list.some((s) => s.name === 'skill-creator')).toBe(true);
   });
 
-  it('skill-creator second call is no-op', async () => {
-    const r1 = await ensureWorkspaceSkillCreatorHermesSkill(dir);
-    expect(r1.created.length).toBe(1);
-    const r2 = await ensureWorkspaceSkillCreatorHermesSkill(dir);
+  it('second install is no-op', async () => {
+    const r1 = await installWorkspaceSkillCreatorPackage(dir);
+    expect(r1.created.length).toBeGreaterThanOrEqual(5);
+    const r2 = await installWorkspaceSkillCreatorPackage(dir);
     expect(r2.created.length).toBe(0);
+  });
+
+  it('skips install when skill-creator directory already exists (no v1 backfill)', async () => {
+    const scRoot = path.join(workspaceSkillsDirAbs(dir), 'skill-creator');
+    fs.mkdirSync(scRoot, { recursive: true });
+    fs.writeFileSync(path.join(scRoot, 'SKILL.md'), '# legacy v1 only\n', 'utf8');
+    const r = await installWorkspaceSkillCreatorPackage(dir);
+    expect(r.created).not.toContain(WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD);
+    expect(fs.existsSync(path.join(scRoot, '_meta.json'))).toBe(false);
+    expect(fs.existsSync(path.join(scRoot, 'scripts', 'validate_skill.py'))).toBe(false);
   });
 });

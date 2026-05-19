@@ -285,7 +285,7 @@ export function buildWorkspaceToolSkillsMd(): string {
     ``,
     `工作区技能存放在 **\`.agent/.skills/<名称>/\`**，主文件为 **\`SKILL.md\`**，可选 **\`references/\`** 下放补充 \`.md\` / \`.txt\`。由应用内 FTS 索引与 UI 只读浏览；**无**外部技能市场安装流程。`,
     ``,
-    `> 打开工作区时若缺失会自动补写内置 **\`.agent/.skills/skill-creator/SKILL.md\`**（指导在本工作区用工具新建其它 Hermes 技能）；不再自动创建 \`default/\` 示例目录。`,
+    `> **新建工作区**时会自动写入内置 **\`.agent/.skills/skill-creator/\`** v2 包（模板、示例、校验脚本）；既有工作区不自动补写。不再创建 \`default/\` 示例目录。`,
     ``,
     `> 开关：\`.agent/.tool/manifest.json\` → \`tools.skills\`（仅影响下列 **只读** 模型工具；浏览技能请用应用内「技能」面板）`,
     ``,

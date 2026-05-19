@@ -4,6 +4,57 @@ import { randomUUID } from 'crypto';
 import { conversationsStorePath } from '../main/workspace/workspace-service';
 import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 
+/** 同一路径串行写盘，避免并发 normalize 时 Windows 上 rename EPERM。 */
+const writeTailByTarget = new Map<string, Promise<void>>();
+
+function enqueueSerializedWrite<T>(targetPath: string, task: () => Promise<T>): Promise<T> {
+  const key = path.resolve(targetPath).toLowerCase();
+  const prev = writeTailByTarget.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(task);
+  writeTailByTarget.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return run;
+}
+
+async function atomicWriteUtf8File(targetPath: string, data: string): Promise<void> {
+  const dir = path.dirname(targetPath);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const tmp = path.join(
+    dir,
+    `.${path.basename(targetPath)}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
+  );
+  await fs.promises.writeFile(tmp, data, 'utf-8');
+
+  const finish = async (): Promise<void> => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await fs.promises.rename(tmp, targetPath);
+        return;
+      } catch (e: unknown) {
+        const code = e && typeof e === 'object' ? String((e as NodeJS.ErrnoException).code ?? '') : '';
+        if (attempt < 4 && (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY')) {
+          await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+          continue;
+        }
+        if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY' || code === 'EXDEV') {
+          await fs.promises.writeFile(targetPath, data, 'utf-8');
+          await fs.promises.unlink(tmp).catch(() => undefined);
+          return;
+        }
+        await fs.promises.unlink(tmp).catch(() => undefined);
+        throw e;
+      }
+    }
+  };
+
+  await finish();
+}
+
 export type StoredMessageRole = 'user' | 'assistant' | 'tool';
 
 export type StoredToolCall = {
@@ -118,12 +169,10 @@ export class SessionStore {
   }
 
   async writeAll(conversations: StoredConversation[]): Promise<void> {
-    await fs.promises.mkdir(path.dirname(this.storePath), { recursive: true });
     const payload: StorePayload = { conversations };
     const data = JSON.stringify(payload, null, 2);
-    const tmp = `${this.storePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-    await fs.promises.writeFile(tmp, data, 'utf-8');
-    await fs.promises.rename(tmp, this.storePath);
+    const target = this.storePath;
+    await enqueueSerializedWrite(target, () => atomicWriteUtf8File(target, data));
   }
 
   async upsertConversation(conversation: StoredConversation): Promise<void> {

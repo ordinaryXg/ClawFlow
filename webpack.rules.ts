@@ -42,4 +42,10 @@ export const rules: Required<ModuleOptions>['rules'] = [
     },
     type: 'asset/source',
   },
+  /** skill-creator 包：.json / .py / .template 与 .md 一样打入主进程 */
+  {
+    test: /\.(json|py|template)$/i,
+    include: (abs: string) => abs.replace(/\\/g, '/').includes('/workspace-templates/hermes-skills/skill-creator/'),
+    type: 'asset/source',
+  },
 ];

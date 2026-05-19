@@ -36,6 +36,7 @@ import {
   type PublicWebSearchConfig,
   type ResolvedClawFlowWebSearch,
 } from './web-search';
+import { getActiveWorkspaceRoot } from './active-workspace-root';
 import {
   resolveWorkspaceRootForWebContents,
   workspaceRootOrUndefined,
@@ -127,6 +128,7 @@ export type ToolApprovalNeededPayload = {
 export interface ClawFlowEngine {
   getConfig(): Readonly<ClawFlowEnginePublicConfig>;
   setWorkspaceRoot(workspaceRoot: string): void;
+  evictSessionStore(workspaceRoot: string): void;
   /** 启动时环境/bootstrap 中的 webSearch（不含仅磁盘覆盖项的语义：合并由内部完成） */
   getWebSearchBootstrap(): ClawFlowWebSearchUserConfig;
   /** 重读 cf.web-search-prefs.json 并合并 */
@@ -340,8 +342,26 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     if (this.config.verbose) console.log('[ClawFlowEngine] workspaceRoot=', next);
   }
 
+  evictSessionStore(workspaceRoot: string): void {
+    const key = path.resolve(workspaceRoot);
+    this.sessionStores.delete(key);
+    if (this.config.workspaceRoot === key) {
+      const pending = path.join(app.getPath('userData'), '.clawflow-engine-pending-workspace');
+      this.config.workspaceRoot = pending;
+      this.store = this.getSessionStore(pending);
+    }
+  }
+
+  private resolveListConversationsRoot(workspaceRoot?: string): string | null {
+    const explicit = String(workspaceRoot ?? '').trim();
+    if (explicit) return path.resolve(explicit);
+    return getActiveWorkspaceRoot();
+  }
+
   async listConversations(workspaceRoot?: string): Promise<StoredConversation[]> {
-    const store = this.getSessionStore(workspaceRoot ?? this.config.workspaceRoot);
+    const eff = this.resolveListConversationsRoot(workspaceRoot);
+    if (!eff) return [];
+    const store = this.getSessionStore(eff);
     return await store.normalizeToSingletonIfNeeded();
   }
 
@@ -1122,5 +1142,14 @@ export function syncClawFlowEngineWorkspaceRoot(workspaceRoot: string): void {
     getGlobalClawFlowEngine().setWorkspaceRoot(workspaceRoot);
   } catch (e: any) {
     console.warn('[ClawFlowEngine] sync workspace root failed:', e?.message ?? e);
+  }
+}
+
+export function evictClawFlowSessionStore(workspaceRoot: string): void {
+  try {
+    getGlobalClawFlowEngine().evictSessionStore(workspaceRoot);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[ClawFlowEngine] evict session store failed:', msg);
   }
 }

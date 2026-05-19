@@ -6,8 +6,8 @@ ClawFlow **不会**再自动创建 \`.agent/.skills/default/\` 示例目录。
 ## 如何开始
 
 1. 确认 \`.agent/.tool/manifest.json\` 中已开启 **\`tools.skills\`**。
-2. 打开工作区后若已自动补全，请阅读 **\`.agent/.skills/skill-creator/SKILL.md\`**（「创建 Skill 的 Skill」），在对话中让模型按其中流程使用 \`workspace_skill_create\` 等工具新建你的第一个技能目录。
-3. 若该文件不存在，可在对话中说明「按 skill-creator 初始化 Hermes 技能」或手动从应用模板复制同名目录。
+2. **新建工作区**时会自动写入 **\`.agent/.skills/skill-creator/\`** v2 包；请阅读其中 \`SKILL.md\`，在对话中用 \`workspace_skill_create\` 等工具新建技能。
+3. 既有工作区若无该目录，可从应用模板复制 \`skill-creator\` 或让助手按元技能说明手动创建。
 
 ## 常用工具
 

@@ -492,6 +492,7 @@ export interface IElectronAPI {
   workspaceSkillsDeleteSkill: (skillRootRel: string) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
+  onEvolutionRunsUpdated: (cb: () => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
   todoTriggersSetAiReceipt: (params: {
@@ -745,6 +746,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appSweepLauncherStash: (params: { workspacePath: string }) =>
     ipcRenderer.invoke('app:sweepLauncherStash', params),
   workspaceGetChangeLog: (limit?: number) => ipcRenderer.invoke('workspace:getChangeLog', limit),
+  evolutionListRuns: (limit?: number) => ipcRenderer.invoke('evolution:listRuns', limit),
+  evolutionGetRun: (runId: string) => ipcRenderer.invoke('evolution:getRun', runId),
+  evolutionRevertRun: (runId: string) => ipcRenderer.invoke('evolution:revertRun', runId),
   workspaceAppendChangeLog: (payload: { conversationId: string; userPreview: string; assistantExcerpt: string }) =>
     ipcRenderer.invoke('workspace:appendChangeLog', payload),
   memoryFtsSearch: (params: { query: string; limit?: number; skillName?: string }) =>
@@ -775,6 +779,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = () => cb();
     ipcRenderer.on('workspace:changelogUpdated', handler);
     return () => ipcRenderer.removeListener('workspace:changelogUpdated', handler);
+  },
+  onEvolutionRunsUpdated: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('workspace:evolutionRunsUpdated', handler);
+    return () => ipcRenderer.removeListener('workspace:evolutionRunsUpdated', handler);
   },
   todoTriggersList: () => ipcRenderer.invoke('todoTriggers:list'),
   todoTriggersSaveAll: (triggers: unknown[]) => ipcRenderer.invoke('todoTriggers:saveAll', triggers),

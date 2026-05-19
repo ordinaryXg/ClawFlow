@@ -1,6 +1,7 @@
 /**
  * 活动工作区根：注册表、主进程单例与 ClawFlow 引擎 SessionStore 对齐。
  */
+import { app } from 'electron';
 import * as path from 'path';
 import { setActiveWorkspaceRoot } from '../../engine/active-workspace-root';
 import { syncClawFlowEngineWorkspaceRoot } from '../../engine/clawflow-engine';
@@ -22,4 +23,6 @@ export function applyActiveWorkspace(workspacePath: string): void {
 
 export function clearActiveWorkspaceRootInMemory(): void {
   setActiveWorkspaceRoot('');
+  const pending = path.join(app.getPath('userData'), '.clawflow-engine-pending-workspace');
+  syncClawFlowEngineWorkspaceRoot(pending);
 }

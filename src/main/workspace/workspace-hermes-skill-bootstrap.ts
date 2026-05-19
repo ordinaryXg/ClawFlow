@@ -1,12 +1,12 @@
 /**
- * Hermes 工作区技能：打开工作区时若缺失则补写内置 `skill-creator/SKILL.md`（wx，不覆盖用户修改）。
- * 不再自动创建 `default/` 示例目录；新建技能请通过 `.agent/.skills/skill-creator` 说明与工具链完成。
+ * Hermes 工作区 skill-creator v2 包：仅在**新建工作区**（尚无 `.agent/`）时整包写入。
+ * 结构：SKILL.md + _meta.json + templates/ + examples/ + scripts/（对齐 WorkBuddy skills-creator）。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
-import templateSkillCreatorSkillMd from '../../workspace-templates/hermes-skills/skill-creator/SKILL.md';
+import { SKILL_CREATOR_PACKAGE_VERSION, SKILL_CREATOR_TEMPLATE_FILES } from './skill-creator-template-bundle';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 
 export const WORKSPACE_SKILL_CREATOR_HERMES_SKILL_DIR = '.agent/.skills/skill-creator';
@@ -24,23 +24,31 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
 }
 
 /**
- * 若 `.agent/.skills/skill-creator/SKILL.md` 尚不存在则创建（与其它技能是否已存在无关）。
+ * 新建工作区时安装 skill-creator v2 整包（各文件 wx，不覆盖已存在路径）。
+ * 既有工作区（已有 `.agent/`）不调用，不做 v1 单文件或缺文件补写。
  */
-export async function ensureWorkspaceSkillCreatorHermesSkill(workspaceRoot: string): Promise<{ created: string[] }> {
+export async function installWorkspaceSkillCreatorPackage(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
-  const skillsBase = workspaceSkillsDirAbs(root);
-  await fs.promises.mkdir(skillsBase, { recursive: true });
+  const skillCreatorRoot = path.join(workspaceSkillsDirAbs(root), 'skill-creator');
+  try {
+    await fs.promises.access(skillCreatorRoot);
+    return { created: [] };
+  } catch (e: unknown) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    if (code !== 'ENOENT') throw e;
+  }
 
-  const relMd = WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD.replace(/\\/g, '/');
-  const absMd = path.join(skillsBase, 'skill-creator', 'SKILL.md');
-  await fs.promises.mkdir(path.dirname(absMd), { recursive: true });
-
-  const body = String(templateSkillCreatorSkillMd ?? '').trimEnd();
-  const payload = body.endsWith('\n') ? body : `${body}\n`;
+  await fs.promises.mkdir(skillCreatorRoot, { recursive: true });
 
   const created: string[] = [];
-  if (await writeFileIfMissing(absMd, payload)) {
-    created.push(relMd);
+
+  for (const file of SKILL_CREATOR_TEMPLATE_FILES) {
+    const abs = path.join(skillCreatorRoot, ...file.rel.split('/'));
+    await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+    const relPosix = `${WORKSPACE_SKILL_CREATOR_HERMES_SKILL_DIR}/${file.rel}`.replace(/\\/g, '/');
+    if (await writeFileIfMissing(abs, file.content)) {
+      created.push(relPosix);
+    }
   }
 
   if (created.length) {
@@ -49,3 +57,5 @@ export async function ensureWorkspaceSkillCreatorHermesSkill(workspaceRoot: stri
 
   return { created };
 }
+
+export { SKILL_CREATOR_PACKAGE_VERSION };

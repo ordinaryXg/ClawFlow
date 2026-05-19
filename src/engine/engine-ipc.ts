@@ -143,8 +143,14 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
   });
   ipcMain.handle('engine:getConversations', async (event) => {
     const root = workspaceRootOrUndefined(resolveWorkspaceRootForWebContents(event.sender));
-    const conversations = await getGlobalClawFlowEngine().listConversations(root);
-    return { conversations };
+    try {
+      const conversations = await getGlobalClawFlowEngine().listConversations(root);
+      return { conversations };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[engine:getConversations]', msg);
+      return { conversations: [], error: msg };
+    }
   });
   ipcMain.handle(
     'engine:estimateNextRequestContext',

@@ -1,0 +1,14 @@
+{
+  "name": "skill-creator",
+  "description": "ClawFlow 元技能：在当前工作区 .agent/.skills/ 下创建、优化、审核其它 Hermes 技能。",
+  "version": "2.0.0",
+  "author": "ClawFlow",
+  "category": "meta",
+  "tags": ["skill-management", "meta", "hermes", "best-practices"],
+  "agent_created": false,
+  "dependencies": [],
+  "min_clawflow_version": "1.0.0",
+  "license": "MIT",
+  "created_at": "2026-05-19",
+  "updated_at": "2026-05-19"
+}

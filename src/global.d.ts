@@ -374,6 +374,9 @@ export interface IElectronAPI {
     | { ok: false; error: string }
   >;
   appSweepLauncherStash: (params: { workspacePath: string }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  evolutionListRuns: (limit?: number) => Promise<{ ok: boolean; runs?: unknown[] }>;
+  evolutionGetRun: (runId: string) => Promise<{ ok: boolean; run?: unknown; error?: string }>;
+  evolutionRevertRun: (runId: string) => Promise<{ ok: boolean; error?: string }>;
   workspaceGetChangeLog: (limit?: number) => Promise<{
     ok: boolean;
     entries: Array<{
@@ -455,6 +458,7 @@ export interface IElectronAPI {
   workspaceSkillsDeleteSkill: (skillRootRel: string) => Promise<{ ok: true } | { ok: false; error?: string }>;
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
+  onEvolutionRunsUpdated: (cb: () => void) => () => void;
   todoTriggersList: () => Promise<{ triggers: unknown[] }>;
   todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
   todoTriggersSetAiReceipt: (params: {

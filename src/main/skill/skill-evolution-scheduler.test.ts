@@ -67,8 +67,8 @@ describe('classifyEvolutionOutcomeMarkdown', () => {
     const text = 'Updated `.agent/.memory/notes.md` and added `.agent/.skills/foo/SKILL.md` for Hermes.';
     const r = classifyEvolutionOutcomeMarkdown(text);
     expect(r.aspectKeys).toEqual(['memory', 'skills']);
-    expect(r.titleZh).toContain('记忆库');
-    expect(r.titleZh).toContain('技能');
+    expect(r.titleZh).toContain('记忆整理');
+    expect(r.titleZh).toContain('技能维护');
   });
 
   it('detects role doc aspect', () => {

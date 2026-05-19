@@ -1,5 +1,5 @@
 /**
- * 主对话满足「用户手动或通讯端（飞书等）」完整轮次阈值后，触发 Skill Agent（进化）异步任务。
+ * 主对话满足「用户手动或通讯端（飞书等）」完整轮次阈值后，触发 Skill Agent（进化）三阶段管线。
  */
 
 import * as fs from 'fs';
@@ -8,14 +8,16 @@ import type { StoredMessage } from '../../engine/session-store';
 import { SessionStore } from '../../engine/session-store';
 import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
-import { releaseSystemSubAgentSlot, runSystemSubAgentOnce } from '../system-agents/system-sub-agent-runner';
-import {
-  SKILL_AGENT_SLOT_ID,
-  SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
-  computeSkillEvolutionSpacing,
-} from '../../shared/skill-agent-constants';
+import { releaseSystemSubAgentSlot } from '../system-agents/system-sub-agent-runner';
+import { SKILL_AGENT_SLOT_ID, computeSkillEvolutionSpacing } from '../../shared/skill-agent-constants';
 import { workspaceAgentDotMemoryDirAbs } from '../workspace/workspace-agent-layout';
 import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
+import {
+  evolutionToolsGate,
+  formatPipelineDiffSummary,
+  runEvolutionPipeline,
+} from './skill-evolution-pipeline';
+import { formatEvolutionDiffLines } from './skill-evolution-snapshot';
 
 export type EvolutionAspectKey = 'memory' | 'skills' | 'role_doc';
 
@@ -32,25 +34,15 @@ export function classifyEvolutionOutcomeMarkdown(text: string): {
   const order: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
   const aspectKeys = order.filter((k) => keys.has(k));
   const label: Record<EvolutionAspectKey, string> = {
-    memory: '记忆库',
-    skills: '技能（Hermes）',
-    role_doc: '角色文档',
+    memory: '记忆整理',
+    skills: '技能维护',
+    role_doc: '角色同步',
   };
   const titleZh =
     aspectKeys.length > 0 ? `进化完成 · ${aspectKeys.map((k) => label[k]).join('、')}` : '进化完成 · 综合更新';
   return { aspectKeys, titleZh };
 }
 
-/**
- * 轮次统计（totalUserManualRounds）约定：
- * - 仅在主会话一次「用户有效提问 → 引擎落盘最终 assistant」完成后，由 ClawFlowEngine.fireSkillEvolutionHookIfNeeded
- *   调用 maybeScheduleSkillEvolutionAfterMainTurn；子 Agent / 审计会话 / assistant_tool_summary 整段不落计数。
- * - 一条「回合」对应：会话末尾为普通 assistant，且从末尾向前跳过 tool 与中间 assistant（含带 tool_calls 的片段）
- *   后，遇到的最近一条 user 的渠道为 user_manual 或 user_feishu（无 channel 视为历史数据，仍计入）。
- * - 含多轮工具调用时持久化形如：… user → assistant(tool_calls) → tool → … → assistant(最终正文)，旧逻辑在向前扫描时
- *   会先碰到中间 assistant 并误判为 false，导致轮次几乎不增长；此处对中间 assistant 一律跳过。
- */
-/** 计入技能进化轮次的用户消息渠道（与 UI 内手动输入同级） */
 const EVOLUTION_COUNTED_USER_CHANNELS = new Set<string>(['user_manual', 'user_feishu']);
 
 export function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
@@ -60,7 +52,6 @@ export function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
   return EVOLUTION_COUNTED_USER_CHANNELS.has(ch);
 }
 
-/** 当前会话最后一条为可计数的 assistant，且向前跳过 tool / 中间 assistant 后，最近一条 user 为可计数渠道 */
 export function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boolean {
   if (messages.length < 2) return false;
   const last = messages[messages.length - 1];
@@ -131,41 +122,90 @@ async function excerptDotMemoryMarkdown(workspaceRoot: string, maxChars: number)
   return parts.join('\n').trim();
 }
 
-function buildSkillEvolutionTask(params: { chatExcerpt: string; memoryExcerpt: string }): string {
-  const chat = params.chatExcerpt.trim() || '（自上次进化以来的主对话摘录不可用。）';
-  const mem = params.memoryExcerpt.trim() || '（.agent/.memory 下暂无可读 Markdown 或目录为空。）';
-  return [
-    '【主工作区进化 Agent — 本轮任务】',
-    '',
-    '## 一、搜集与整合',
-    '合并以下两类材料，形成你内部的「工作区上下文快照」（不要逐字复述给用户）：',
-    '1) 自**上次成功进化**以来，主 Agent 与用户（含应用内与飞书等通讯端）的对话摘录（见下方「对话摘录」）。',
-    '2) 旧有主 Agent 记忆库：`.agent/.memory/` 下已有 Markdown（见「记忆库摘录」）。',
-    '',
-    '### 对话摘录',
-    '---',
-    chat,
-    '---',
-    '',
-    '### 记忆库摘录（.agent/.memory）',
-    '---',
-    mem,
-    '---',
-    '',
-    '## 二、记忆瘦身与再编排',
-    '判断上述内容是否冗余、重复或过期；**剔除**明显无用的对话式流水账，将可长期复用的结论、偏好、术语、项目约束等，**重新编排**写入 `.agent/.memory/`（可更新/新建 `.md`，保持文件名可读；不要写入密钥）。',
-    '',
-    '## 三、编写适用的 Skills',
-    '在 **`.agent/.skills/`** 下，基于新的记忆与对话主题，创建或**最小改动**更新 Hermes 技能（`SKILL.md` + 必要时 `references/`），遵守工作区工具与白名单；优先小步、可回滚。',
-    '',
-    '## 四、扩写主 Agent 角色文档',
-    '根据新的记忆库与技能现状，**扩写**（在保留用户已有立意的前提下补充段落，避免整文件覆盖）以下文件（路径相对工作区根）：',
-    '- `.agent/.roleAgent/AGENTS.md`',
-    '- `.agent/.roleAgent/SOUL.md`',
-    '',
-    '## 收尾',
-    '用 6 条以内要点总结本轮：记忆变更摘要、技能变更摘要、角色文档变更摘要、风险与后续建议。',
-  ].join('\n');
+function aspectKeysFromPhases(phases: { aspect: EvolutionAspectKey; diff: { length: number } }[]): EvolutionAspectKey[] {
+  return phases.filter((p) => p.diff.length > 0).map((p) => p.aspect);
+}
+
+async function finalizeEvolutionSuccess(params: {
+  workspaceRoot: string;
+  convId: string;
+  /** 自动进化成功时写入的轮次；手动测试为 undefined（不改动累计轮次） */
+  commitTotalRounds?: number;
+  runId: string;
+  combinedMessage: string;
+  aggregateDiff: { relPath: string; kind: string }[];
+  aspectKeys: EvolutionAspectKey[];
+  manual?: boolean;
+}): Promise<void> {
+  const { workspaceRoot: root, convId, commitTotalRounds, runId, combinedMessage, aggregateDiff, aspectKeys, manual } =
+    params;
+  const total = commitTotalRounds ?? (await readSkillEvolutionState(root)).totalUserManualRounds;
+  const label: Record<EvolutionAspectKey, string> = {
+    memory: '记忆整理',
+    skills: '技能维护',
+    role_doc: '角色同步',
+  };
+  const titleZh =
+    aspectKeys.length > 0
+      ? `进化完成 · ${aspectKeys.map((k) => label[k]).join('、')}`
+      : '进化完成 · 磁盘已更新';
+
+  const diffText = formatEvolutionDiffLines(aggregateDiff as Parameters<typeof formatEvolutionDiffLines>[0], 36);
+
+  const cur = await readSkillEvolutionState(root);
+  if (typeof commitTotalRounds === 'number') {
+    await writeSkillEvolutionState(root, { ...cur, totalUserManualRounds: commitTotalRounds });
+  }
+  await applySuccessfulEvolutionRewards(root, typeof commitTotalRounds === 'number' ? commitTotalRounds : cur.totalUserManualRounds);
+
+  void appendWorkspaceChangeLog(root, {
+    kind: 'evolution',
+    title: manual ? `${titleZh}（手动）` : titleZh,
+    conversationId: convId,
+    userPreview: `触发轮次：${total}。变更文件 ${aggregateDiff.length} 项。\n${diffText}`,
+    assistantExcerpt: combinedMessage.slice(0, 4000),
+    meta: {
+      evolutionOk: true,
+      aspects: aspectKeys,
+      totalUserManualRounds: total,
+      runId,
+      evolutionRunId: runId,
+      diffCount: aggregateDiff.length,
+      manual: Boolean(manual),
+      revertible: true,
+    },
+  }).catch(() => undefined);
+}
+
+async function finalizeEvolutionFailure(params: {
+  workspaceRoot: string;
+  convId: string;
+  total: number;
+  runId: string;
+  error: string;
+  failureReason: string;
+  manual?: boolean;
+  rolledBackRounds: boolean;
+}): Promise<void> {
+  const { workspaceRoot: root, convId, total, runId, error, failureReason, manual, rolledBackRounds } = params;
+  void appendWorkspaceChangeLog(root, {
+    kind: 'evolution',
+    title: manual ? '进化失败（手动）' : '进化失败',
+    conversationId: convId,
+    userPreview: rolledBackRounds
+      ? `第 ${total} 轮触发失败，已回滚轮次计数（仍为 ${total - 1}）。原因：${failureReason}`
+      : `进化失败：${failureReason}`,
+    assistantExcerpt: String(error).slice(0, 3500),
+    meta: {
+      evolutionOk: false,
+      totalUserManualRounds: rolledBackRounds ? total - 1 : total,
+      runId,
+      evolutionRunId: runId,
+      failureReason,
+      manual: Boolean(manual),
+      rolledBackRounds,
+    },
+  }).catch(() => undefined);
 }
 
 export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
@@ -185,78 +225,73 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
   if (!lastRoundCountsTowardEvolution(messages)) return;
 
   const before = await readSkillEvolutionState(root);
-  const total = before.totalUserManualRounds + 1;
-  const spacing = computeSkillEvolutionSpacing(total);
-  const shouldEvolve = total > 0 && spacing > 0 && total % spacing === 0;
+  const prospectiveTotal = before.totalUserManualRounds + 1;
+  const spacing = computeSkillEvolutionSpacing(prospectiveTotal);
+  const shouldEvolve = prospectiveTotal > 0 && spacing > 0 && prospectiveTotal % spacing === 0;
 
-  await writeSkillEvolutionState(root, {
-    ...before,
-    totalUserManualRounds: total,
-  });
+  if (!shouldEvolve) {
+    await writeSkillEvolutionState(root, { ...before, totalUserManualRounds: prospectiveTotal });
+    return;
+  }
 
-  if (!shouldEvolve) return;
+  if (!evolutionToolsGate(tools)) {
+    await writeSkillEvolutionState(root, { ...before, totalUserManualRounds: prospectiveTotal });
+    void appendWorkspaceChangeLog(root, {
+      kind: 'agent_dispatch',
+      title: '进化跳过：需同时启用 docs 与 skills',
+      conversationId: convId,
+      userPreview: `已达第 ${prospectiveTotal} 轮间隔，但工具清单未同时开启「文档」与「技能」，未执行进化。`,
+      assistantExcerpt: '请在 .agent/.tool 中启用 docs 与 skills 后，下一轮间隔将再次尝试。',
+      meta: { dispatch: 'skill_evolution_skipped', reason: 'docs_or_skills_off', totalUserManualRounds: prospectiveTotal },
+    }).catch(() => undefined);
+    return;
+  }
 
-  const chatExcerpt = await excerptMainConversationSinceLastEvolution(
-    root,
-    convId,
-    before.lastEvolutionAtMs,
-    8000
-  );
+  const chatExcerpt = await excerptMainConversationSinceLastEvolution(root, convId, before.lastEvolutionAtMs, 8000);
   const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
-  const taskText = buildSkillEvolutionTask({ chatExcerpt, memoryExcerpt });
 
   void appendWorkspaceChangeLog(root, {
     kind: 'agent_dispatch',
-    title: 'Agent 调度：进化（Skill Agent）',
+    title: 'Agent 调度：进化（三阶段）',
     conversationId: convId,
-    userPreview: `主会话轮次累计至 ${total}，已达进化间隔（每 ${spacing} 轮），已启动 Skill Agent（槽位 ${SKILL_AGENT_SLOT_ID}）。`,
-    assistantExcerpt:
-      '本轮任务覆盖：合并近期对话与 .agent/.memory 摘录、记忆瘦身、在 .agent/.skills 下维护 Hermes 技能、扩写 .agent/.roleAgent 下 AGENTS.md / SOUL.md。',
-    meta: { dispatch: 'skill_evolution', totalUserManualRounds: total, spacing },
+    userPreview: `主会话轮次将达 ${prospectiveTotal}（每 ${spacing} 轮触发），依次执行：记忆整理 → 技能维护 → 角色同步。`,
+    assistantExcerpt: '成功须通过磁盘 diff 验收；失败将回滚本轮轮次计数并恢复备份。',
+    meta: { dispatch: 'skill_evolution', totalUserManualRounds: prospectiveTotal, spacing, phases: 3 },
   }).catch(() => undefined);
 
-  void runSystemSubAgentOnce({
+  void runEvolutionPipeline({
     workspaceRoot: root,
-    slotId: SKILL_AGENT_SLOT_ID,
-    taskText,
-    conversationId: SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
-  }).then((res) => {
-    if (!res.ok) {
-      console.warn('[skill-agent] evolution run failed:', res.error);
-      void appendWorkspaceChangeLog(root, {
-        kind: 'evolution',
-        title: '进化失败',
-        conversationId: convId,
-        userPreview: `第 ${total} 轮触发后执行失败，未应用进化奖励（经验/轮次标记）。`,
-        assistantExcerpt: String(res.error ?? '').slice(0, 3500),
-        meta: { evolutionOk: false, totalUserManualRounds: total, runId: res.runId },
-      }).catch(() => undefined);
+    triggerTotal: prospectiveTotal,
+    spacing,
+    chatExcerpt,
+    memoryExcerpt,
+  }).then(async (result) => {
+    if (result.ok) {
+      const aspectKeys = aspectKeysFromPhases(result.phases);
+      await finalizeEvolutionSuccess({
+        workspaceRoot: root,
+        convId,
+        commitTotalRounds: prospectiveTotal,
+        runId: result.runId,
+        combinedMessage: result.combinedMessage,
+        aggregateDiff: result.aggregateDiff,
+        aspectKeys: aspectKeys.length ? aspectKeys : classifyEvolutionOutcomeMarkdown(result.combinedMessage).aspectKeys,
+      });
       return;
     }
-    const { aspectKeys, titleZh } = classifyEvolutionOutcomeMarkdown(res.message || '');
-    void appendWorkspaceChangeLog(root, {
-      kind: 'evolution',
-      title: titleZh,
-      conversationId: convId,
-      userPreview: `触发轮次：${total}。解析维度：${aspectKeys.length ? aspectKeys.join('、') : '（输出中未匹配到明确关键词，可能为概述性总结）'}`,
-      assistantExcerpt: (res.message || '').slice(0, 4000),
-      meta: {
-        evolutionOk: true,
-        aspects: aspectKeys,
-        totalUserManualRounds: total,
-        runId: res.runId,
-      },
-    }).catch(() => undefined);
-    void applySuccessfulEvolutionRewards(root, total).catch((e) =>
-      console.warn('[skill-agent] apply evolution rewards failed:', e)
-    );
+    console.warn('[skill-agent] evolution pipeline failed:', result.failureReason, result.error);
+    await finalizeEvolutionFailure({
+      workspaceRoot: root,
+      convId,
+      total: prospectiveTotal,
+      runId: result.runId,
+      error: result.error,
+      failureReason: result.failureReason,
+      rolledBackRounds: true,
+    });
   });
 }
 
-/**
- * 用户主动触发一次与「自动进化」相同的 Skill Agent 任务（不依赖轮次间隔），用于联调 / 验证进化管线。
- * 仍要求工作区 manifest 已启用 `tools.skills`。
- */
 export async function runManualSkillEvolutionTest(params: {
   workspaceRoot: string;
   mainConversationId?: string;
@@ -265,9 +300,8 @@ export async function runManualSkillEvolutionTest(params: {
   if (!root) return { ok: false, error: 'no_workspace' };
 
   const tools = await readWorkspaceToolManifest(root);
-  if (!tools.skills) {
-    return { ok: false, error: 'skills_disabled' };
-  }
+  if (!tools.skills) return { ok: false, error: 'skills_disabled' };
+  if (!evolutionToolsGate(tools)) return { ok: false, error: 'docs_disabled' };
 
   const store = new SessionStore(root);
   const convs = await store.readAll();
@@ -284,72 +318,55 @@ export async function runManualSkillEvolutionTest(params: {
   const before = await readSkillEvolutionState(root);
   const chatExcerpt = await excerptMainConversationSinceLastEvolution(root, convId, before.lastEvolutionAtMs, 8000);
   const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
-  const taskText = buildSkillEvolutionTask({ chatExcerpt, memoryExcerpt });
 
   void appendWorkspaceChangeLog(root, {
     kind: 'agent_dispatch',
-    title: '用户主动触发：技能进化（测试）',
+    title: '用户主动触发：技能进化（三阶段）',
     conversationId: convId,
-    userPreview: `手动测试进化：已启动 Skill Agent（槽位 ${SKILL_AGENT_SLOT_ID}），不依赖轮次间隔。当前累计轮次 ${before.totalUserManualRounds}。`,
-    assistantExcerpt:
-      '与自动进化相同的任务说明：合并近期主对话与 .agent/.memory、维护 .agent/.skills、扩写 .agent/.roleAgent 下角色文档。',
+    userPreview: `手动进化：记忆整理 → 技能维护 → 角色同步。当前累计轮次 ${before.totalUserManualRounds}。`,
+    assistantExcerpt: '须产生磁盘 diff 方视为成功；失败不增加智能经验。',
     meta: { dispatch: 'skill_evolution_manual', manual: true },
   }).catch(() => undefined);
 
   releaseSystemSubAgentSlot(SKILL_AGENT_SLOT_ID);
 
-  const EVOLUTION_RUN_TIMEOUT_MS = 20 * 60 * 1000;
-  const runPromise = runSystemSubAgentOnce({
+  const result = await runEvolutionPipeline({
     workspaceRoot: root,
-    slotId: SKILL_AGENT_SLOT_ID,
-    taskText,
-    conversationId: SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
+    manual: true,
+    chatExcerpt,
+    memoryExcerpt,
   });
 
-  let res: Awaited<ReturnType<typeof runSystemSubAgentOnce>>;
-  try {
-    res = await Promise.race([
-      runPromise,
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('evolution_timeout')), EVOLUTION_RUN_TIMEOUT_MS);
-      }),
-    ]);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const errKey = msg === 'evolution_timeout' ? 'evolution_timeout' : msg;
+  if (!result.ok) {
+    const errKey =
+      result.failureReason === 'evolution_timeout'
+        ? 'evolution_timeout'
+        : result.failureReason === 'no_disk_diff'
+          ? 'no_disk_diff'
+          : result.error.includes('slot_already_running')
+            ? 'slot_already_running'
+            : String(result.error ?? 'run_failed');
     void appendWorkspaceChangeLog(root, {
       kind: 'evolution',
-      title: '主动进化（测试）失败',
+      title: '主动进化失败',
       conversationId: convId,
-      userPreview: msg === 'evolution_timeout' ? '进化任务超时（20 分钟）。' : '手动触发的 Skill Agent 异常结束。',
-      assistantExcerpt: msg.slice(0, 3500),
-      meta: { evolutionOk: false, manual: true, error: errKey },
+      userPreview: formatPipelineDiffSummary(result),
+      assistantExcerpt: String(result.error).slice(0, 3500),
+      meta: { evolutionOk: false, manual: true, runId: result.runId, failureReason: result.failureReason },
     }).catch(() => undefined);
     return { ok: false, error: errKey };
   }
 
-  if (!res.ok) {
-    void appendWorkspaceChangeLog(root, {
-      kind: 'evolution',
-      title: '主动进化（测试）失败',
-      conversationId: convId,
-      userPreview: '手动触发的 Skill Agent 未成功完成。',
-      assistantExcerpt: String(res.error ?? '').slice(0, 3500),
-      meta: { evolutionOk: false, manual: true, runId: res.runId },
-    }).catch(() => undefined);
-    return { ok: false, error: String(res.error ?? 'run_failed') };
-  }
+  const aspectKeys = aspectKeysFromPhases(result.phases);
+  await finalizeEvolutionSuccess({
+    workspaceRoot: root,
+    convId,
+    runId: result.runId,
+    combinedMessage: result.combinedMessage,
+    aggregateDiff: result.aggregateDiff,
+    aspectKeys: aspectKeys.length ? aspectKeys : classifyEvolutionOutcomeMarkdown(result.combinedMessage).aspectKeys,
+    manual: true,
+  });
 
-  const { aspectKeys, titleZh } = classifyEvolutionOutcomeMarkdown(res.message || '');
-  void appendWorkspaceChangeLog(root, {
-    kind: 'evolution',
-    title: `${titleZh}（手动测试）`,
-    conversationId: convId,
-    userPreview: `主动触发完成。解析维度：${aspectKeys.length ? aspectKeys.join('、') : '（概述）'}`,
-    assistantExcerpt: (res.message || '').slice(0, 4000),
-    meta: { evolutionOk: true, aspects: aspectKeys, manual: true, runId: res.runId },
-  }).catch(() => undefined);
-
-  await applySuccessfulEvolutionRewards(root, before.totalUserManualRounds);
-  return { ok: true, runId: res.runId };
+  return { ok: true, runId: result.runId };
 }

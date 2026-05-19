@@ -18,5 +18,8 @@ module.exports = {
       },
     ],
     '^.+\\.md$': '<rootDir>/jest-md-transform.cjs',
+    '^.+\\.template$': '<rootDir>/jest-md-transform.cjs',
+    '^.+\\.py$': '<rootDir>/jest-md-transform.cjs',
+    '^.+/workspace-templates/hermes-skills/skill-creator/.+\\.json$': '<rootDir>/jest-md-transform.cjs',
   },
 };
