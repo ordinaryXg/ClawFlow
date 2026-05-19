@@ -26,9 +26,8 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
   web_scrape: ['web_scrape'],
   embedded_browser: ['open_embedded_browser'],
   git: ['workspace_git_status', 'workspace_git_diff', 'workspace_git_log'],
+  shell: ['workspace_run_shell'],
   todos: ['workspace_todo_list', 'workspace_todo_create', 'workspace_todo_update', 'workspace_todo_remove'],
-  // 子 Agent：元数据管理 + 委派执行
-  subagents: ['workspace_subagent_list', 'workspace_subagent_upsert', 'workspace_subagent_remove', 'delegate_to_subagent'],
   skills: [
     'workspace_skill_list',
     'workspace_skill_view',

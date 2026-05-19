@@ -23,24 +23,20 @@ import {
   previewPdfBuffer,
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
 } from '../main/workspace/workspace-office-preview';
-import { readSubAgentSlots, writeSubAgentSlots } from '../main/sub-agent/sub-agent-service';
-import { broadcastSubAgentsUpdated } from '../main/sub-agent/sub-agent-broadcast';
-import { runSubAgentOnce } from '../main/sub-agent/sub-agent-runner';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
 import { readDisabledSkillRootsSync } from '../main/workspace/workspace-skills-ui-state';
 import { atomicWriteUtf8File } from './atomic-write';
 import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
 import {
-  refreshHermesSkillMemoryIndexBestEffort,
-  isWorkspaceRelativeUnderHermesSkillTree,
-  patchSummaryTouchesHermesSkillTree,
-} from './hermes-skill-index-hooks';
+  refreshHermesMemoryIndexBestEffort,
+  isWorkspaceRelativeUnderHermesIndexedTextTree,
+  patchSummaryTouchesHermesIndexedText,
+} from './hermes-memory-index-hooks';
 import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillWorkspaceRel, normalizeWorkspaceRel } from './workspace-skill-paths';
 import { WORKSPACE_AGENT_SKILLS_REL } from '../main/workspace/workspace-agent-layout';
-import { SKILL_AGENT_SLOT_ID } from '../shared/skill-agent-constants';
-import { ensureSubAgentRosterForWorkspace } from '../main/sub-agent/sub-agent-roster-bootstrap';
 import { clawflowDir, CLAWFLOW_DIR } from '../main/workspace/workspace-service';
+import { runWorkspaceShellCommand } from './workspace-shell-exec';
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -339,8 +335,7 @@ export class ToolRuntime {
           n === 'workspace_read_file' || n === 'workspace_read_file_preview';
         const summary = omitStreamBody ? '' : truncateForToolLog(content, 320);
         ctx.onDelta?.(`[tool:done] ${name}${summary ? `\n${summary}\n` : '\n'}`);
-        const isAsyncReceipt =
-          String(name ?? '') === 'delegate_to_subagent' && /"state"\s*:\s*"running"/i.test(String(content ?? ''));
+        const isAsyncReceipt = false;
         await ctx.onToolEvent?.({
           phase: 'done',
           tool_call_id: call.id,
@@ -393,83 +388,6 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
       return `${yyyy}-${mm}-${dd}`;
-    }
-  );
-
-  rt.register(
-    {
-      type: 'function',
-      function: {
-        name: 'delegate_to_subagent',
-        description:
-          'Delegate a task to a configured sub-agent slot. The sub-agent runs in the same workspace and inherits enabled tools from .agent/.tool/manifest.json. Slot-local notes live under .subagent/.submemory/<slotId>/ (separate from .agent/.memory/ and root MEMORY.md). Reserved Skill Agent slot (`cf-skill-agent`) cannot be used here. Fixed delegate slots: `cf-sub-program`, `cf-sub-creative`, `cf-sub-data`, `cf-sub-assistant`.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: {
-            slotId: { type: 'string', description: 'cf-sub-program | cf-sub-creative | cf-sub-data | cf-sub-assistant' },
-            taskText: { type: 'string', description: 'Task to execute' },
-            conversationId: { type: 'string', description: 'Target conversation id (current workspace singleton)' },
-            modelId: { type: 'string', description: 'Optional model id' },
-          },
-          required: ['slotId', 'taskText', 'conversationId'],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (args, ctx) => {
-      const slotId = String(args?.slotId ?? '').trim();
-      const taskText = String(args?.taskText ?? '').trim();
-      const conversationId = String(args?.conversationId ?? '').trim();
-      const modelId = typeof args?.modelId === 'string' && args.modelId.trim() ? args.modelId.trim() : undefined;
-      if (!slotId || !taskText || !conversationId) return 'ERROR: missing required fields';
-
-      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
-      const slots0 = await readSubAgentSlots(ctx.workspaceRoot);
-      const slotMeta = slots0.find((s) => s.id === slotId);
-      if (!slotMeta) return 'ERROR: slotId not found';
-      if (slotMeta.delegatable === false) {
-        return 'ERROR: this slot is reserved for the Skill Agent and cannot be delegated from the main agent';
-      }
-
-      // 一次性子 Agent：不阻塞当前会话；先返回运行回执，再异步写入最终结果 tool 消息
-      const runId = randomUUID();
-      const receipt = {
-        ok: true,
-        state: 'running',
-        runId,
-        slotId,
-        note: 'Sub-agent started asynchronously; final receipt will be appended to this conversation.',
-      };
-
-      void (async () => {
-        try {
-          const res = await runSubAgentOnce({
-            workspaceRoot: ctx.workspaceRoot,
-            slotId,
-            taskText,
-            conversationId,
-            modelId,
-            oneOff: true,
-            // AI 调度路径：不提供 onToolApprovalNeeded => 默认自动同意（由 engine 行为决定）
-          });
-          const msg = res.ok ? truncateForToolLog(res.message || '(empty)', 12_000) : `ERROR: sub-agent failed: ${res.error}`;
-          // 追加一条 tool 消息（kind=tool.subagent.run），用于 UI loading → done
-          await ctx.onToolEvent?.({
-            phase: res.ok ? 'done' : 'fail',
-            tool_call_id: String(ctx.currentToolCallId ?? ''),
-            toolName: 'delegate_to_subagent',
-            argumentsText: JSON.stringify({ slotId, taskText, conversationId, modelId }, null, 0),
-            outputText: msg,
-            ts: Date.now(),
-            statusOverride: res.ok ? 'success' : 'error',
-          });
-        } catch {
-          /* ignore */
-        }
-      })();
-
-      return JSON.stringify(receipt, null, 2);
     }
   );
 
@@ -825,8 +743,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': content }
       );
-      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
-        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
+        refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
       return JSON.stringify(
         {
@@ -894,8 +812,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': after }
       );
-      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
-        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
+        refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
       return JSON.stringify(
         {
@@ -1036,8 +954,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
         fileArtifacts
       );
 
-      if (patchSummaryTouchesHermesSkillTree(summary)) {
-        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      if (patchSummaryTouchesHermesIndexedText(summary)) {
+        refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
 
       return JSON.stringify(
@@ -1137,8 +1055,11 @@ export function createDefaultToolRuntime(): ToolRuntime {
         details: { toRelativePath: toRel, overwrite },
         rollback: { available: false, hint: 'Rename rollback is not implemented yet.' },
       });
-      if (isWorkspaceRelativeUnderHermesSkillTree(fromRel) || isWorkspaceRelativeUnderHermesSkillTree(toRel)) {
-        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      if (
+        isWorkspaceRelativeUnderHermesIndexedTextTree(fromRel) ||
+        isWorkspaceRelativeUnderHermesIndexedTextTree(toRel)
+      ) {
+        refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
       return JSON.stringify(
         {
@@ -1197,8 +1118,8 @@ export function createDefaultToolRuntime(): ToolRuntime {
         details: { trashRelativePath: trashRel, bytes: st.size },
         rollback: { available: true },
       });
-      if (isWorkspaceRelativeUnderHermesSkillTree(rel)) {
-        refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
+        refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
       return JSON.stringify(
         {
@@ -1256,6 +1177,48 @@ export function createDefaultToolRuntime(): ToolRuntime {
         return JSON.stringify({ ok: true, opId, rolledBack: meta.kind, path: meta.relativePath }, null, 2);
       }
       return `ERROR: rollback for kind ${meta.kind} not implemented`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_run_shell',
+        description:
+          'Run a shell command inside the workspace (cwd must be under workspace root). Returns combined stdout/stderr. High-risk: requires user approval in Plan/Multitask.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Shell command line to execute' },
+            cwdRelative: {
+              type: 'string',
+              description: 'Relative working directory under workspace root (empty string = workspace root; must exist)',
+            },
+            timeoutMs: {
+              type: 'number',
+              description: 'Timeout in milliseconds (default 60000, max 120000)',
+              minimum: 1000,
+              maximum: 120000,
+            },
+          },
+          required: ['command', 'cwdRelative'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const command = String(args?.command ?? '');
+      const cwdRelative = String(args?.cwdRelative ?? '');
+      const timeoutMs = typeof args?.timeoutMs === 'number' ? args.timeoutMs : undefined;
+      return runWorkspaceShellCommand({
+        workspaceRoot: ctx.workspaceRoot,
+        command,
+        cwdRelative,
+        timeoutMs,
+        abortSignal: ctx.abortSignal,
+      });
     }
   );
 
@@ -1726,110 +1689,13 @@ export function createDefaultToolRuntime(): ToolRuntime {
     }
   );
 
-  // --- 子 Agent 槽位（最小元数据）---
-  rt.register(
-    {
-      type: 'function',
-      function: {
-        name: 'workspace_subagent_list',
-        description: 'List sub-agent slots (metadata) persisted for this workspace',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (_args, ctx) => {
-      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
-      const slots = await readSubAgentSlots(ctx.workspaceRoot);
-      return truncateForToolLog(JSON.stringify(slots, null, 2), 12_000);
-    }
-  );
-
-  rt.register(
-    {
-      type: 'function',
-      function: {
-        name: 'workspace_subagent_upsert',
-        description:
-          'Update label/behavior for a fixed sub-agent slot only. Roster ids: cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant; cf-skill-agent when workspace tools.skills is enabled. Empty id is not allowed; new slots cannot be created.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Fixed roster slot id (required)' },
-            label: { type: 'string', description: 'Short label' },
-            behavior: { type: 'string', description: 'Role / behavior summary' },
-          },
-          required: ['id', 'label', 'behavior'],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (args, ctx) => {
-      await ensureSubAgentRosterForWorkspace(ctx.workspaceRoot);
-      const rawId = String(args?.id ?? '').trim();
-      const label = String(args?.label ?? '').trim();
-      const behavior = String(args?.behavior ?? '');
-      if (!rawId) {
-        return 'ERROR: slot id is required; fixed roster: cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant (and cf-skill-agent when tools.skills is enabled)';
-      }
-      if (!label) return 'ERROR: missing label';
-      const slots = await readSubAgentSlots(ctx.workspaceRoot);
-      const idx = slots.findIndex((s) => s.id === rawId);
-      if (idx < 0) {
-        return `ERROR: unknown slot id "${rawId}". Only the fixed roster exists; arbitrary create is disabled.`;
-      }
-      const next = [...slots];
-      if (next[idx].id === SKILL_AGENT_SLOT_ID) {
-        next[idx] = {
-          ...next[idx],
-          label,
-          behavior,
-          roleTemplateId: 'skills',
-          delegatable: false,
-        };
-      } else {
-        next[idx] = { ...next[idx], label, behavior };
-      }
-      await writeSubAgentSlots(ctx.workspaceRoot, next);
-      broadcastSubAgentsUpdated(ctx.workspaceRoot);
-      return `OK upsert subAgent id=${rawId}`;
-    }
-  );
-
-  rt.register(
-    {
-      type: 'function',
-      function: {
-        name: 'workspace_subagent_remove',
-        description: 'Removing sub-agent slots is disabled; roster is fixed per workspace.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: { id: { type: 'string', description: 'Slot id' } },
-          required: ['id'],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (args, _ctx) => {
-      const id = String(args?.id ?? '').trim();
-      if (!id) return 'ERROR: missing id';
-      return 'ERROR: sub-agent slot removal is disabled; roster is fixed (cf-sub-program, cf-sub-creative, cf-sub-data, cf-sub-assistant; cf-skill-agent when tools.skills is enabled)';
-    }
-  );
-
   rt.register(
     {
       type: 'function',
       function: {
         name: 'workspace_knowledge_query',
         description:
-          'Search indexed workspace skills and references via local SQLite FTS5 (Hermes memory). Returns short snippets with paths.',
+          'Search indexed workspace text via SQLite FTS5: `.agent/.memory` notes (L0 abstract + L1 overview + body) and `.agent/.skills` SKILL/references. Returns snippets with paths.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1847,13 +1713,18 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
       if (!res.ok) return `ERROR: ${res.error}`;
       if (!res.hits.length) {
-        return 'No matches in workspace memory/skills FTS index. Add `.agent/.skills/**/SKILL.md` or references, or enable knowledge_base and rebuild if needed.';
+        return 'No matches in workspace FTS index. Add `.agent/.memory/*.md` (with optional L0/L1 frontmatter) or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
       }
       return res.hits
-        .map(
-          (h) =>
-            `### ${h.source_path}${h.skill_name ? ` (skill: ${h.skill_name})` : ''}\n${h.snippet}\n`
-        )
+        .map((h) => {
+          const head =
+            h.source_kind === 'memory_md' && h.abstract
+              ? `**L0:** ${h.abstract}\n`
+              : '';
+          const skill = h.skill_name ? ` (skill: ${h.skill_name})` : '';
+          const title = h.title ? ` — ${h.title}` : '';
+          return `### ${h.source_path}${title}${skill}\n${head}${h.snippet}\n`;
+        })
         .join('\n');
     }
   );
@@ -1864,7 +1735,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_memory_search',
         description:
-          'Full-text search over Hermes memory index (skills + references under .agent/.skills). Returns JSON hits with snippets and bm25 rank.',
+          'Full-text search over Hermes FTS index: `.agent/.memory` (abstract/overview/body) and `.agent/.skills`. Returns JSON hits with abstract, snippet, bm25 rank.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1995,7 +1866,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': '', 'after.txt': initial }
       );
-      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, path: rel, opId }, null, 2);
     }
   );
@@ -2058,7 +1929,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': after }
       );
-      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -2128,7 +1999,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         },
         { 'before.txt': before, 'after.txt': content }
       );
-      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, path: rel, opId, existed: exists }, null, 2);
     }
   );
@@ -2169,7 +2040,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const st = await fs.promises.stat(full).catch(() => null);
       if (!st?.isDirectory()) return `ERROR: skill folder not found: ${skillRootRel}`;
       await fs.promises.rm(full, { recursive: true, force: true });
-      refreshHermesSkillMemoryIndexBestEffort(ctx.workspaceRoot);
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, deleted: skillRootRel }, null, 2);
     }
   );
@@ -2193,7 +2064,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async (_args, ctx) => {
       const res = await rebuildHermesSkillFtsIndex(ctx.workspaceRoot);
       if (!res.ok) return `ERROR: ${res.error}`;
-      return `OK rebuilt skill/memory FTS index (rows upserted this pass: ${res.indexed}, pruned: ${res.pruned})`;
+      return `OK rebuilt Hermes FTS index (.agent/.memory + .agent/.skills); rows upserted this pass: ${res.indexed}, pruned: ${res.pruned}`;
     }
   );
 

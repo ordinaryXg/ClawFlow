@@ -1,7 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { invalidateHermesMemoryDbCache, searchHermesMemory, syncSkillTextSourcesToMemoryDb } from './hermes-memory-db';
+import {
+  invalidateHermesMemoryDbCache,
+  searchHermesMemory,
+  syncHermesTextSourcesToMemoryDb,
+  syncSkillTextSourcesToMemoryDb,
+} from './hermes-memory-db';
 
 function canLoadSqlite(): boolean {
   try {
@@ -62,5 +67,35 @@ run('hermes-memory-db FTS5', () => {
     if (!res.ok) return;
     expect(res.hits.length).toBeGreaterThan(0);
     expect(res.hits.every((h) => h.skill_name === 'demo-skill')).toBe(true);
+  });
+
+  it('indexes .agent/.memory with L0/L1 frontmatter', () => {
+    fs.mkdirSync(path.join(dir, '.agent', '.memory'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.agent', '.memory', 'prefs.md'),
+      `---
+title: User prefs
+abstract: Prefer TypeScript strict mode
+overview: |
+  Project uses pnpm and electron-forge.
+---
+## Details
+
+Always run lint before commit.
+`,
+      'utf8'
+    );
+    invalidateHermesMemoryDbCache(dir);
+    const sync = syncHermesTextSourcesToMemoryDb(dir, { fullRebuild: true });
+    expect(sync.ok).toBe(true);
+    if (!sync.ok) return;
+
+    const res = searchHermesMemory(dir, { query: 'TypeScript strict', limit: 10 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const hit = res.hits.find((h) => h.source_path.includes('prefs.md'));
+    expect(hit).toBeDefined();
+    expect(hit?.source_kind).toBe('memory_md');
+    expect(hit?.abstract).toContain('TypeScript');
   });
 });

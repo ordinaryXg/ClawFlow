@@ -15,7 +15,7 @@ Skill Agent 依赖 **`.agent/.tool/manifest.json`** 中 **`skills`**（及 **`kn
 |------|------|
 | 能力开关 | `.agent/.tool/manifest.json` |
 | 技能契约 | `.agent/.tool/skills.md` |
-| 其它契约 | `.agent/.tool/docs.md`、`browser.md`、`git.md`、`todos.md`、`subagents.md`、`knowledge_base.md` |
+| 其它契约 | `.agent/.tool/docs.md`、`browser.md`、`git.md`、`shell.md`、`todos.md`、`subagents.md`、`knowledge_base.md` |
 
 ## Skill 槽位与 `tools.todos`
 

@@ -13,25 +13,21 @@ function globalRootIsBoundToSomeSatellite(globalRoot: string): boolean {
 }
 
 /**
- * 当前 WebContents 所属窗口应对应的工作区根：
+ * 当前 WebContents 所属窗口应对应的工作区根；无工作区时返回 `null`。
  * - 卫星窗口：绑定路径
- * - 主窗口：若全局 active 正被某卫星占用，则用主壳记忆路径（避免主窗仍显示已拖出的工作区）
+ * - 主窗口：若全局 active 正被某卫星占用，则用主壳记忆路径
  */
-export function resolveWorkspaceRootForWebContents(sender: WebContents): string {
+export function resolveWorkspaceRootForWebContents(sender: WebContents): string | null {
   const win = BrowserWindow.fromWebContents(sender);
   if (win && !win.isDestroyed()) {
     const sat = stickySatellitePathByWindowId.get(win.id);
     if (sat) return path.resolve(sat);
 
     const globalRoot = getActiveWorkspaceRoot();
-    if (globalRootIsBoundToSomeSatellite(globalRoot)) {
+    if (globalRoot && globalRootIsBoundToSomeSatellite(globalRoot)) {
       const mainLast = getMainShellLastWorkspacePath();
       if (mainLast && !workspaceService.isSameWorkspacePath(mainLast, globalRoot)) {
         return path.resolve(mainLast);
-      }
-      const def = workspaceService.getDefaultWorkspacePath();
-      if (!workspaceService.isSameWorkspacePath(def, globalRoot)) {
-        return path.resolve(def);
       }
     }
   }

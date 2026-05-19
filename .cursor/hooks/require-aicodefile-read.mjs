@@ -10,7 +10,7 @@ if (!fs.existsSync(flagPath)) {
     JSON.stringify({
       permission: "deny",
       user_message:
-        "已启用仓库流程：在进行任何代码修改前，必须先读取 AICodeFile（至少 00_INDEX/01/02/03/04/05/06 + 最近日志）。请先阅读后再继续写代码。",
+        "已启用仓库流程：在进行任何代码修改前，必须先读取 AICodeFile（00_INDEX、产品原型、代码架构、功能说明；可选最近 90_LOGS）。请先阅读后再继续写代码。",
       agent_message: "Blocked ApplyPatch because AICodeFile has not been read in this session."
     }) + "\n"
   );

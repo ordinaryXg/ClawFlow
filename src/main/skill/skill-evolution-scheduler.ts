@@ -8,7 +8,7 @@ import type { StoredMessage } from '../../engine/session-store';
 import { SessionStore } from '../../engine/session-store';
 import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
-import { runSubAgentOnce } from '../sub-agent/sub-agent-runner';
+import { runSystemSubAgentOnce } from '../system-agents/system-sub-agent-runner';
 import {
   SKILL_AGENT_SLOT_ID,
   SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
@@ -215,7 +215,7 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
     meta: { dispatch: 'skill_evolution', totalUserManualRounds: total, spacing },
   }).catch(() => undefined);
 
-  void runSubAgentOnce({
+  void runSystemSubAgentOnce({
     workspaceRoot: root,
     slotId: SKILL_AGENT_SLOT_ID,
     taskText,
@@ -296,7 +296,7 @@ export async function runManualSkillEvolutionTest(params: {
     meta: { dispatch: 'skill_evolution_manual', manual: true },
   }).catch(() => undefined);
 
-  const res = await runSubAgentOnce({
+  const res = await runSystemSubAgentOnce({
     workspaceRoot: root,
     slotId: SKILL_AGENT_SLOT_ID,
     taskText,

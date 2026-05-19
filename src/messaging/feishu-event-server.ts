@@ -204,7 +204,7 @@ async function resolveBridgeWorkspacePathForBot(bot: FeishuBotConfig): Promise<s
   const reg = workspaceService.loadRegistry();
   const active = reg.activeWorkspacePath?.trim();
   if (active) return path.resolve(active);
-  return path.resolve(workspaceService.getDefaultWorkspacePath());
+  throw new Error('no_active_workspace');
 }
 
 async function resolveConversationId(store: SessionStore, preferred: string | undefined): Promise<string | null> {

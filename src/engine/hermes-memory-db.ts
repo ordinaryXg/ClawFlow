@@ -7,8 +7,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
-import { workspaceSkillsDirAbs } from '../main/workspace/workspace-agent-layout';
+import { workspaceAgentDotMemoryDirAbs, workspaceSkillsDirAbs } from '../main/workspace/workspace-agent-layout';
 import { clawflowDir } from '../main/workspace/workspace-service';
+import { parseWorkspaceMemoryMarkdown } from '../shared/workspace-memory-frontmatter';
 
 const requireSqlite = createRequire(__filename);
 
@@ -99,6 +100,13 @@ export function getOrOpenHermesMemoryDb(workspaceRoot: string): BetterSqliteDb |
   return db;
 }
 
+function ensureMemoryDocsColumn(db: BetterSqliteDb, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(memory_docs)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE memory_docs ADD COLUMN ${ddl}`);
+  }
+}
+
 export function ensureHermesMemorySchema(db: BetterSqliteDb): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS memory_docs (
@@ -112,6 +120,8 @@ export function ensureHermesMemorySchema(db: BetterSqliteDb): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_docs_source_path ON memory_docs(source_path);
   `);
+  ensureMemoryDocsColumn(db, 'abstract', 'abstract TEXT');
+  ensureMemoryDocsColumn(db, 'overview', 'overview TEXT');
 
   const row = db.prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='memory_fts'`).get() as
     | { ok: number }
@@ -144,6 +154,10 @@ export type HermesMemorySearchHit = {
   source_path: string;
   skill_name: string | null;
   title: string | null;
+  /** L0，仅 source_kind=memory_md 时通常有值 */
+  abstract: string | null;
+  /** L1，仅 source_kind=memory_md 时通常有值 */
+  overview: string | null;
   snippet: string;
   rank: number;
 };
@@ -213,6 +227,40 @@ function collectSkillIndexTargetsSync(
   return out;
 }
 
+function collectMainMemoryIndexTargetsSync(
+  workspaceRoot: string
+): Array<{ abs: string; relPosix: string; source_kind: 'memory_md' }> {
+  const memoryRoot = workspaceAgentDotMemoryDirAbs(workspaceRoot);
+  const out: Array<{ abs: string; relPosix: string; source_kind: 'memory_md' }> = [];
+  function walk(dir: string): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        walk(abs);
+      } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) {
+        out.push({
+          abs,
+          relPosix: toPosixRel(workspaceRoot, abs),
+          source_kind: 'memory_md',
+        });
+      }
+    }
+  }
+  try {
+    fs.accessSync(memoryRoot);
+  } catch {
+    return [];
+  }
+  walk(memoryRoot);
+  return out;
+}
+
 function buildFtsTokenQuery(raw: string): string {
   const tokens = raw
     .trim()
@@ -250,17 +298,20 @@ export function searchHermesMemory(
   const limit = Math.min(50, Math.max(1, Math.floor(Number(limitRaw)) || 12));
   const skillFilter = String(params.skillName ?? '').trim();
 
-  const sync = syncSkillTextSourcesToMemoryDb(workspaceRoot, { db, fullRebuild: false });
+  const sync = syncHermesTextSourcesToMemoryDb(workspaceRoot, { db, fullRebuild: false });
   if (!sync.ok) {
     return { ok: false, error: sync.error ?? 'sync failed' };
   }
 
+  const selectCols = `
+        d.id, d.source_kind, d.source_path, d.skill_name, d.title, d.abstract, d.overview,
+        snippet(memory_fts, 0, '〈', '〉', '…', 40) AS snippet,
+        bm25(memory_fts) AS rank`;
+
   try {
     if (skillFilter && isSafeSkillNameFilter(skillFilter)) {
       const stmt = db.prepare(`
-        SELECT d.id, d.source_kind, d.source_path, d.skill_name, d.title,
-          snippet(memory_fts, 0, '〈', '〉', '…', 40) AS snippet,
-          bm25(memory_fts) AS rank
+        SELECT ${selectCols}
         FROM memory_fts
         JOIN memory_docs d ON d.id = memory_fts.rowid
         WHERE memory_fts MATCH ? AND d.skill_name = ?
@@ -271,9 +322,7 @@ export function searchHermesMemory(
       return { ok: true, hits: rows };
     }
     const stmt = db.prepare(`
-      SELECT d.id, d.source_kind, d.source_path, d.skill_name, d.title,
-        snippet(memory_fts, 0, '〈', '〉', '…', 40) AS snippet,
-        bm25(memory_fts) AS rank
+      SELECT ${selectCols}
       FROM memory_fts
       JOIN memory_docs d ON d.id = memory_fts.rowid
       WHERE memory_fts MATCH ?
@@ -383,6 +432,120 @@ export function syncSkillTextSourcesToMemoryDb(
   return { ok: true, indexed, pruned };
 }
 
+/** 将 `.agent/.memory/` 下 Markdown 同步进 memory_docs（L0/L1 列 + FTS 索引 abstract、overview、正文）。 */
+export function syncMainMemorySourcesToMemoryDb(
+  workspaceRoot: string,
+  opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
+): HermesMemorySyncResult {
+  const db = opts?.db ?? getOrOpenHermesMemoryDb(workspaceRoot);
+  if (!db) {
+    return { ok: false, error: `better-sqlite3 unavailable: ${getHermesMemoryLoadError() ?? 'unknown'}` };
+  }
+  const root = path.resolve(workspaceRoot);
+  let indexed = 0;
+  let pruned = 0;
+
+  const delByPath = db.prepare(`DELETE FROM memory_docs WHERE source_path = ?`);
+  const selectMeta = db.prepare(
+    `SELECT mtime_ms FROM memory_docs WHERE source_path = ? AND source_kind = 'memory_md'`
+  );
+  const insert = db.prepare(
+    `INSERT INTO memory_docs (source_kind, source_path, skill_name, title, mtime_ms, body, abstract, overview)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`
+  );
+
+  const tx = db.transaction(() => {
+    if (opts?.fullRebuild) {
+      db.prepare(`DELETE FROM memory_docs WHERE source_kind = 'memory_md'`).run();
+    }
+
+    const staleRows = db
+      .prepare(`SELECT source_path FROM memory_docs WHERE source_kind = 'memory_md'`)
+      .all() as { source_path: string }[];
+
+    for (const { source_path } of staleRows) {
+      const abs = path.join(root, ...source_path.split('/'));
+      try {
+        fs.accessSync(abs);
+      } catch {
+        delByPath.run(source_path);
+        pruned++;
+      }
+    }
+  });
+
+  try {
+    tx();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+
+  const runUpserts = db.transaction((targets: ReturnType<typeof collectMainMemoryIndexTargetsSync>) => {
+    for (const t of targets) {
+      let st: fs.Stats;
+      try {
+        st = fs.statSync(t.abs);
+      } catch {
+        continue;
+      }
+      const mtimeMs = Math.trunc(st.mtimeMs);
+      const prev = selectMeta.get(t.relPosix) as { mtime_ms: number } | undefined;
+      if (!opts?.fullRebuild && prev && prev.mtime_ms >= mtimeMs) {
+        continue;
+      }
+      let raw: string;
+      try {
+        raw = fs.readFileSync(t.abs, 'utf8');
+      } catch {
+        continue;
+      }
+      const parsed = parseWorkspaceMemoryMarkdown(raw);
+      delByPath.run(t.relPosix);
+      const title = parsed.title?.trim() || path.basename(t.relPosix, '.md');
+      insert.run(
+        t.source_kind,
+        t.relPosix,
+        title,
+        mtimeMs,
+        parsed.ftsBody,
+        parsed.abstract ?? null,
+        parsed.overview ?? null
+      );
+      indexed++;
+    }
+  });
+
+  try {
+    runUpserts(collectMainMemoryIndexTargetsSync(root));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
+
+  return { ok: true, indexed, pruned };
+}
+
+/** 同步技能树 + 主记忆目录（检索前增量、重建时全量） */
+export function syncHermesTextSourcesToMemoryDb(
+  workspaceRoot: string,
+  opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
+): HermesMemorySyncResult {
+  const db = opts?.db ?? getOrOpenHermesMemoryDb(workspaceRoot);
+  if (!db) {
+    return { ok: false, error: `better-sqlite3 unavailable: ${getHermesMemoryLoadError() ?? 'unknown'}` };
+  }
+  const skill = syncSkillTextSourcesToMemoryDb(workspaceRoot, { ...opts, db });
+  if (!skill.ok) return skill;
+  const mem = syncMainMemorySourcesToMemoryDb(workspaceRoot, { ...opts, db });
+  if (!mem.ok) return mem;
+  return {
+    ok: true,
+    indexed: skill.indexed + mem.indexed,
+    pruned: skill.pruned + mem.pruned,
+  };
+}
+
 /** async 封装：供 IPC / 仅 async 上下文调用 */
 export async function syncSkillTextSourcesToMemoryDbAsync(
   workspaceRoot: string,
@@ -395,7 +558,18 @@ export async function syncSkillTextSourcesToMemoryDbAsync(
   return syncSkillTextSourcesToMemoryDb(workspaceRoot, { ...opts, db });
 }
 
+export async function syncHermesTextSourcesToMemoryDbAsync(
+  workspaceRoot: string,
+  opts?: { fullRebuild?: boolean }
+): Promise<HermesMemorySyncResult> {
+  if (opts?.fullRebuild) {
+    invalidateHermesMemoryDbCache(workspaceRoot);
+  }
+  const db = getOrOpenHermesMemoryDb(workspaceRoot);
+  return syncHermesTextSourcesToMemoryDb(workspaceRoot, { ...opts, db });
+}
+
 export async function rebuildHermesSkillFtsIndex(workspaceRoot: string): Promise<HermesMemorySyncResult> {
   invalidateHermesMemoryDbCache(workspaceRoot);
-  return syncSkillTextSourcesToMemoryDbAsync(workspaceRoot, { fullRebuild: true });
+  return syncHermesTextSourcesToMemoryDbAsync(workspaceRoot, { fullRebuild: true });
 }

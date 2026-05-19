@@ -11,7 +11,6 @@ import StreamingMessage from '../../components/chat/StreamingMessage';
 import ToolApprovalBar from '../../components/chat/ToolApprovalBar';
 import TodoTriggersStickyFloat from '../../components/chat/TodoTriggersStickyFloat';
 import TodoTriggersPanel from '../../components/chat/TodoTriggersPanel';
-import SubAgentsHubPanel from '../../components/workspace-hub/SubAgentsHubPanel';
 import SkillsHubPanel from '../../components/workspace-hub/SkillsHubPanel';
 import KnowledgeBaseHubPanel from '../../components/workspace-hub/KnowledgeBaseHubPanel';
 import { useWorkspaceHubStore } from '../../store/modules/workspaceHubStore';
@@ -422,8 +421,7 @@ const ChatPage: FC = () => {
           <TodoTriggersPanel workspacePath={activeWorkspacePath} />
         </div>
       );
-    } else if (hubBranch === 'subagents') hubBody = <SubAgentsHubPanel />;
-    else if (hubBranch === 'skills') hubBody = <SkillsHubPanel workspacePath={activeWorkspacePath} />;
+    } else if (hubBranch === 'skills') hubBody = <SkillsHubPanel workspacePath={activeWorkspacePath} />;
     else hubBody = <KnowledgeBaseHubPanel />;
 
     return (

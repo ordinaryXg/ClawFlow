@@ -256,8 +256,6 @@ export interface IElectronAPI {
   workspaceListUnreadSummaries: (params: { paths: string[] }) => Promise<{
     summaries: Array<{ workspaceRoot: string; total: number }>;
   }>;
-  workspaceGetDefaultPath: () => Promise<string>;
-  workspaceSetDefaultRoot: (folderPath: string | null) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceRemove: (
     folderPath: string
   ) => Promise<
@@ -451,27 +449,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
-  subAgentsList: () => Promise<{ slots: unknown[]; runSnapshots?: Record<string, unknown> }>;
-  subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  subAgentsRun: (params: { slotId: string; taskText: string; conversationId: string; modelId?: string }) => Promise<
-    | { ok: true; runId: string }
-    | { ok: false; error: string; runId?: string }
-  >;
-  onSubAgentsRunDelta: (cb: (payload: { runId: string; slotId: string; text: string }) => void) => () => void;
-  onSubAgentsRunFinal: (
-    cb: (payload: { runId: string; slotId: string; ok: boolean; message?: string; error?: string }) => void
-  ) => () => void;
-  onSubAgentsToolApprovalNeeded: (
-    cb: (payload: {
-      runId: string;
-      slotId: string;
-      approvalId: string;
-      conversationId: string;
-      tools: Array<{ name: string; argumentsPreview: string }>;
-    }) => void
-  ) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
-  onSubAgentsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
   scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
   onScrapeJobsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;

@@ -1,9 +1,9 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import { randomUUID } from 'crypto';
 import { dedupeStoredToolMessages } from './dedupe-tool-messages';
 import * as path from 'path';
 import EventEmitter from 'events';
-import { getDefaultWorkspacePath, readWorkspaceToolManifest } from '../main/workspace/workspace-service';
+import { readWorkspaceToolManifest } from '../main/workspace/workspace-service';
 import { filterToolSchemasByWorkspaceManifest } from '../shared/workspace-tool-manifest-bridge';
 import { STREAM_REASONING_END, STREAM_REASONING_START } from '../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content';
@@ -256,7 +256,10 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
 
   constructor(cfg: ClawFlowEngineConfig = {}) {
     super();
-    const workspaceRoot = path.resolve(cfg.workspaceRoot ?? getDefaultWorkspacePath());
+    const rawRoot = String(cfg.workspaceRoot ?? '').trim();
+    const workspaceRoot = rawRoot
+      ? path.resolve(rawRoot)
+      : path.join(app.getPath('userData'), '.clawflow-engine-pending-workspace');
     this.webSearchBootstrap = { ...(cfg.webSearch ?? {}) };
     this.config = {
       workspaceRoot,
@@ -779,11 +782,11 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           const n = String(toolName ?? '').trim();
           if (n === 'web_search') return { kind: 'tool.network.search', title: '网络搜索' };
           if (n === 'web_scrape') return { kind: 'tool.network.scrape', title: '网页爬取' };
-          if (n === 'delegate_to_subagent') return { kind: 'tool.subagent.run', title: '子 Agent 调用' };
           if (n.startsWith('workspace_todo_')) return { kind: 'tool.todo.receipt', title: '待办/回执' };
           if (n.startsWith('workspace_git_')) return { kind: 'tool.exec.git', title: '命令行：git' };
           if (n === 'workspace_rg_search') return { kind: 'tool.exec.rg', title: '命令行：rg' };
           if (n === 'workspace_run_tsc_no_emit') return { kind: 'tool.exec.tsc', title: '命令行：tsc' };
+          if (n === 'workspace_run_shell') return { kind: 'tool.exec.shell', title: '命令行：shell' };
           if (n.startsWith('workspace_')) return { kind: 'tool.exec.fs', title: '工作区操作' };
           return { kind: 'tool.exec', title: '工具调用' };
         };
@@ -797,35 +800,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           ts: number;
           statusOverride?: 'running' | 'success' | 'error' | 'result';
         }) => {
-          // 普通工具：仅依赖本回合末尾的 tool result 落盘（appendToolMessagesUpsert），此处不写多条 running/success。
-          // 子 Agent：异步完成后需单独 upsert 同 tool_call_id，否则会话里永远停在 running 回执。
-          if (ev.toolName !== 'delegate_to_subagent') return;
-          if (ev.phase === 'start') return;
-          const out = String(ev.outputText ?? '');
-          if (ev.phase === 'done' && /"state"\s*:\s*"running"/.test(out)) return;
-          const card = toolCardForName(ev.toolName);
-          const riskLevel = toolRiskForName(ev.toolName);
-          const uiStatus = ev.statusOverride ?? (ev.phase === 'fail' ? 'error' : 'success');
-          const msg: StoredMessage = this.toStoredToolMessage({
-            tool_call_id: ev.tool_call_id,
-            content: out,
-            meta: {
-              kind: card.kind,
-              title: card.title,
-              riskLevel,
-              status: ev.phase === 'fail' ? 'error' : 'result',
-              uiStatus,
-              toolName: ev.toolName,
-              argumentsPreview: this.toolArgumentsPreview(ev.argumentsText ?? ''),
-              phase: ev.phase,
-              ts: ev.ts,
-            },
-          });
-          try {
-            await this.appendToolMessagesUpsert(params.conversationId, [msg], store);
-          } catch (e: any) {
-            console.warn('[ClawFlowEngine] persist subagent tool event failed:', e?.message ?? e);
-          }
+          void ev;
         };
 
         type Risk = 'low' | 'medium' | 'high';
@@ -842,8 +817,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
             n === 'workspace_rollback_op'
           )
             return 'medium';
-          // 删除 / destructive patch：高风险（60s 默认不执行）
-          if (n === 'workspace_delete_path' || n === 'workspace_apply_patch_v2') return 'high';
+          // 删除 / destructive patch / 任意 shell：高风险（60s 默认不执行）
+          if (n === 'workspace_delete_path' || n === 'workspace_apply_patch_v2' || n === 'workspace_run_shell')
+            return 'high';
           // 其它工具默认低风险（未来可按需提升）
           return 'low';
         };

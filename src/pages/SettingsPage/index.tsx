@@ -13,6 +13,7 @@ import { CfSelectWithHints } from '../../components/CfSelectWithHints';
 import WorkspaceNewToolsModal from '../../components/workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../../components/workspace/WorkspaceCreateModal';
 import SystemAgentsSettingsPanel from './SystemAgentsSettingsPanel';
+import MemorySettingsPanel from './MemorySettingsPanel';
 import {
   DEFAULT_WORKSPACE_TOOL_SELECTION,
   WORKSPACE_TOOL_IDS,
@@ -77,13 +78,10 @@ const SettingsPage: FC = () => {
   } = useSettingsStore();
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
-  const workspaceMeta = useWorkspaceStore((s) => s.meta);
-  const workspaceLoading = useWorkspaceStore((s) => s.loading);
   const refreshWorkspace = useWorkspaceStore((s) => s.refresh);
   const commitNewWorkspace = useWorkspaceStore((s) => s.commitNewWorkspace);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
 
-  const [defaultWorkspacePathDisplay, setDefaultWorkspacePathDisplay] = useState<string>('');
   const [appCacheSettings, setAppCacheSettings] = useState<{
     effectiveRoot: string;
     defaultRoot: string;
@@ -318,12 +316,6 @@ const SettingsPage: FC = () => {
     if (activeSection !== 'system') return;
     void (async () => {
       try {
-        const p = await window.electronAPI?.workspaceGetDefaultPath?.();
-        setDefaultWorkspacePathDisplay(typeof p === 'string' ? p : '');
-      } catch {
-        setDefaultWorkspacePathDisplay('');
-      }
-      try {
         const rt = await window.electronAPI?.engineGetRuntimeSettings?.();
         if (rt) {
           setToolLoopSteps(rt.maxSendMessageToolLoopSteps);
@@ -486,40 +478,6 @@ const SettingsPage: FC = () => {
 
   const onPickWorkspaceFolder = () => {
     setCreateModalOpen(true);
-  };
-
-  const onPickDefaultWorkspaceRoot = async () => {
-    const picked = await window.electronAPI?.workspacePickFolder?.({ title: t('settings.defaultWorkspacePickTitle') });
-    if (!picked?.trim()) return;
-    if (!window.confirm(t('settings.defaultWorkspacePickConfirm', { path: picked.trim() }))) return;
-    const res = await window.electronAPI?.workspaceSetDefaultRoot?.(picked.trim());
-    if (res?.ok) {
-      const p2 = await window.electronAPI?.workspaceGetDefaultPath?.();
-      setDefaultWorkspacePathDisplay(typeof p2 === 'string' ? p2 : '');
-      await refreshWorkspace();
-      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.defaultWorkspaceSaved'));
-    } else {
-      (window as any).__cf_toast?.error?.(
-        t('settings.defaultWorkspaceSaveFail'),
-        res && 'error' in res ? res.error : undefined
-      );
-    }
-  };
-
-  const onResetDefaultWorkspaceRoot = async () => {
-    if (!window.confirm(t('settings.defaultWorkspaceResetConfirm'))) return;
-    const res = await window.electronAPI?.workspaceSetDefaultRoot?.(null);
-    if (res?.ok) {
-      const p2 = await window.electronAPI?.workspaceGetDefaultPath?.();
-      setDefaultWorkspacePathDisplay(typeof p2 === 'string' ? p2 : '');
-      await refreshWorkspace();
-      (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.defaultWorkspaceRestored'));
-    } else {
-      (window as any).__cf_toast?.error?.(
-        t('settings.defaultWorkspaceSaveFail'),
-        res && 'error' in res ? res.error : undefined
-      );
-    }
   };
 
   const reloadAppCacheSettings = useCallback(async () => {
@@ -1190,16 +1148,10 @@ const SettingsPage: FC = () => {
     detailPanels = (
       <>
         <div className="cf-card">
-          <h3>{t('settings.workspaceNameLabel')}</h3>
+          <h3>{t('settings.dataCurrentWorkspace')}</h3>
           <div className="cf-divider" />
-          <div className="cf-sub" style={{ marginBottom: 6 }}>
-            {workspaceLoading ? t('dashboard.loading') : workspaceMeta?.name || t('settings.noWorkspaceSelected')}
-          </div>
-          <div className="cf-sub" style={{ marginBottom: 8 }}>
-            <strong>{t('settings.dataCurrentWorkspace')}</strong>
-          </div>
           <div className="cf-settingsModels__mono" style={{ wordBreak: 'break-all', marginBottom: 12 }}>
-            {activeWorkspacePath || '—'}
+            {activeWorkspacePath || t('settings.noWorkspaceSelected')}
           </div>
           <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
             <button className="cf-btn cf-btnGhost" type="button" onClick={() => void refreshWorkspace()}>
@@ -1465,25 +1417,6 @@ const SettingsPage: FC = () => {
         </div>
 
         <div className="cf-card">
-          <h3>{t('settings.defaultWorkspaceTitle')}</h3>
-          <div className="cf-divider" />
-          <div className="cf-help" style={{ marginBottom: 10 }}>
-            {t('settings.defaultWorkspaceHelp')}
-          </div>
-          <div className="cf-settingsModels__mono" style={{ wordBreak: 'break-all', marginBottom: 12 }}>
-            {defaultWorkspacePathDisplay || '—'}
-          </div>
-          <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <button className="cf-btn cf-btnPrimary cf-btnSmall" type="button" onClick={() => void onPickDefaultWorkspaceRoot()}>
-              {t('settings.defaultWorkspacePick')}
-            </button>
-            <button className="cf-btn cf-btnGhost cf-btnSmall" type="button" onClick={() => void onResetDefaultWorkspaceRoot()}>
-              {t('settings.defaultWorkspaceResetBuiltIn')}
-            </button>
-          </div>
-        </div>
-
-        <div className="cf-card">
           <h3>{t('settings.appCacheTitle')}</h3>
           <div className="cf-divider" />
           <div className="cf-help" style={{ marginBottom: 10 }}>
@@ -1745,17 +1678,7 @@ const SettingsPage: FC = () => {
       </>
     );
   } else if (activeSection === 'memory') {
-    detailPanels = (
-      <div className="cf-card">
-        <div className="cf-help" style={{ marginBottom: 8 }}>
-          {t('settings.memoryBullet1')}
-        </div>
-        <div className="cf-help" style={{ marginBottom: 8 }}>
-          {t('settings.memoryBullet2')}
-        </div>
-        <div className="cf-help">{t('settings.memoryBullet3')}</div>
-      </div>
-    );
+    detailPanels = <MemorySettingsPanel />;
   } else if (activeSection === 'models') {
     detailPanels = (
       <div className="cf-card">

@@ -26,18 +26,13 @@ import { stickySatellitePathByWindowId } from './main/sticky-satellite-windows';
 import { getMainShellLastWorkspacePath, setMainShellLastWorkspacePath } from './main/shell/main-shell-workspace';
 import { readTodoTriggers, writeTodoTriggers } from './main/todo/todo-triggers-service';
 import { broadcastTodoTriggersUpdated } from './main/todo/todo-triggers-broadcast';
-import { readSubAgentSlots, writeSubAgentSlots, coerceSubAgentSlotsPayload } from './main/sub-agent/sub-agent-service';
-import { broadcastSubAgentsUpdated } from './main/sub-agent/sub-agent-broadcast';
-import { runSubAgentOnce, sendSubAgentRunDelta, sendSubAgentRunFinal } from './main/sub-agent/sub-agent-runner';
 import { registerSystemAgentsIPC } from './main/system-agents/system-agents-ipc';
-import { mergeSubAgentSlotsAfterEditorSave, ensureSubAgentRosterForWorkspace } from './main/sub-agent/sub-agent-roster-bootstrap';
 import { readScrapeJobs } from './main/scrape/scrape-service';
 import { rescheduleAllTodoTriggers, rescheduleTodoTriggersForWorkspace } from './main/todo/todo-triggers-scheduler';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './engine/hermes-memory-db';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from './main/workspace/workspace-skills-read';
 import { readDisabledSkillRootsSync, setSkillRootEnabled } from './main/workspace/workspace-skills-ui-state';
 import { deleteHermesSkillDirectory } from './main/workspace/workspace-skills-delete';
-import { reconcileRunSnapshotsAfterRestart, readRunSnapshots } from './main/sub-agent/sub-agent-run-snapshot';
 import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from './main/workspace/workspace-git';
 import { getLauncherIconDataUrl } from './main/shell/launcher-icon-main';
 import { readMainUiPrefsFromDisk, saveMainUiPrefs, getMainUiPrefs } from './main/shell/main-ui-prefs';
@@ -88,7 +83,6 @@ function bumpMainShellWorkspaceIfSameAsSatelliteBinding(detachedResolved: string
 
   const reg = workspaceService.loadRegistry();
   const recent = reg.recentWorkspacePaths ?? [];
-  const def = workspaceService.getDefaultWorkspacePath();
   let next: string | null = null;
   for (const p of recent) {
     if (!workspaceService.isSameWorkspacePath(p, detachedResolved)) {
@@ -96,11 +90,6 @@ function bumpMainShellWorkspaceIfSameAsSatelliteBinding(detachedResolved: string
       break;
     }
   }
-  if (!next && !workspaceService.isSameWorkspacePath(def, detachedResolved)) {
-    next = path.resolve(def);
-  }
-  if (!next) next = path.resolve(def);
-
   setMainShellLastWorkspacePath(next);
   BrowserWindow.getAllWindows().forEach((w) => {
     if (!w.isDestroyed()) w.webContents.send('workspace:changed', { path: next });
@@ -113,7 +102,7 @@ function applyWorkspaceForFocusedWindow(win: BrowserWindow | null): void {
   const target = sat ?? getMainShellLastWorkspacePath();
   if (!target) return;
   const cur = getActiveWorkspaceRoot();
-  if (workspaceService.isSameWorkspacePath(cur, target)) return;
+  if (cur && workspaceService.isSameWorkspacePath(cur, target)) return;
   workspaceService.setActiveWorkspace(target);
   setActiveWorkspaceRoot(target);
   syncClawFlowEngineWorkspaceRoot(target);
@@ -378,70 +367,6 @@ function registerTodoTriggersIPC(): void {
 }
 registerTodoTriggersIPC();
 
-function registerSubAgentsIPC(): void {
-  for (const ch of ['subAgents:list', 'subAgents:saveAll', 'subAgents:run'] as const) {
-    try {
-      ipcMain.removeHandler(ch);
-    } catch {
-      /* first load */
-    }
-  }
-  ipcMain.handle('subAgents:list', async (event) => {
-    const root = resolveWorkspaceRootForWebContents(event.sender);
-    await ensureSubAgentRosterForWorkspace(root);
-    await reconcileRunSnapshotsAfterRestart(root);
-    const slots = await readSubAgentSlots(root);
-    const runSnapshots = await readRunSnapshots(root);
-    return { slots, runSnapshots };
-  });
-  ipcMain.handle('subAgents:saveAll', async (event, raw: unknown) => {
-    const root = resolveWorkspaceRootForWebContents(event.sender);
-    const merged = await mergeSubAgentSlotsAfterEditorSave(root, coerceSubAgentSlotsPayload(raw));
-    await writeSubAgentSlots(root, merged);
-    broadcastSubAgentsUpdated(root);
-    return { ok: true as const };
-  });
-
-  ipcMain.handle('subAgents:run', async (event, payload: unknown) => {
-    const root = resolveWorkspaceRootForWebContents(event.sender);
-    if (!payload || typeof payload !== 'object') return { ok: false as const, error: 'invalid_payload' };
-    const p = payload as Record<string, unknown>;
-    const slotId = typeof p.slotId === 'string' ? p.slotId.trim() : '';
-    const taskText = typeof p.taskText === 'string' ? p.taskText : '';
-    const conversationId = typeof p.conversationId === 'string' ? p.conversationId.trim() : '';
-    const modelId = typeof p.modelId === 'string' && p.modelId.trim() ? p.modelId.trim() : undefined;
-    if (!slotId || !taskText || !conversationId) return { ok: false as const, error: 'missing_fields' };
-    const { isSystemSubAgentSlotId } = await import('./shared/system-agent-constants');
-    if (isSystemSubAgentSlotId(slotId)) {
-      return { ok: false as const, error: 'system_agent_run_not_supported' };
-    }
-
-    const sender = event.sender;
-    const res = await runSubAgentOnce({
-      workspaceRoot: root,
-      slotId,
-      taskText,
-      conversationId,
-      modelId,
-      onDelta: (d) => sendSubAgentRunDelta(sender, d),
-      onToolApprovalNeeded: (ap) => {
-        try {
-          sender.send('subAgents:toolApprovalNeeded', ap);
-        } catch {
-          /* ignore */
-        }
-      },
-    });
-
-    if (res.ok) {
-      sendSubAgentRunFinal(sender, { runId: res.runId, slotId, ok: true, message: res.message });
-      return { ok: true as const, runId: res.runId };
-    }
-    sendSubAgentRunFinal(sender, { runId: res.runId, slotId, ok: false, error: res.error });
-    return { ok: false as const, error: res.error, runId: res.runId };
-  });
-}
-registerSubAgentsIPC();
 registerSystemAgentsIPC();
 
 function registerScrapeIPC(): void {
@@ -480,8 +405,11 @@ function registerScrapeIPC(): void {
 registerScrapeIPC();
 
 function registerWorkspaceIPC(): void {
-  ipcMain.handle('workspace:getActive', async (event) => {
-    const root = resolveWorkspaceRootForWebContents(event.sender);
+  ipcMain.handle('workspace:getActive', async () => {
+    const reg = workspaceService.loadRegistry();
+    const raw = reg.activeWorkspacePath?.trim();
+    if (!raw) return { path: null, meta: null };
+    const root = path.resolve(raw);
     const meta = workspaceService.readWorkspaceMetaSync(root);
     return { path: root, meta };
   });
@@ -540,20 +468,19 @@ function registerWorkspaceIPC(): void {
     return { summaries };
   });
 
-  ipcMain.handle('workspace:getDefaultPath', async () => workspaceService.getDefaultWorkspacePath());
-  ipcMain.handle('workspace:setDefaultRoot', async (_e, folderPath: string | null) =>
-    workspaceService.setDefaultWorkspaceRootOverride(folderPath == null ? null : String(folderPath))
-  );
-
   ipcMain.handle('workspace:remove', async (_event, folderPath: string) => {
     const res = await workspaceService.removeWorkspaceForUser(String(folderPath || ''));
     if (!res.ok) return res;
-    setActiveWorkspaceRoot(res.newActivePath);
-    syncClawFlowEngineWorkspaceRoot(res.newActivePath);
+    if (res.newActivePath) {
+      setActiveWorkspaceRoot(res.newActivePath);
+      syncClawFlowEngineWorkspaceRoot(res.newActivePath);
+      await workspaceService.ensureWorkspaceInitialized(res.newActivePath);
+    } else {
+      setActiveWorkspaceRoot('');
+    }
     BrowserWindow.getAllWindows().forEach((w) =>
       w.webContents.send('workspace:changed', { path: res.newActivePath })
     );
-    await workspaceService.ensureWorkspaceInitialized(res.newActivePath);
     return res;
   });
 
@@ -901,6 +828,7 @@ function registerWorkspaceIPC(): void {
     'memoryFts:search',
     async (event, params: { query?: string; limit?: number; skillName?: string }) => {
       const root = resolveWorkspaceRootForWebContents(event.sender);
+      if (!root) return { ok: false as const, error: 'no_workspace' };
       const query = String(params?.query ?? '').trim();
       if (!query) return { ok: false as const, error: 'missing query' };
       const res = searchHermesMemory(root, {
@@ -915,6 +843,7 @@ function registerWorkspaceIPC(): void {
 
   ipcMain.handle('memoryFts:rebuild', async (event) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
+    if (!root) return { ok: false as const, error: 'no_workspace' };
     const res = await rebuildHermesSkillFtsIndex(root);
     if (!res.ok) return { ok: false as const, error: res.error };
     return { ok: true as const, indexed: res.indexed, pruned: res.pruned };
@@ -1146,10 +1075,6 @@ function registerStickySatelliteIPC(): void {
     const raw = String(params?.workspacePath ?? '').trim();
     if (!raw) return { ok: false as const, error: 'missing_path' };
     const resolved = path.resolve(raw);
-    const def = workspaceService.getDefaultWorkspacePath();
-    if (workspaceService.isSameWorkspacePath(resolved, def)) {
-      return { ok: false as const, error: 'cannot_detach_default' };
-    }
     for (const w of BrowserWindow.getAllWindows()) {
       if (w.isDestroyed()) continue;
       const p = stickySatellitePathByWindowId.get(w.id);
@@ -1221,25 +1146,30 @@ app.whenReady().then(async () => {
     const r = path.resolve(String(reg.activeWorkspacePath).trim());
     if (r) rootsForTriad.add(r);
   }
-  rootsForTriad.add(path.resolve(workspaceService.getDefaultWorkspacePath()));
   migrateLegacyTriadForWorkspaceRootsSync([...rootsForTriad]);
   // 如果刚执行了“取消置顶 active”的一次性迁移，这里需要写回磁盘
   if (!reg.unpinActiveMigrated && reg.activeWorkspacePath) {
     workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
   }
-  const active = reg.activeWorkspacePath ?? workspaceService.getDefaultWorkspacePath();
+  const activeRaw = reg.activeWorkspacePath?.trim() ? path.resolve(reg.activeWorkspacePath.trim()) : null;
   workspaceService.removeLegacyExternalAgentStateDirsSync();
-  await workspaceService.ensureWorkspaceInitialized(active);
+  if (activeRaw) {
+    await workspaceService.ensureWorkspaceInitialized(activeRaw);
+  }
   try {
     const { ensureSystemAgentsInitialized } = await import('./main/system-agents/system-agent-roster-bootstrap');
-    const tools = await workspaceService.readWorkspaceToolManifest(active);
-    await ensureSystemAgentsInitialized(Boolean(tools.skills));
+    const tools = activeRaw ? await workspaceService.readWorkspaceToolManifest(activeRaw) : null;
+    await ensureSystemAgentsInitialized(Boolean(tools?.skills));
   } catch (e: unknown) {
     console.warn('[system-agents] init failed:', e instanceof Error ? e.message : e);
   }
-  workspaceService.setActiveWorkspace(active);
-  setActiveWorkspaceRoot(active);
-  setMainShellLastWorkspacePath(active);
+  if (activeRaw) {
+    workspaceService.setActiveWorkspace(activeRaw);
+    setActiveWorkspaceRoot(activeRaw);
+    setMainShellLastWorkspacePath(activeRaw);
+  } else {
+    setActiveWorkspaceRoot('');
+  }
 
   registerWorkspaceIPC();
   try {
@@ -1249,7 +1179,7 @@ app.whenReady().then(async () => {
   }
   const webSearchProvider = String(process.env.CLAWFLOW_WEB_SEARCH_PROVIDER ?? 'searxng').toLowerCase();
   registerClawFlowIPC({
-    workspaceRoot: active,
+    workspaceRoot: activeRaw ?? undefined,
     verbose: false,
     webSearch: {
       enabled: process.env.CLAWFLOW_WEB_SEARCH_DISABLED === '1' ? false : undefined,

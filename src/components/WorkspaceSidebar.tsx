@@ -14,7 +14,6 @@ import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
 import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
-import { useSubAgentStore } from '../store/modules/subAgentStore';
 import { useWorkspaceSkillsStore } from '../store/modules/workspaceSkillsStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
@@ -53,7 +52,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
 
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
   const [wsHubExpanded, setWsHubExpanded] = useState(true);
-  const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [gitBusyPath, setGitBusyPath] = useState<string | null>(null);
   const [wsActionMenuFor, setWsActionMenuFor] = useState<string | null>(null);
@@ -74,11 +72,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     void loadTodoTriggers();
   }, [loadTodoTriggers, activeWorkspacePath]);
 
-  const loadSubAgents = useSubAgentStore((s) => s.load);
-  useEffect(() => {
-    void loadSubAgents();
-  }, [loadSubAgents, activeWorkspacePath]);
-
   const loadWorkspaceSkills = useWorkspaceSkillsStore((s) => s.load);
   useEffect(() => {
     void loadWorkspaceSkills();
@@ -88,20 +81,10 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     const off1 = window.electronAPI?.onTodoTriggersUpdated?.((p) => {
       if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadTodoTriggers();
     });
-    const off2 = window.electronAPI?.onSubAgentsUpdated?.((p) => {
-      if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadSubAgents();
-    });
     return () => {
       off1?.();
-      off2?.();
     };
-  }, [activeWorkspacePath, loadTodoTriggers, loadSubAgents]);
-
-  useEffect(() => {
-    void window.electronAPI?.workspaceGetDefaultPath?.().then((p) => {
-      if (typeof p === 'string' && p.trim()) setDefaultWorkspacePath(p.trim());
-    });
-  }, []);
+  }, [activeWorkspacePath, loadTodoTriggers]);
 
   useEffect(() => {
     setWsHubExpanded(true);
@@ -130,7 +113,6 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     () => countTodoTriggersForWorkspaceHub(todoTriggersList),
     [todoTriggersList]
   );
-  const subAgentsHubCount = useSubAgentStore((s) => s.slots.length);
   const skillsListRaw = useWorkspaceSkillsStore((s) => s.list);
   const skillsHubCount = useMemo(() => skillsForHermesDiscoveryUi(skillsListRaw).length, [skillsListRaw]);
   /** 知识库条目：能力接入前占位为 0 */
@@ -294,11 +276,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
 
   const onRemoveWorkspaceRow = async (folderPath: string) => {
     const name = workspaceFolderLabel(folderPath);
-    const isDefault =
-      defaultWorkspacePath != null && workspacePathsLikelyEqual(folderPath, defaultWorkspacePath);
-    const msg = isDefault
-      ? t('chat.confirmRemoveWorkspaceDefault', { name })
-      : t('chat.confirmRemoveWorkspaceDestroy', { name });
+    const msg = t('chat.confirmRemoveWorkspaceDestroy', { name });
     if (!window.confirm(msg)) return;
     const res = await removeWorkspace(folderPath);
     if (!res.ok) {
@@ -563,33 +541,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                                 <span className="cf-sideTree__hubChevSpacer" aria-hidden />
                               </div>
                             </li>
-                            <li className="cf-sideTree__hubLi" role="none">
-                              <div
-                                className={
-                                  branchForActiveWs === 'subagents'
-                                    ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
-                                    : 'cf-sideTree__hubRow'
-                                }
-                              >
-                                <button
-                                  type="button"
-                                  className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
-                                  onClick={() => selectHubBranch(p, 'subagents')}
-                                  title={t('chat.workspaceHub.hubCountSubAgents', {
-                                    count: subAgentsHubCount,
-                                  })}
-                                >
-                                  <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
-                                  <span className="cf-sideTree__hubMainLabel">
-                                    {t('chat.workspaceHub.branchSubAgents')}
-                                  </span>
-                                  <span className="cf-sideTree__hubTrailingCount cf-sub">
-                                    {t('chat.workspaceHub.hubCountSubAgents', { count: subAgentsHubCount })}
-                                  </span>
-                                </button>
-                                <span className="cf-sideTree__hubChevSpacer" aria-hidden />
-                              </div>
-                            </li>
+                            
                             <li className="cf-sideTree__hubLi" role="none">
                               <div
                                 className={

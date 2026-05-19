@@ -69,27 +69,21 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 **`.agent/.roleAgent/`**（�
 
 ## 工具与工作区能力
 
-由 **`.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；**未开启的工具不会下发给模型**。总览与阅读顺序见同目录 **`TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 **`docs.md` / `browser.md` / `git.md` / `todos.md` / `subagents.md` / `skills.md` / `knowledge_base.md`**。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
+由 **`.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；**未开启的工具不会下发给模型**。总览与阅读顺序见同目录 **`TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 **`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md`**。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
 
-### 子 Agent（`tools.subagents`）
-
-- **本质**：子 Agent 是带**独立角色模板**的工作区内执行体（多轮推理、工具调用、结构化产出），更接近「**专才协作者**」，不是简单的任务表。
-- **何时委派**：需要把**一大块**工作从主会话拆出、异步跑完再回收结果时；或需要与主角色**不同侧重**（程序 / 创意 / 数据 / 助理）时。
-- **如何委派**：仅使用工具 **`delegate_to_subagent`**，且 **`slotId` 只能是**（固定名册）  
-  **`cf-sub-program`** | **`cf-sub-creative`** | **`cf-sub-data`** | **`cf-sub-assistant`**  
-  详见 `.agent/.tool/subagents.md`。槽位元数据在 `.agent/.clawflow/sub-agents.v1.json`；各槽位**工作缓存**在 **`.subagent/.subclawflow/<slotId>/`**；各槽位**独立记忆**在 **`.subagent/.submemory/<slotId>/`**（与主 `.agent/.memory/`、根目录 `MEMORY.md` 分离，子 Agent 不应写入主记忆路径）。**不要**把 **`cf-skill-agent`**（Skill Agent）当作委派目标——它为 Hermes 技能进化保留，由系统在启用 `tools.skills` 时调度，**不参与**主 Agent 的 `delegate_to_subagent`。
-- **与「待办」的分工**：子 Agent 负责**理解、规划、执行与汇报**；待办负责**定时/周期触发与状态钉点**（见下）。需要「列清单、到点提醒」时用待办；需要「像同事一样干完一块活」时用子 Agent。
+> **系统级子 Agent**（Skill Agent、认知分配、预期规划）由应用在后台调度，数据在应用缓存而非工作区 `.subagent/`；主 Agent **无需**也**无法**通过工具委派它们。
 
 ### 待办与调度（`tools.todos`）
 
 - **本质**：**无人格**的触发器与任务登记——到点写入会话、可重复；适合「**已经能说清的一条指令** + **时间/间隔**」。
 - **何时用**：提醒、周期检查、把重复动作钉在时间表上；或把已拆好的步骤做成可勾选的跟踪项。
-- **与子 Agent 的分工**：待办**不**替你澄清模糊需求、**不**承担大块推理与仓库级实施；复杂需求由主会话或子 Agent 处理，待办只做**触发与跟踪**。
+- **边界**：待办**不**替你澄清模糊需求、**不**承担大块推理与仓库级实施；复杂需求由主会话直接处理，待办只做**触发与跟踪**。
 
 ### 其他能力（按需阅读对应 md）
 
 - **文档（`tools.docs`）**：`docs.md`
 - **Git（`tools.git`）**：`git.md`
+- **命令行（`tools.shell`）**：`shell.md`（`workspace_run_shell`；高风险，通常需用户审批）
 - **网络（`web_search` / `web_scrape` / `embedded_browser`）**：`browser.md`
 - **技能只读（`tools.skills`）、知识库（`tools.knowledge_base`）**：`skills.md`、`knowledge_base.md`
 

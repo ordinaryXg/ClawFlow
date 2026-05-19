@@ -441,6 +441,8 @@ export interface IElectronAPI {
           source_path: string;
           skill_name: string | null;
           title: string | null;
+          abstract?: string | null;
+          overview?: string | null;
           snippet: string;
           rank: number;
         }>;
@@ -484,21 +486,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
-  subAgentsList: () => Promise<{ slots: unknown[]; runSnapshots?: Record<string, unknown> }>;
-  subAgentsSaveAll: (slots: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  subAgentsRun: (params: { slotId: string; taskText: string; conversationId: string; modelId?: string }) => Promise<
-    | { ok: true; runId: string }
-    | { ok: false; error: string; runId?: string }
-  >;
-  onSubAgentsRunDelta: (cb: (payload: { runId: string; slotId: string; text: string }) => void) => () => void;
-  onSubAgentsRunFinal: (
-    cb: (payload: { runId: string; slotId: string; ok: boolean; message?: string; error?: string }) => void
-  ) => () => void;
-  onSubAgentsToolApprovalNeeded: (
-    cb: (payload: { runId: string; slotId: string; approvalId: string; conversationId: string; tools: Array<{ name: string; argumentsPreview: string }> }) => void
-  ) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
-  onSubAgentsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
   scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
   onScrapeJobsUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
@@ -678,9 +666,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   workspaceListRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   workspaceListUnreadSummaries: (params: { paths: string[] }) =>
     ipcRenderer.invoke('workspace:listUnreadSummaries', params),
-  workspaceGetDefaultPath: () => ipcRenderer.invoke('workspace:getDefaultPath'),
-  workspaceSetDefaultRoot: (folderPath: string | null) =>
-    ipcRenderer.invoke('workspace:setDefaultRoot', folderPath) as Promise<{ ok: true } | { ok: false; error: string }>,
   workspaceRemove: (folderPath: string) => ipcRenderer.invoke('workspace:remove', folderPath),
   workspaceSetActive: (folderPath: string, opts?: { fromMainShell?: boolean }) =>
     ipcRenderer.invoke('workspace:setActive', folderPath, opts ?? {}),
@@ -800,71 +785,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('todo-triggers:updated', handler);
     return () => ipcRenderer.removeListener('todo-triggers:updated', handler);
   },
-  subAgentsList: () => ipcRenderer.invoke('subAgents:list'),
-  subAgentsSaveAll: (slots: unknown[]) => ipcRenderer.invoke('subAgents:saveAll', slots),
-  subAgentsRun: (params: { slotId: string; taskText: string; conversationId: string; modelId?: string }) =>
-    ipcRenderer.invoke('subAgents:run', params),
-  onSubAgentsRunDelta: (cb) => {
-    const handler = (_event: unknown, payload: unknown) => {
-      if (!payload || typeof payload !== 'object') return;
-      const p = payload as Record<string, unknown>;
-      if (typeof p.runId === 'string' && typeof p.slotId === 'string' && typeof p.text === 'string') {
-        cb({ runId: p.runId, slotId: p.slotId, text: p.text });
-      }
-    };
-    ipcRenderer.on('subAgents:runDelta', handler);
-    return () => ipcRenderer.removeListener('subAgents:runDelta', handler);
-  },
-  onSubAgentsRunFinal: (cb) => {
-    const handler = (_event: unknown, payload: unknown) => {
-      if (!payload || typeof payload !== 'object') return;
-      const p = payload as Record<string, unknown>;
-      if (typeof p.runId !== 'string' || typeof p.slotId !== 'string') return;
-      cb({
-        runId: p.runId,
-        slotId: p.slotId,
-        ok: Boolean(p.ok),
-        message: typeof p.message === 'string' ? p.message : undefined,
-        error: typeof p.error === 'string' ? p.error : undefined,
-      });
-    };
-    ipcRenderer.on('subAgents:runFinal', handler);
-    return () => ipcRenderer.removeListener('subAgents:runFinal', handler);
-  },
-  onSubAgentsToolApprovalNeeded: (cb) => {
-    const handler = (_event: unknown, payload: unknown) => {
-      if (!payload || typeof payload !== 'object') return;
-      const p = payload as Record<string, unknown>;
-      if (typeof p.approvalId !== 'string' || typeof p.conversationId !== 'string') return;
-      cb({
-        runId: typeof p.runId === 'string' ? p.runId : '',
-        slotId: typeof p.slotId === 'string' ? p.slotId : '',
-        approvalId: p.approvalId,
-        conversationId: p.conversationId,
-        tools: Array.isArray(p.tools)
-          ? p.tools
-              .filter((x) => x && typeof x === 'object')
-              .map((x) => ({
-                name: String((x as any).name ?? 'unknown'),
-                argumentsPreview: String((x as any).argumentsPreview ?? ''),
-              }))
-          : [],
-      });
-    };
-    ipcRenderer.on('subAgents:toolApprovalNeeded', handler);
-    return () => ipcRenderer.removeListener('subAgents:toolApprovalNeeded', handler);
-  },
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) =>
     ipcRenderer.invoke('engine:resolveToolApproval', params),
-  onSubAgentsUpdated: (cb) => {
-    const handler = (_event: unknown, payload: unknown) => {
-      if (!payload || typeof payload !== 'object') return;
-      const p = payload as Record<string, unknown>;
-      if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
-    };
-    ipcRenderer.on('subAgents:updated', handler);
-    return () => ipcRenderer.removeListener('subAgents:updated', handler);
-  },
   scrapeListJobs: () => ipcRenderer.invoke('scrape:listJobs'),
   scrapeReadArtifact: (params: { jobId: string }) => ipcRenderer.invoke('scrape:readArtifact', params),
   onScrapeJobsUpdated: (cb) => {

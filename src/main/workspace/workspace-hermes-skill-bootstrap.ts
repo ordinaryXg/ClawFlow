@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { refreshHermesSkillMemoryIndexBestEffort } from '../../engine/hermes-skill-index-hooks';
+import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 import templateSkillCreatorSkillMd from '../../workspace-templates/hermes-skills/skill-creator/SKILL.md';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 
@@ -44,7 +44,7 @@ export async function ensureWorkspaceSkillCreatorHermesSkill(workspaceRoot: stri
   }
 
   if (created.length) {
-    refreshHermesSkillMemoryIndexBestEffort(root);
+    refreshHermesMemoryIndexBestEffort(root);
   }
 
   return { created };

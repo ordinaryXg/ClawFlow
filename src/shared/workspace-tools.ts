@@ -4,22 +4,22 @@
 export type WorkspaceToolId =
   | 'docs'
   | 'git'
+  | 'shell'
   | 'web_search'
   | 'web_scrape'
   | 'embedded_browser'
   | 'todos'
-  | 'subagents'
   | 'skills'
   | 'knowledge_base';
 
 export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'docs',
   'git',
+  'shell',
   'web_search',
   'web_scrape',
   'embedded_browser',
   'todos',
-  'subagents',
   'skills',
   'knowledge_base',
 ] as const;
@@ -32,11 +32,11 @@ export type WorkspaceToolSelectionInput = WorkspaceToolSelection & { browser?: b
 export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> = {
   docs: true,
   git: true,
+  shell: true,
   web_search: true,
   web_scrape: true,
   embedded_browser: true,
   todos: true,
-  subagents: true,
   /** 新建工作区 / 未在 manifest 中显式写入时默认开启 Hermes 工作区技能 */
   skills: true,
   knowledge_base: false,

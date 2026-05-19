@@ -12,12 +12,12 @@
 
 | 文件 | 作用 |
 |------|------|
-| **`manifest.json`** | 能力开关（`version: 2`）：`tools.docs`、`tools.git`、`tools.web_search`、`tools.web_scrape`、`tools.embedded_browser`、`tools.todos`、`tools.subagents`、`tools.skills`、`tools.knowledge_base` 等。引擎按此过滤模型工具；创建/设置工作区时的勾选会写回此文件。 |
+| **`manifest.json`** | 能力开关（`version: 2`）：`tools.docs`、`tools.git`、`tools.shell`、`tools.web_search`、`tools.web_scrape`、`tools.embedded_browser`、`tools.todos`、`tools.skills`、`tools.knowledge_base` 等。引擎按此过滤模型工具；创建/设置工作区时的勾选会写回此文件。 |
 | **`docs.md`** | 文档类工具清单（与 `tools.docs` 对应）。 |
 | **`browser.md`** | 网络搜索 / 爬取 / 内嵌打开（与 `web_search`、`web_scrape`、`embedded_browser` 对应）。 |
 | **`git.md`** | Git 类工具说明（与 `tools.git` 对应）。 |
+| **`shell.md`** | 工作区内命令行执行（与 `tools.shell` 对应）。 |
 | **`todos.md`** | 待办与**定时/周期调度**（与 `tools.todos` 对应）：无人格、结构化触发。 |
-| **`subagents.md`** | 子 Agent 名册与委派约定（与 `tools.subagents` 对应）：专才执行体 vs 待办的区别见该文。 |
 | **`skills.md`** | Hermes 工作区技能只读能力（与 `tools.skills` 对应）。 |
 | **`knowledge_base.md`** | 知识库检索（与 `tools.knowledge_base` 对应）。 |
 
@@ -42,10 +42,8 @@
 
 | 目录 | 作用 |
 |------|------|
-| **`.agent/.clawflow/`** | 主会话、待办调度、子 Agent 名册元数据（如 `sub-agents.v1.json`）、爬取与 Hermes DB 等 |
-| **`.subagent/.subclawflow/<槽位 id>/`** | 各子 Agent **工作缓存**（与主 `.agent/.clawflow/` 分离；每固定槽位一子目录） |
-| **`.subagent/.submemory/<槽位 id>/`** | 各子 Agent **独立记忆**（与主 `.agent/.memory/` 分离） |
-| **`.subagent/.subroleAgent/<模板 id>/`** | 各子 Agent **角色模板**（可覆盖） |
+| **`.agent/.memory/`** | 主 Agent 跨会话笔记（**L0 `abstract` / L1 `overview` frontmatter** + L2 正文）；由 FTS 索引 |
+| **`.agent/.clawflow/`** | 主会话、待办调度、爬取与 Hermes DB 等 |
 
 ---
 

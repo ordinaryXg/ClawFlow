@@ -18,12 +18,6 @@ type OverviewSlot = {
   snapshot: SubAgentRunSnapshot | null;
 };
 
-type SlotDraft = {
-  id: string;
-  label: string;
-  behavior: string;
-};
-
 type Overview = {
   systemRoot: string;
   rosterPath: string;
@@ -48,7 +42,6 @@ const SystemAgentsSettingsPanel: FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [settings, setSettings] = useState<SystemAgentSettings | null>(null);
-  const [slotDrafts, setSlotDrafts] = useState<SlotDraft[]>([]);
   const [builtinModels, setBuiltinModels] = useState<Array<{ id: string; label: string }>>([]);
 
   const load = useCallback(async () => {
@@ -63,13 +56,6 @@ const SystemAgentsSettingsPanel: FC = () => {
       const o = res as Overview & { ok: true };
       setOverview(o);
       setSettings(o.settings);
-      setSlotDrafts(
-        o.slots.map((row) => ({
-          id: row.slot.id,
-          label: row.slot.label,
-          behavior: row.slot.behavior,
-        }))
-      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -115,12 +101,6 @@ const SystemAgentsSettingsPanel: FC = () => {
       if (!settingsRes || !('ok' in settingsRes) || !settingsRes.ok) {
         throw new Error(String((settingsRes as { error?: string })?.error ?? 'save_settings_failed'));
       }
-      const slotsRes = await window.electronAPI?.systemAgentsSaveSlots?.({
-        patches: slotDrafts.map((d) => ({ id: d.id, label: d.label, behavior: d.behavior })),
-      });
-      if (!slotsRes || !('ok' in slotsRes) || !slotsRes.ok) {
-        throw new Error(String((slotsRes as { error?: string })?.error ?? 'save_slots_failed'));
-      }
       window.dispatchEvent(new CustomEvent(SYSTEM_AGENT_SETTINGS_BROADCAST));
       (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.systemAgents.savedBody'));
       await load();
@@ -147,10 +127,6 @@ const SystemAgentsSettingsPanel: FC = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  const patchSlot = (id: string, patch: Partial<SlotDraft>) => {
-    setSlotDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
 
   const roleLabel = (roleId: string, slotId: string): string => {
@@ -285,15 +261,13 @@ const SystemAgentsSettingsPanel: FC = () => {
 
         <div className="cf-systemAgentsRoster">
           {overview.slots.map((row) => {
-            const draft = slotDrafts.find((d) => d.id === row.slot.id);
-            if (!draft) return null;
             const snap = row.snapshot;
             return (
               <article key={row.slot.id} className="cf-systemAgentsCard">
                 <div className="cf-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <div>
                     <div className="cf-sub" style={{ fontWeight: 600, color: 'var(--text)' }}>
-                      {draft.label}
+                      {row.slot.label}
                     </div>
                     <div className="cf-help cf-settingsModels__mono" style={{ marginTop: 4 }}>
                       {row.slot.id}
@@ -310,25 +284,11 @@ const SystemAgentsSettingsPanel: FC = () => {
                 </div>
 
                 <div className="cf-sub" style={{ marginTop: 12, marginBottom: 4 }}>
-                  {t('settings.systemAgents.displayName')}
-                </div>
-                <input
-                  className="cf-input"
-                  style={{ width: '100%' }}
-                  value={draft.label}
-                  onChange={(e) => patchSlot(row.slot.id, { label: e.target.value })}
-                />
-
-                <div className="cf-sub" style={{ marginTop: 10, marginBottom: 4 }}>
                   {t('settings.systemAgents.behaviorSummary')}
                 </div>
-                <textarea
-                  className="cf-textarea"
-                  rows={3}
-                  style={{ width: '100%' }}
-                  value={draft.behavior}
-                  onChange={(e) => patchSlot(row.slot.id, { behavior: e.target.value })}
-                />
+                <div className="cf-help" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                  {row.slot.behavior?.trim() || t('settings.systemAgents.behaviorEmpty')}
+                </div>
 
                 {row.slot.id === SKILL_AGENT_SLOT_ID ? (
                   <div className="cf-help" style={{ marginTop: 8 }}>

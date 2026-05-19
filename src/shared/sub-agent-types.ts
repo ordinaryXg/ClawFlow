@@ -19,7 +19,7 @@ export type SubAgentSlot = {
   roleTemplateId?: SubAgentRoleTemplateId;
   status: SubAgentRunStatus;
   /**
-   * 是否允许被主 Agent 的 `delegate_to_subagent` 调度。系统 Skill Agent 为 false。
+   * 是否允许被主 Agent 委派调度（工作区委派已移除）。系统 Skill Agent 为 false。
    * 缺省视为 true（兼容旧数据）。
    */
   delegatable?: boolean;

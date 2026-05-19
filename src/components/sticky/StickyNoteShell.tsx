@@ -113,7 +113,6 @@ const StickyNoteShell: FC = () => {
     role: 'main' | 'satellite';
     satelliteWorkspace: string | null;
   } | null>(null);
-  const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null);
   const [detachedPaths, setDetachedPaths] = useState<string[]>([]);
   const [railMergeOver, setRailMergeOver] = useState(false);
 
@@ -125,14 +124,12 @@ const StickyNoteShell: FC = () => {
     );
     void (async () => {
       try {
-        const [boot, detached, defPath] = await Promise.all([
+        const [boot, detached] = await Promise.all([
           api.stickyGetBootstrap(),
           api.stickyGetDetachedPaths?.() ?? Promise.resolve({ paths: [] as string[] }),
-          api.workspaceGetDefaultPath?.() ?? Promise.resolve(null),
         ]);
         setStickyBootstrap(boot);
         setDetachedPaths(Array.isArray(detached.paths) ? detached.paths : []);
-        setDefaultWorkspacePath(typeof defPath === 'string' && defPath.trim() ? defPath.trim() : null);
       } catch {
         setStickyBootstrap({ role: 'main', satelliteWorkspace: null });
       }
@@ -148,12 +145,6 @@ const StickyNoteShell: FC = () => {
     setMode('alternate');
     void setWorkspace(stickyBootstrap.satelliteWorkspace, { fromMainShell: false });
   }, [isSatellite, stickyBootstrap?.satelliteWorkspace, setMode, setWorkspace]);
-
-  const isDefaultWorkspace = useCallback(
-    (p: string) =>
-      defaultWorkspacePath != null && workspacePathsLikelyEqual(p, defaultWorkspacePath),
-    [defaultWorkspacePath]
-  );
 
   const isPathDetached = useCallback(
     (p: string) => detachedPaths.some((d) => workspacePathsLikelyEqual(d, p)),
@@ -202,12 +193,8 @@ const StickyNoteShell: FC = () => {
     workspacePathsLikelyEqual(gitBusyPath, activeWorkspacePath);
 
   const canTearOffTab = useCallback(
-    (path: string) =>
-      stickyBootstrap?.role === 'main' &&
-      defaultWorkspacePath != null &&
-      !isDefaultWorkspace(path) &&
-      !isPathDetached(path),
-    [stickyBootstrap?.role, defaultWorkspacePath, isDefaultWorkspace, isPathDetached]
+    (path: string) => stickyBootstrap?.role === 'main' && !isPathDetached(path),
+    [stickyBootstrap?.role, isPathDetached]
   );
 
   const onWorkspaceTabDragStart = useCallback(
