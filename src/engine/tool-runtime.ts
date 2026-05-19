@@ -1654,20 +1654,28 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async (args, ctx) => {
       const q = String(args?.query ?? '').trim();
       if (!q) return 'ERROR: missing query';
-      const res = searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
+      const res = await searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
       if (!res.ok) return `ERROR: ${res.error}`;
       if (!res.hits.length) {
-        return 'No matches in workspace FTS index. Add `.agent/.memory/*.md` (with optional L0/L1 frontmatter) or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
+        return 'No matches in workspace FTS index. Add notes under `.agent/.memory/`, `.agent/knowledge/`, or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
       }
+      const kindLabel = (k: string) => {
+        if (k === 'memory_md') return 'memory';
+        if (k === 'knowledge_md' || k === 'knowledge_txt' || k === 'knowledge_ingest_md') return 'knowledge';
+        if (k === 'conversation_summary') return 'chat';
+        if (k.startsWith('skill')) return 'skill';
+        return k;
+      };
       return res.hits
         .map((h) => {
           const head =
-            h.source_kind === 'memory_md' && h.abstract
+            (h.source_kind === 'memory_md' || h.source_kind === 'knowledge_md') && h.abstract
               ? `**L0:** ${h.abstract}\n`
               : '';
           const skill = h.skill_name ? ` (skill: ${h.skill_name})` : '';
           const title = h.title ? ` — ${h.title}` : '';
-          return `### ${h.source_path}${title}${skill}\n${head}${h.snippet}\n`;
+          const tag = kindLabel(h.source_kind);
+          return `### [${tag}] ${h.source_path}${title}${skill}\n${head}${h.snippet}\n`;
         })
         .join('\n');
     }
@@ -1698,7 +1706,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       if (!q) return 'ERROR: missing query';
       const lim = args?.limit;
       const skillName = args?.skill_name != null ? String(args.skill_name).trim() : undefined;
-      const res = searchHermesMemory(ctx.workspaceRoot, {
+      const res = await searchHermesMemory(ctx.workspaceRoot, {
         query: q,
         limit: typeof lim === 'number' ? lim : 12,
         skillName: skillName || undefined,

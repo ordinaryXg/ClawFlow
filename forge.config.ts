@@ -17,6 +17,7 @@ import path from 'path';
 const MAIN_PROCESS_EXTERNAL_PACKAGES = [
   'ws',
   'better-sqlite3',
+  'sqlite-vec',
   '@larksuiteoapi/node-sdk',
 ] as const;
 

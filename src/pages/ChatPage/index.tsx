@@ -447,7 +447,7 @@ const ChatPage: FC = () => {
         </div>
       );
     } else if (hubBranch === 'skills') hubBody = <SkillsHubPanel workspacePath={activeWorkspacePath} />;
-    else hubBody = <KnowledgeBaseHubPanel />;
+    else hubBody = <KnowledgeBaseHubPanel workspacePath={activeWorkspacePath} />;
 
     return (
       <div

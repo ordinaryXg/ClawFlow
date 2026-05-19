@@ -451,6 +451,29 @@ export interface IElectronAPI {
   memoryFtsRebuild: () => Promise<
     { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
   >;
+  knowledgeListManifest: (opts?: { refresh?: boolean }) => Promise<
+    | {
+        ok: true;
+        entries: Array<{
+          path: string;
+          ext: string;
+          sizeBytes: number;
+          mtimeMs: number;
+          title: string | null;
+          abstract: string | null;
+        }>;
+      }
+    | { ok: false; error: string }
+  >;
+  knowledgeCreateNote: (params?: { title?: string; subdir?: 'notes' | 'docs' }) => Promise<
+    { ok: true; relativePath: string } | { ok: false; error: string }
+  >;
+  knowledgeIngestFile: (relativePath: string) => Promise<
+    | { ok: true; ingestRelPath: string; sourceRelPath: string }
+    | { ok: false; error: string }
+  >;
+  hermesGetEmbeddingPrefs: () => Promise<{ ok: true; prefs: Record<string, unknown> }>;
+  hermesSaveEmbeddingPrefs: (prefs: Record<string, unknown>) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceSkillsList: () => Promise<
     | {
         ok: true;
@@ -727,6 +750,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   memoryFtsSearch: (params: { query: string; limit?: number; skillName?: string }) =>
     ipcRenderer.invoke('memoryFts:search', params),
   memoryFtsRebuild: () => ipcRenderer.invoke('memoryFts:rebuild'),
+  knowledgeListManifest: (opts?: { refresh?: boolean }) => ipcRenderer.invoke('knowledge:listManifest', opts ?? {}),
+  knowledgeCreateNote: (params?: { title?: string; subdir?: 'notes' | 'docs' }) =>
+    ipcRenderer.invoke('knowledge:createNote', params ?? {}),
+  knowledgeIngestFile: (relativePath: string) => ipcRenderer.invoke('knowledge:ingestFile', relativePath),
+  hermesGetEmbeddingPrefs: () => ipcRenderer.invoke('hermes:getEmbeddingPrefs'),
+  hermesSaveEmbeddingPrefs: (prefs: Record<string, unknown>) =>
+    ipcRenderer.invoke('hermes:saveEmbeddingPrefs', prefs ?? {}),
   workspaceSkillsList: () => ipcRenderer.invoke('workspaceSkills:list'),
   workspaceSkillsReadFile: (relativePath: string) => ipcRenderer.invoke('workspaceSkills:readFile', relativePath),
   workspaceSkillsSetEnabled: (params: { skillRootRel: string; enabled: boolean }) =>

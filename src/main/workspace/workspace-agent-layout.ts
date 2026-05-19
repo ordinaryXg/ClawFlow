@@ -20,6 +20,9 @@ export const WORKSPACE_SUBAGENT_ROLE_DIR = '.subagent/.subroleAgent';
 /** 片段/当日笔记等落盘目录（点目录，位于 `.agent/` 下，与角色、技能并列） */
 export const WORKSPACE_AGENT_DOT_MEMORY_REL = '.agent/.memory';
 
+/** 用户知识库文档（可检索；与 `.memory` 分工：memory=进化/会话提炼，knowledge=用户策展文档） */
+export const WORKSPACE_AGENT_KNOWLEDGE_REL = '.agent/knowledge';
+
 function resolvedWorkspaceRoot(workspaceRoot: string): string {
   return path.resolve(String(workspaceRoot ?? '').trim());
 }
@@ -50,6 +53,10 @@ export function workspaceSubagentRolesDirAbs(workspaceRoot: string): string {
 
 export function workspaceAgentDotMemoryDirAbs(workspaceRoot: string): string {
   return path.join(workspaceAgentRootAbs(workspaceRoot), '.memory');
+}
+
+export function workspaceAgentKnowledgeDirAbs(workspaceRoot: string): string {
+  return path.join(workspaceAgentRootAbs(workspaceRoot), 'knowledge');
 }
 
 /** 将历史路径 `.clawflow/skills`、`.agent/.clawflow/skills`、旧版 `.agent/skills` 规范为 `.agent/.skills`（模型或旧数据可能仍传旧前缀）。 */

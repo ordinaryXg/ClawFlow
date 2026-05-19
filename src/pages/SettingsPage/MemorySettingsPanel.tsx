@@ -33,6 +33,14 @@ const MemorySettingsPanel: FC = () => {
   const [hits, setHits] = useState<MemoryHit[]>([]);
   const [rebuildBusy, setRebuildBusy] = useState(false);
   const [lastRebuild, setLastRebuild] = useState<{ indexed: number; pruned: number } | null>(null);
+  const [embEnabled, setEmbEnabled] = useState(false);
+  const [embProvider, setEmbProvider] = useState<'ollama' | 'openai'>('ollama');
+  const [embBaseUrl, setEmbBaseUrl] = useState('http://127.0.0.1:11434');
+  const [embModel, setEmbModel] = useState('nomic-embed-text');
+  const [embApiKey, setEmbApiKey] = useState('');
+  const [embHybridAlpha, setEmbHybridAlpha] = useState(0.55);
+  const [embDimensions, setEmbDimensions] = useState(768);
+  const [embSaving, setEmbSaving] = useState(false);
 
   const loadTools = useCallback(async () => {
     const p = activeWorkspacePath?.trim();
@@ -51,6 +59,54 @@ const MemorySettingsPanel: FC = () => {
   useEffect(() => {
     void loadTools();
   }, [loadTools]);
+
+  const loadEmbeddingPrefs = useCallback(async () => {
+    try {
+      const res = await window.electronAPI?.hermesGetEmbeddingPrefs?.();
+      if (!res?.ok) return;
+      const p = res.prefs ?? {};
+      if (typeof p.enabled === 'boolean') setEmbEnabled(p.enabled);
+      if (p.provider === 'openai' || p.provider === 'ollama') setEmbProvider(p.provider);
+      if (typeof p.baseUrl === 'string' && p.baseUrl.trim()) setEmbBaseUrl(p.baseUrl.trim());
+      if (typeof p.model === 'string' && p.model.trim()) setEmbModel(p.model.trim());
+      if (typeof p.apiKey === 'string') setEmbApiKey(p.apiKey);
+      if (typeof p.hybridAlpha === 'number' && Number.isFinite(p.hybridAlpha)) {
+        setEmbHybridAlpha(Math.min(1, Math.max(0, p.hybridAlpha)));
+      }
+      if (typeof p.dimensions === 'number' && p.dimensions >= 64) setEmbDimensions(Math.floor(p.dimensions));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadEmbeddingPrefs();
+  }, [loadEmbeddingPrefs]);
+
+  const onSaveEmbeddingPrefs = async () => {
+    setEmbSaving(true);
+    try {
+      const res = await window.electronAPI?.hermesSaveEmbeddingPrefs?.({
+        enabled: embEnabled,
+        provider: embProvider,
+        baseUrl: embBaseUrl.trim(),
+        model: embModel.trim(),
+        apiKey: embApiKey.trim(),
+        hybridAlpha: embHybridAlpha,
+        dimensions: embDimensions,
+      });
+      if (res?.ok) {
+        (window as any).__cf_toast?.success?.(t('settings.savedTitle'), t('settings.memory.embeddingSaved'));
+      } else {
+        (window as any).__cf_toast?.error?.(
+          t('settings.memory.embeddingSaveFail'),
+          res && 'error' in res ? res.error : undefined
+        );
+      }
+    } finally {
+      setEmbSaving(false);
+    }
+  };
 
   const onSaveTools = async () => {
     const p = activeWorkspacePath?.trim();
@@ -194,6 +250,89 @@ const MemorySettingsPanel: FC = () => {
             </button>
           </>
         )}
+      </div>
+
+      <div className="cf-card">
+        <h3>{t('settings.memory.embeddingTitle')}</h3>
+        <div className="cf-divider" />
+        <p className="cf-help" style={{ marginBottom: 12 }}>
+          {t('settings.memory.embeddingLead')}
+        </p>
+        <Checkbox checked={embEnabled} onChange={(e) => setEmbEnabled(e.target.checked)}>
+          {t('settings.memory.embeddingEnabled')}
+        </Checkbox>
+        <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginTop: 12, marginBottom: 8 }}>
+          <label className="cf-help" style={{ minWidth: 120 }}>
+            {t('settings.memory.embeddingProvider')}
+          </label>
+          <select
+            className="cf-input"
+            style={{ minWidth: 160 }}
+            value={embProvider}
+            onChange={(e) => setEmbProvider(e.target.value === 'openai' ? 'openai' : 'ollama')}
+          >
+            <option value="ollama">{t('settings.memory.embeddingProviderOllama')}</option>
+            <option value="openai">{t('settings.memory.embeddingProviderOpenai')}</option>
+          </select>
+        </div>
+        <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <input
+            className="cf-input"
+            style={{ flex: '1 1 220px' }}
+            value={embBaseUrl}
+            onChange={(e) => setEmbBaseUrl(e.target.value)}
+            placeholder={t('settings.memory.embeddingBaseUrl')}
+          />
+          <input
+            className="cf-input"
+            style={{ flex: '1 1 160px' }}
+            value={embModel}
+            onChange={(e) => setEmbModel(e.target.value)}
+            placeholder={t('settings.memory.embeddingModel')}
+          />
+        </div>
+        {embProvider === 'openai' ? (
+          <input
+            className="cf-input"
+            style={{ width: '100%', marginBottom: 8 }}
+            type="password"
+            value={embApiKey}
+            onChange={(e) => setEmbApiKey(e.target.value)}
+            placeholder={t('settings.memory.embeddingApiKey')}
+          />
+        ) : null}
+        <div className="cf-row" style={{ flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <input
+            className="cf-input"
+            style={{ flex: '1 1 120px' }}
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={embHybridAlpha}
+            onChange={(e) => setEmbHybridAlpha(Number(e.target.value))}
+            title={t('settings.memory.embeddingHybridAlpha')}
+          />
+          <input
+            className="cf-input"
+            style={{ flex: '1 1 100px' }}
+            type="number"
+            min={64}
+            max={4096}
+            step={1}
+            value={embDimensions}
+            onChange={(e) => setEmbDimensions(Number(e.target.value))}
+            title={t('settings.memory.embeddingDimensions')}
+          />
+        </div>
+        <button
+          type="button"
+          className="cf-btn cf-btnPrimary cf-btnSmall"
+          disabled={embSaving}
+          onClick={() => void onSaveEmbeddingPrefs()}
+        >
+          {embSaving ? t('settings.systemAgents.saving') : t('common.save')}
+        </button>
       </div>
 
       <div className="cf-card">

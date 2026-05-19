@@ -10,6 +10,7 @@ import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content'
 import { createStreamReasoningPhaseEmitter } from '../utils/reasoning-stream-phase-emitter';
 import { SessionStore, StoredConversation, StoredMessage } from './session-store';
 import { broadcastChatConversationsDirty } from '../messaging/chat-broadcast';
+import { refreshHermesMemoryIndexBestEffort } from './hermes-memory-index-hooks';
 import { ProviderRouter } from './provider-router';
 import { DeepSeekProvider } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
@@ -238,6 +239,11 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   private notifyConversationsPersisted(store: SessionStore): void {
     try {
       broadcastChatConversationsDirty({ workspaceRoot: store.resolvedWorkspaceRoot() });
+    } catch {
+      /* ignore */
+    }
+    try {
+      refreshHermesMemoryIndexBestEffort(store.resolvedWorkspaceRoot());
     } catch {
       /* ignore */
     }

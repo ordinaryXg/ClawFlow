@@ -27,8 +27,29 @@ export function isWorkspaceRelativeUnderMainMemoryTree(rel: string): boolean {
   return n === '.agent/.memory' || n.startsWith('.agent/.memory/');
 }
 
+export function isWorkspaceRelativeUnderKnowledgeTree(rel: string): boolean {
+  const n = String(rel ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  return n === '.agent/knowledge' || n.startsWith('.agent/knowledge/');
+}
+
+export function isWorkspaceRelativeUnderKnowledgeIngestTree(rel: string): boolean {
+  const n = String(rel ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  return (
+    n === '.agent/.clawflow/knowledge-ingest' || n.startsWith('.agent/.clawflow/knowledge-ingest/')
+  );
+}
+
 export function isWorkspaceRelativeUnderHermesIndexedTextTree(rel: string): boolean {
-  return isWorkspaceRelativeUnderHermesSkillTree(rel) || isWorkspaceRelativeUnderMainMemoryTree(rel);
+  return (
+    isWorkspaceRelativeUnderHermesSkillTree(rel) ||
+    isWorkspaceRelativeUnderMainMemoryTree(rel) ||
+    isWorkspaceRelativeUnderKnowledgeTree(rel) ||
+    isWorkspaceRelativeUnderKnowledgeIngestTree(rel)
+  );
 }
 
 export type PatchPathsSummary = { added: string[]; modified: string[]; deleted: string[] };

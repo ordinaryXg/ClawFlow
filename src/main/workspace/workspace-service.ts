@@ -15,6 +15,7 @@ import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-i
 import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
 import { ensureWorkspaceSkillCreatorHermesSkill } from './workspace-hermes-skill-bootstrap';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
+import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
@@ -615,6 +616,12 @@ export async function ensureWorkspaceInitialized(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
+  }
+  try {
+    await ensureWorkspaceKnowledgeTemplates(root);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[workspace-service] ensureWorkspaceKnowledgeTemplates failed:', msg);
   }
   try {
     await ensureWorkspaceAgentRoleTemplates(root);

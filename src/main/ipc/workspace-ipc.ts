@@ -22,6 +22,14 @@ import {
 } from '../workspace/active-workspace-sync';
 import { rescheduleAllTodoTriggers } from '../todo/todo-triggers-scheduler';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes-memory-db';
+import { listKnowledgeManifestEntries, rebuildKnowledgeManifest } from '../workspace/workspace-knowledge-manifest';
+import { createKnowledgeNote } from '../workspace/workspace-knowledge-bootstrap';
+import { ingestWorkspaceFileToKnowledge } from '../workspace/workspace-knowledge-ingest';
+import {
+  readHermesEmbeddingPrefsFile,
+  writeHermesEmbeddingPrefsFile,
+  type HermesEmbeddingPrefsStored,
+} from '../prefs/hermes-embedding-prefs';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../workspace/workspace-skills-read';
 import { readDisabledSkillRootsSync, setSkillRootEnabled } from '../workspace/workspace-skills-ui-state';
 import { deleteHermesSkillDirectory } from '../workspace/workspace-skills-delete';
@@ -460,7 +468,7 @@ export function registerWorkspaceIPC(): void {
       if (!root) return { ok: false as const, error: 'no_workspace' };
       const query = String(params?.query ?? '').trim();
       if (!query) return { ok: false as const, error: 'missing query' };
-      const res = searchHermesMemory(root, {
+      const res = await searchHermesMemory(root, {
         query,
         limit: params?.limit,
         skillName: params?.skillName != null ? String(params.skillName).trim() || undefined : undefined,
@@ -476,6 +484,53 @@ export function registerWorkspaceIPC(): void {
     const res = await rebuildHermesSkillFtsIndex(root);
     if (!res.ok) return { ok: false as const, error: res.error };
     return { ok: true as const, indexed: res.indexed, pruned: res.pruned };
+  });
+
+  ipcMain.handle('knowledge:listManifest', async (event, opts?: { refresh?: boolean }) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    if (!root) return { ok: false as const, error: 'no_workspace' };
+    try {
+      const entries = opts?.refresh
+        ? rebuildKnowledgeManifest(root).entries
+        : listKnowledgeManifestEntries(root);
+      return { ok: true as const, entries };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false as const, error: msg };
+    }
+  });
+
+  ipcMain.handle(
+    'knowledge:createNote',
+    async (event, params?: { title?: string; subdir?: 'notes' | 'docs' }) => {
+      const root = requireWorkspaceRootForWebContents(event.sender);
+      const res = await createKnowledgeNote(root, {
+        title: params?.title,
+        subdir: params?.subdir === 'docs' ? 'docs' : 'notes',
+      });
+      if (!res.ok) return res;
+      return { ok: true as const, relativePath: res.relativePath };
+    }
+  );
+
+  ipcMain.handle('knowledge:ingestFile', async (event, relativePath: string) => {
+    const root = requireWorkspaceRootForWebContents(event.sender);
+    const res = await ingestWorkspaceFileToKnowledge(root, String(relativePath ?? ''));
+    return res;
+  });
+
+  ipcMain.handle('hermes:getEmbeddingPrefs', async () => {
+    return { ok: true as const, prefs: readHermesEmbeddingPrefsFile() ?? {} };
+  });
+
+  ipcMain.handle('hermes:saveEmbeddingPrefs', async (_e, prefs: HermesEmbeddingPrefsStored) => {
+    try {
+      writeHermesEmbeddingPrefsFile(prefs ?? {});
+      return { ok: true as const };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false as const, error: msg };
+    }
   });
 
   ipcMain.handle('workspaceSkills:list', async (event) => {

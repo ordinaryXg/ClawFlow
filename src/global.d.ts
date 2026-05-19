@@ -414,6 +414,29 @@ export interface IElectronAPI {
   memoryFtsRebuild: () => Promise<
     { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
   >;
+  knowledgeListManifest: (opts?: { refresh?: boolean }) => Promise<
+    | {
+        ok: true;
+        entries: Array<{
+          path: string;
+          ext: string;
+          sizeBytes: number;
+          mtimeMs: number;
+          title: string | null;
+          abstract: string | null;
+        }>;
+      }
+    | { ok: false; error: string }
+  >;
+  knowledgeCreateNote: (params?: { title?: string; subdir?: 'notes' | 'docs' }) => Promise<
+    { ok: true; relativePath: string } | { ok: false; error: string }
+  >;
+  knowledgeIngestFile: (relativePath: string) => Promise<
+    | { ok: true; ingestRelPath: string; sourceRelPath: string }
+    | { ok: false; error: string }
+  >;
+  hermesGetEmbeddingPrefs: () => Promise<{ ok: true; prefs: Record<string, unknown> }>;
+  hermesSaveEmbeddingPrefs: (prefs: Record<string, unknown>) => Promise<{ ok: true } | { ok: false; error: string }>;
   workspaceSkillsList: () => Promise<
     | {
         ok: true;
