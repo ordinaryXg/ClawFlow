@@ -33,3 +33,19 @@ export function resolveWorkspaceRootForWebContents(sender: WebContents): string 
   }
   return getActiveWorkspaceRoot();
 }
+
+export const NO_WORKSPACE_BOUND = 'NO_WORKSPACE_BOUND';
+
+/** IPC 需要已绑定工作区时调用；未绑定时抛出 `NO_WORKSPACE_BOUND`。 */
+export function requireWorkspaceRootForWebContents(sender: WebContents): string {
+  const root = resolveWorkspaceRootForWebContents(sender);
+  if (!root) {
+    throw new Error(NO_WORKSPACE_BOUND);
+  }
+  return root;
+}
+
+/** 将 `null` 转为 `undefined`，供接受可选工作区根的 API 使用。 */
+export function workspaceRootOrUndefined(root: string | null): string | undefined {
+  return root ?? undefined;
+}

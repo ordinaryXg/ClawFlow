@@ -6,10 +6,8 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserWindow } from 'electron';
 import { clawflowDir } from './workspace-service';
-import * as workspaceService from './workspace-service';
-import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import { broadcastToWorkspaceWindows } from '../broadcast/workspace-window-broadcast';
 
 /** 与右侧「变更记录表」分类一致；旧数据缺省为 conversation_round */
 export type WorkspaceChangeLogKind =
@@ -108,18 +106,7 @@ async function writeStore(workspaceRoot: string, data: StoreFile): Promise<void>
 }
 
 export function broadcastWorkspaceChangelogUpdated(workspaceRoot: string): void {
-  const resolved = path.resolve(workspaceRoot);
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed()) continue;
-    try {
-      const wc = win.webContents;
-      if (workspaceService.isSameWorkspacePath(resolveWorkspaceRootForWebContents(wc), resolved)) {
-        wc.send('workspace:changelogUpdated');
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  broadcastToWorkspaceWindows(workspaceRoot, 'workspace:changelogUpdated');
 }
 
 export type AppendWorkspaceChangeLogParams = {

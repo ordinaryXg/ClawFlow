@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as workspaceService from '../workspace/workspace-service';
-import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import { broadcastToWorkspaceWindows } from '../broadcast/workspace-window-broadcast';
 import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from './todo-triggers-service';
 import type { TodoTriggerRecord } from '../../shared/todo-triggers';
 import { stickySatellitePathByWindowId } from '../sticky-satellite-windows';
@@ -33,17 +33,7 @@ function broadcastFire(workspaceRoot: string, t: TodoTriggerRecord): void {
     text: t.action.text,
     submitToModel: t.action.submitToModel,
   };
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed()) continue;
-    try {
-      const wc = win.webContents;
-      if (workspaceService.isSameWorkspacePath(resolveWorkspaceRootForWebContents(wc), resolved)) {
-        wc.send('todo-trigger:fired', payload);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  broadcastToWorkspaceWindows(resolved, 'todo-trigger:fired', payload);
 }
 
 async function applyPostFireMutation(workspaceRoot: string, triggerId: string): Promise<void> {

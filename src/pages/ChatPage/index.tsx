@@ -1,4 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/modules/chatStore';
@@ -68,7 +69,31 @@ const ChatPage: FC = () => {
     removePendingSend,
     toolApprovalPending,
     respondToolApproval,
-  } = useChatStore();
+  } = useChatStore(
+    useShallow((s) => ({
+      conversations: s.conversations,
+      activeConversationId: s.activeConversationId,
+      messages: s.messages,
+      isLoading: s.isLoading,
+      streamingActivity: s.streamingActivity,
+      streamingThinking: s.streamingThinking,
+      error: s.error,
+      fetchConversations: s.fetchConversations,
+      switchConversation: s.switchConversation,
+      deleteConversation: s.deleteConversation,
+      sendMessage: s.sendMessage,
+      setError: s.setError,
+      activeModeClassification: s.activeModeClassification,
+      isClassifyingMode: s.isClassifyingMode,
+      isExpectationPlanning: s.isExpectationPlanning,
+      expectationPlanStream: s.expectationPlanStream,
+      activeExpectationPlanDisplay: s.activeExpectationPlanDisplay,
+      pendingSendQueue: s.pendingSendQueue,
+      removePendingSend: s.removePendingSend,
+      toolApprovalPending: s.toolApprovalPending,
+      respondToolApproval: s.respondToolApproval,
+    }))
+  );
 
   const toolApprovalForActive =
     toolApprovalPending &&

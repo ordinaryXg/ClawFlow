@@ -1,7 +1,7 @@
 import {
   isWorkspaceRelativeUnderHermesSkillTree,
   patchSummaryTouchesHermesSkillTree,
-} from './hermes-skill-index-hooks';
+} from './hermes-memory-index-hooks';
 
 describe('hermes-skill-index-hooks', () => {
   it('detects skill tree prefix', () => {

@@ -1,7 +1,10 @@
 import { ipcMain } from 'electron';
 import { BrowserWindow } from 'electron';
 import { getGlobalClawFlowEngine } from '../../engine/clawflow-engine';
-import { resolveWorkspaceRootForWebContents } from '../electron-workspace-context';
+import {
+  resolveWorkspaceRootForWebContents,
+  workspaceRootOrUndefined,
+} from '../electron-workspace-context';
 import type { SystemAgentSettings } from '../../shared/system-agent-settings';
 import { runCognitiveAllocationClassification } from './cognitive-allocation-agent';
 import { runExpectationPlanning } from './expectation-planning-agent';
@@ -110,8 +113,9 @@ export function registerSystemAgentsIPC(): void {
 
   ipcMain.handle(CHANNELS.overview, async (event) => {
     try {
-      const workspaceRoot = resolveWorkspaceRootForWebContents(event.sender);
-      const overview = await getSystemAgentOverview(workspaceRoot);
+      const overview = await getSystemAgentOverview(
+        workspaceRootOrUndefined(resolveWorkspaceRootForWebContents(event.sender))
+      );
       return { ok: true as const, ...overview };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -133,7 +137,7 @@ export function registerSystemAgentsIPC(): void {
 
   ipcMain.handle(CHANNELS.saveSlots, async (event, payload: unknown) => {
     try {
-      const workspaceRoot = resolveWorkspaceRootForWebContents(event.sender);
+      const workspaceRoot = workspaceRootOrUndefined(resolveWorkspaceRootForWebContents(event.sender));
       const rawPatches = Array.isArray((payload as { patches?: unknown })?.patches)
         ? (payload as { patches: unknown[] }).patches
         : [];
@@ -161,8 +165,9 @@ export function registerSystemAgentsIPC(): void {
 
   ipcMain.handle(CHANNELS.reloadRoster, async (event) => {
     try {
-      const workspaceRoot = resolveWorkspaceRootForWebContents(event.sender);
-      const slots = await reloadSystemAgentRoster(workspaceRoot);
+      const slots = await reloadSystemAgentRoster(
+        workspaceRootOrUndefined(resolveWorkspaceRootForWebContents(event.sender))
+      );
       return { ok: true as const, slots };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

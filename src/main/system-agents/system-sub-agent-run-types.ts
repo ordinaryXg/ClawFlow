@@ -1,7 +1,4 @@
-/**
- * 子 Agent 运行请求类型（系统级 Agent 与历史 IPC 共用）。
- * 工作区委派子 Agent（`.subagent/`）已移除；请使用 `runSystemSubAgentOnce`。
- */
+/** 系统子 Agent 单次运行请求/结果。 */
 
 import type { ToolApprovalNeededPayload } from '../../engine/clawflow-engine';
 
@@ -19,5 +16,3 @@ export type SubAgentRunRequest = {
 export type SubAgentRunResult =
   | { ok: true; runId: string; message: string }
   | { ok: false; runId: string; error: string };
-
-export { runSystemSubAgentOnce as runSubAgentOnce } from '../system-agents/system-sub-agent-runner';

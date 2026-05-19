@@ -21,9 +21,11 @@ function normalizeRootRel(rel: string): string {
     .replace(/^\/+/, '');
 }
 
-export function readDisabledSkillRootsSync(workspaceRoot: string): Set<string> {
-  const root = path.resolve(workspaceRoot);
-  const fp = statePath(root);
+type DisabledRootsCacheEntry = { mtimeMs: number; disabled: Set<string> };
+
+const disabledRootsCache = new Map<string, DisabledRootsCacheEntry>();
+
+function parseDisabledRootsFromFile(fp: string): Set<string> {
   try {
     const raw = fs.readFileSync(fp, 'utf8');
     const j = JSON.parse(raw) as Partial<FileShape>;
@@ -33,6 +35,24 @@ export function readDisabledSkillRootsSync(workspaceRoot: string): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+export function readDisabledSkillRootsSync(workspaceRoot: string): Set<string> {
+  const root = path.resolve(workspaceRoot);
+  const fp = statePath(root);
+  let mtimeMs = -1;
+  try {
+    mtimeMs = fs.statSync(fp).mtimeMs;
+  } catch {
+    /* missing file */
+  }
+  const hit = disabledRootsCache.get(root);
+  if (hit && hit.mtimeMs === mtimeMs) {
+    return hit.disabled;
+  }
+  const disabled = parseDisabledRootsFromFile(fp);
+  disabledRootsCache.set(root, { mtimeMs, disabled });
+  return disabled;
 }
 
 export async function setSkillRootEnabled(workspaceRoot: string, skillRootRel: string, enabled: boolean): Promise<void> {
@@ -49,4 +69,11 @@ export async function setSkillRootEnabled(workspaceRoot: string, skillRootRel: s
   disabled = [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   const body: FileShape = { version: VERSION, disabledSkillRoots: disabled };
   await fs.promises.writeFile(fp, JSON.stringify(body, null, 2), 'utf8');
+  let mtimeMs = Date.now();
+  try {
+    mtimeMs = (await fs.promises.stat(fp)).mtimeMs;
+  } catch {
+    /* ignore */
+  }
+  disabledRootsCache.set(root, { mtimeMs, disabled: set });
 }

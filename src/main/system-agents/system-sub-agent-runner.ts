@@ -13,7 +13,7 @@ import {
   SKILL_AGENT_SLOT_ID,
 } from '../../shared/system-agent-constants';
 import type { InteractionMode } from '../../engine/providers/types';
-import type { SubAgentRunRequest, SubAgentRunResult } from '../sub-agent/sub-agent-runner';
+import type { SubAgentRunRequest, SubAgentRunResult } from './system-sub-agent-run-types';
 import { writeSystemRunSnapshot } from './system-agent-run-snapshot';
 
 const runningBySlot = new Map<string, string>();

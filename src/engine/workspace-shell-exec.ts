@@ -94,15 +94,26 @@ export async function runWorkspaceShellCommand(params: RunWorkspaceShellParams):
   }
 
   try {
-    const { stdout, stderr } = await execAsync(params.command.trim(), {
+    const execOptions: {
+      cwd: string;
+      timeout: number;
+      maxBuffer: number;
+      windowsHide: boolean;
+      env: NodeJS.ProcessEnv;
+      shell: string;
+      signal?: AbortSignal;
+    } = {
       cwd,
       timeout: timeoutMs,
       maxBuffer: MAX_BUFFER_BYTES,
       windowsHide: true,
       env: process.env,
-      shell: true,
-      ...(params.abortSignal ? { signal: params.abortSignal as any } : {}),
-    });
+      shell: process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : '/bin/sh',
+    };
+    if (params.abortSignal) {
+      execOptions.signal = params.abortSignal;
+    }
+    const { stdout, stderr } = await execAsync(params.command.trim(), execOptions);
     const combined = [stdout, stderr].filter(Boolean).join('\n');
     const exitHint = combined.trim() ? combined : '(no output)';
     return truncateShellOutput(exitHint);

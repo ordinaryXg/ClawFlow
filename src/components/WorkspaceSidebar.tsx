@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
@@ -33,7 +34,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const { conversations, fetchConversations, switchConversation } = useChatStore();
+  const { conversations, fetchConversations, switchConversation } = useChatStore(
+    useShallow((s) => ({
+      conversations: s.conversations,
+      fetchConversations: s.fetchConversations,
+      switchConversation: s.switchConversation,
+    }))
+  );
 
   const activeWorkspacePath = useWorkspaceStore((s) => s.activePath);
   const workspaceMeta = useWorkspaceStore((s) => s.meta);

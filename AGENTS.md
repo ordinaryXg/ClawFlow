@@ -28,15 +28,16 @@ src/
     application-menu.ts
     electron-workspace-context.ts
     sticky-satellite-windows.ts
-    workspace/            # 工作区注册表、资源管理器、Git、技能、布局与引导
-    sub-agent/            # 兼容 re-export；系统子 Agent 见 system-agents/
+    workspace/            # 注册表、`.agent` 引导、Git、技能；`active-workspace-sync.ts` 统一活动根
+    ipc/                  # workspace-ipc.ts、register-todo-scrape-ipc.ts 等
+    broadcast/            # 按工作区向窗口广播（workspace-window-broadcast.ts）
     system-agents/        # 应用缓存内 Skill / 认知分配 / 预期规划
     todo/                 # 待办触发器
     scrape/               # 网页抓取任务
     skill/                # Skill Agent；轮次 totalUserManualRounds 与进化触发见 skill-evolution-scheduler.ts
     shell/                # 托盘、主窗偏好、图标、桌面钉、主壳工作区记忆
     prefs/                # messaging-prefs、web-search-prefs、app-cache-prefs（userData 持久化）
-  engine/                 # ClawFlow 引擎、Gateway、Provider、tool-runtime
+  engine/                 # ClawFlow 引擎、engine-ipc.ts、Gateway、Provider、tool-runtime
   messaging/              # 飞书等
   components/, pages/, store/
   shared/                 # 类型、纯函数；含 workspace-preview-limits、intelligence-profile
@@ -52,14 +53,16 @@ src/
 1. 顶层 `import`：依赖的引擎、工作区、子代理、抓取、托盘、消息等模块。
 2. **`registerMessagingIPC()`**：在 `app.whenReady` 之前执行（注释说明原因）。
 3. **便签 / 壳紧凑布局**：`shellCompactByWindowId`、`broadcastStickyDetachedPaths`、`bumpMainShellWorkspaceIfSameAsSatelliteBinding`、`applyWorkspaceForFocusedWindow`。
-4. **尽早注册的 IPC**：`registerShellViewWindowIPC`、`registerWorkspaceImportExternalPathsIPC`、`registerWorkspaceStatAbsolutePathIPC`、`registerAppPathAndIconIPC`、`registerTodoTriggersIPC`、`registerScrapeIPC`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
-5. **`registerWorkspaceIPC()`**：工作区、剪贴板、Hermes 技能列表等大段 handler。
+4. **尽早注册的 IPC**：`registerShellViewWindowIPC`、`registerWorkspaceImportExternalPathsIPC`、`registerWorkspaceStatAbsolutePathIPC`、`registerAppPathAndIconIPC`；待办/抓取见 `main/ipc/register-todo-scrape-ipc.ts`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
+5. **`registerWorkspaceIPC()`**（`main/ipc/workspace-ipc.ts`）：工作区、剪贴板、Hermes 技能、记忆 FTS 等 handler。
 6. **`registerWindowControlIpcOnce` / `buildBaseBrowserWindow` / `registerStickySatelliteIPC`**：窗口与卫星便签。
 7. **`app.whenReady()`**：读偏好、初始化工作区、注册引擎 IPC、Gateway、`createWindow()`、飞书长连等。
 
 应用菜单与菜单语言：`src/main/application-menu.ts`（`setupApplicationMenu`、`getAppLanguage`、`setAppLanguageFromRenderer`）。
 
-后续可将与 `index.ts` 强耦合的大段 IPC 按域迁到 `src/main/ipc/` 或 `src/main/windows/`，每迁一块跑一次 `npm start` 与关键路径手测。
+活动工作区切换请用 `main/workspace/active-workspace-sync.ts`（`applyActiveWorkspace` / `syncActiveWorkspaceRootToEngine`），勿在多处手写 `setActiveWorkspaceRoot` + `syncClawFlowEngineWorkspaceRoot`。
+
+引擎 IPC 见 `engine/engine-ipc.ts`（`registerClawFlowIPC`）；`index.ts` 在 `whenReady` 内调用。后续可将仍留在 `index.ts` 的早期 workspace handler（import/stat 等）继续并入 `main/ipc/`。
 
 ## 渲染层
 
@@ -83,4 +86,4 @@ npm test
 
 ## 环境变量（节选）
 
-主进程 `registerClawFlowIPC` 会读取如 `CLAWFLOW_WEB_SEARCH_*`、`BRAVE_*` 等；详见 `index.ts` 中 `app.whenReady` 内 `registerClawFlowIPC` 调用处。
+主进程 `registerClawFlowIPC`（`engine/engine-ipc.ts`）会读取如 `CLAWFLOW_WEB_SEARCH_*`、`BRAVE_*` 等；详见 `index.ts` 中 `app.whenReady` 内调用处。
