@@ -14,6 +14,7 @@ import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
 import { installWorkspaceSkillCreatorPackage } from './workspace-hermes-skill-bootstrap';
+import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
@@ -165,6 +166,7 @@ export async function ensureWorkspaceToolBundle(
       '',
       '- 总览入口：请阅读工作区内 `.agent/.roleAgent/TOOLS.md`',
       '- 能力开关：`manifest.json`',
+      '- Hermes 技能名册：`skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
       '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md`',
       '',
     ].join('\n');
@@ -221,6 +223,9 @@ export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<
 export async function writeWorkspaceToolSelection(workspaceRoot: string, tools: WorkspaceToolSelection): Promise<void> {
   await ensureWorkspaceToolBundle(workspaceRoot, tools);
   await refreshSystemSkillAgentForWorkspace(workspaceRoot);
+  if (tools.skills) {
+    await syncWorkspaceSkillManifest(workspaceRoot).catch(() => undefined);
+  }
 }
 
 export interface WorkspaceMeta {

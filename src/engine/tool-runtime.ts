@@ -25,6 +25,7 @@ import {
 } from '../main/workspace/workspace-office-preview';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
+import { syncWorkspaceSkillManifest } from '../main/workspace/workspace-skill-manifest';
 import { readDisabledSkillRootsSync } from '../main/workspace/workspace-skills-ui-state';
 import { atomicWriteUtf8File } from './atomic-write';
 import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
@@ -1819,6 +1820,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         { 'before.txt': '', 'after.txt': initial }
       );
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
       return JSON.stringify({ ok: true, path: rel, opId }, null, 2);
     }
   );
@@ -1882,6 +1884,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         { 'before.txt': before, 'after.txt': after }
       );
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
       return JSON.stringify(
         {
           ok: true,
@@ -1993,6 +1996,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       if (!st?.isDirectory()) return `ERROR: skill folder not found: ${skillRootRel}`;
       await fs.promises.rm(full, { recursive: true, force: true });
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
       return JSON.stringify({ ok: true, deleted: skillRootRel }, null, 2);
     }
   );

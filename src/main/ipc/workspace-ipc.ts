@@ -34,6 +34,7 @@ import {
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../workspace/workspace-skills-read';
 import { readDisabledSkillRootsSync, setSkillRootEnabled } from '../workspace/workspace-skills-ui-state';
 import { deleteHermesSkillDirectory } from '../workspace/workspace-skills-delete';
+import { syncWorkspaceSkillManifest } from '../workspace/workspace-skill-manifest';
 import { gitCloneWorkspace, gitPullWorkspace, gitPushWorkspace } from '../workspace/workspace-git';
 import { readSkillEvolutionState } from '../skill/skill-evolution-state';
 import { runManualSkillEvolutionTest } from '../skill/skill-evolution-scheduler';
@@ -574,6 +575,7 @@ export function registerWorkspaceIPC(): void {
   ipcMain.handle('workspaceSkills:list', async (event) => {
     const root = requireWorkspaceRootForWebContents(event.sender);
     try {
+      await syncWorkspaceSkillManifest(root).catch(() => undefined);
       const disabled = readDisabledSkillRootsSync(root);
       const skills = listWorkspaceHermesSkills(root).map((s) => ({
         ...s,
@@ -594,6 +596,7 @@ export function registerWorkspaceIPC(): void {
     if (!skillRootRel) return { ok: false as const, error: 'missing skillRootRel' };
     try {
       await setSkillRootEnabled(root, skillRootRel, enabled);
+      await syncWorkspaceSkillManifest(root).catch(() => undefined);
       void workspaceChangeLog
         .appendWorkspaceChangeLog(root, {
           kind: enabled ? 'skill_enabled' : 'skill_disabled',
@@ -622,6 +625,7 @@ export function registerWorkspaceIPC(): void {
     } catch {
       /* ignore */
     }
+    await syncWorkspaceSkillManifest(root).catch(() => undefined);
     void workspaceChangeLog
       .appendWorkspaceChangeLog(root, {
         kind: 'skill_deleted',

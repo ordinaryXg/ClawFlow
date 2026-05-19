@@ -3,9 +3,9 @@ import * as path from 'path';
 import type { SubAgentRoleTemplateId } from '../../shared/sub-agent-types';
 import { systemSubagentRolesDirAbs } from './system-agent-layout';
 
-import templateSkillsAgents from '../../workspace-templates/subagent-roles/skills/AGENTS.md';
-import templateSkillsSoul from '../../workspace-templates/subagent-roles/skills/SOUL.md';
-import templateSkillsTools from '../../workspace-templates/subagent-roles/skills/TOOLS.md';
+import templateSkillEvolutionAgents from '../../workspace-templates/subagent-roles/skill-evolution/AGENTS.md';
+import templateSkillEvolutionSoul from '../../workspace-templates/subagent-roles/skill-evolution/SOUL.md';
+import templateSkillEvolutionTools from '../../workspace-templates/subagent-roles/skill-evolution/TOOLS.md';
 
 import templateCogAgents from '../../workspace-templates/subagent-roles/cognitive-allocation/AGENTS.md';
 import templateCogSoul from '../../workspace-templates/subagent-roles/cognitive-allocation/SOUL.md';
@@ -17,13 +17,13 @@ import templateExpTools from '../../workspace-templates/subagent-roles/expectati
 
 type RoleMd = 'AGENTS.md' | 'SOUL.md' | 'TOOLS.md';
 
-export type SystemRoleTemplateId = 'skills' | 'cognitive-allocation' | 'expectation-planning';
+export type SystemRoleTemplateId = 'skill-evolution' | 'cognitive-allocation' | 'expectation-planning';
 
 const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, Array<{ name: RoleMd; content: string }>> = {
-  skills: [
-    { name: 'AGENTS.md', content: templateSkillsAgents },
-    { name: 'SOUL.md', content: templateSkillsSoul },
-    { name: 'TOOLS.md', content: templateSkillsTools },
+  'skill-evolution': [
+    { name: 'AGENTS.md', content: templateSkillEvolutionAgents },
+    { name: 'SOUL.md', content: templateSkillEvolutionSoul },
+    { name: 'TOOLS.md', content: templateSkillEvolutionTools },
   ],
   'cognitive-allocation': [
     { name: 'AGENTS.md', content: templateCogAgents },
@@ -40,7 +40,7 @@ const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, Array<{ name: RoleMd; 
 const STANDARD_ROLE_FILES: readonly RoleMd[] = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
 
 function isSystemRoleTemplateId(id: SubAgentRoleTemplateId): id is SystemRoleTemplateId {
-  return id === 'skills' || id === 'cognitive-allocation' || id === 'expectation-planning';
+  return id === 'skill-evolution' || id === 'cognitive-allocation' || id === 'expectation-planning';
 }
 
 async function writeFileIfMissing(abs: string, body: string): Promise<boolean> {
@@ -66,17 +66,21 @@ export async function ensureSystemSubAgentRoleTemplates(): Promise<void> {
 }
 
 async function readRoleMarkdownParts(roleTemplateId: SystemRoleTemplateId): Promise<string> {
-  const baseDir = systemSubagentRolesDirAbs();
-  const dir = path.join(baseDir, roleTemplateId);
+  const dir = path.join(systemSubagentRolesDirAbs(), roleTemplateId);
   const parts: string[] = [];
   for (const name of STANDARD_ROLE_FILES) {
+    let body: string | null = null;
     try {
-      const body = await fs.promises.readFile(path.join(dir, name), 'utf-8');
-      parts.push(body.trimEnd());
+      body = await fs.promises.readFile(path.join(dir, name), 'utf-8');
     } catch {
-      const fallback = SYSTEM_ROLE_TEMPLATES[roleTemplateId]?.find((x) => x.name === name)?.content;
-      if (fallback) parts.push(String(fallback).trimEnd());
+      /* use bundled fallback */
     }
+    if (body != null) {
+      parts.push(body.trimEnd());
+      continue;
+    }
+    const fallback = SYSTEM_ROLE_TEMPLATES[roleTemplateId]?.find((x) => x.name === name)?.content;
+    if (fallback) parts.push(String(fallback).trimEnd());
   }
   return parts.join('\n\n');
 }

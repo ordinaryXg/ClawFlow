@@ -43,6 +43,18 @@ describe('workspace-skills-read', () => {
     expect(list[0].referenceFiles.some((r) => r.relPath.endsWith('r.txt'))).toBe(true);
   });
 
+  it('does not list nested SKILL.md under skill-creator/examples', () => {
+    const sc = path.join(workspaceSkillsDirAbs(dir), 'skill-creator');
+    fs.mkdirSync(sc, { recursive: true });
+    fs.writeFileSync(path.join(sc, 'SKILL.md'), '# skill-creator\n', 'utf8');
+    const nested = path.join(sc, 'examples', 'hello-skill');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, 'SKILL.md'), '# nested\n', 'utf8');
+    const list = listWorkspaceHermesSkills(dir);
+    expect(list.some((s) => s.name === 'hello-skill')).toBe(false);
+    expect(list.some((s) => s.name === 'skill-creator')).toBe(true);
+  });
+
   it('rejects paths outside skills tree', () => {
     const bad = readWorkspaceSkillTextFile(dir, '.agent/.clawflow/workspace.json');
     expect(bad.ok).toBe(false);

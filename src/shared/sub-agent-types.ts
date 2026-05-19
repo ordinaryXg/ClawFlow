@@ -7,7 +7,7 @@ export type SubAgentRoleTemplateId =
   | 'creative'
   | 'data'
   | 'assistant'
-  | 'skills'
+  | 'skill-evolution'
   | 'cognitive-allocation'
   | 'expectation-planning';
 

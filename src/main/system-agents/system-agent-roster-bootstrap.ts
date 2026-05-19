@@ -52,7 +52,7 @@ function mergeSkillSlot(prev: SubAgentSlot | undefined, skillsEnabled: boolean):
       label,
       behavior,
       status: 'stopped',
-      roleTemplateId: 'skills',
+      roleTemplateId: 'skill-evolution',
       delegatable: false,
       skillToolsEnabled: false,
     };
@@ -66,7 +66,7 @@ function mergeSkillSlot(prev: SubAgentSlot | undefined, skillsEnabled: boolean):
     label,
     behavior,
     status,
-    roleTemplateId: 'skills',
+    roleTemplateId: 'skill-evolution',
     delegatable: false,
     skillToolsEnabled: true,
   };

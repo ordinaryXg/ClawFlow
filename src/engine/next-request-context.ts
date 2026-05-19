@@ -6,6 +6,8 @@ import { buildRoleAgentSystemContent } from './role-agent-context';
 import type { ChatMessage } from './providers/types';
 import type { StoredConversation, StoredMessage } from './session-store';
 import { resolveContextTokenLimit } from '../utils/context-saturation';
+import { readWorkspaceToolManifest } from '../main/workspace/workspace-service';
+import { buildSkillManifestSystemContent } from '../main/workspace/workspace-skill-manifest';
 
 /** 从持久化会话构造即将发给模型的 tail（不含 system；逻辑须与 ClawFlowEngine.buildHistoryMessages 一致） */
 export function buildTailChatMessagesFromStored(conv: StoredConversation | null, userText: string): ChatMessage[] {
@@ -49,7 +51,12 @@ export async function composeNextRequestChatMessages(params: {
   conversation: StoredConversation | null;
   pendingUserText: string;
 }): Promise<ChatMessage[]> {
-  const roleSystem = await buildRoleAgentSystemContent(params.workspaceRoot);
+  const parts: string[] = [await buildRoleAgentSystemContent(params.workspaceRoot)];
+  const tools = await readWorkspaceToolManifest(params.workspaceRoot);
+  if (tools.skills) {
+    parts.push('', await buildSkillManifestSystemContent(params.workspaceRoot));
+  }
+  const roleSystem = parts.join('\n');
   const tail = buildTailChatMessagesFromStored(params.conversation, params.pendingUserText);
   return [{ role: 'system', content: roleSystem }, ...tail];
 }

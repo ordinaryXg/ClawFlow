@@ -29,6 +29,7 @@ import { buildModeConfig, type ChatIntent } from './mode-policy';
 import { buildGroupedChatModelCatalog } from './chat-model-catalog';
 import { resolveModelIdForInteractionMode } from './mode-defaults';
 import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
+import { logChatSendComposedMessages } from '../shared/chat-send-debug';
 import {
   resolveWebSearchConfig,
   sanitizeWebSearchForPublic,
@@ -724,6 +725,14 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       if (baseModeConfig.toolsEnabled) {
         baseModeConfig.tools = filterToolSchemasByWorkspaceManifest(this.tools.listSchemas(), workspaceToolSelection);
       }
+      logChatSendComposedMessages(loopMessages, {
+        conversationId: params.conversationId,
+        userText: params.userText,
+        mode,
+        modelId,
+        workspaceRoot: effRoot,
+        toolsEnabled: baseModeConfig.toolsEnabled,
+      });
       const maxToolLoopSteps = resolveMaxSendMessageToolLoopSteps(readEngineRuntimePrefsFile());
       for (let step = 0; step < maxToolLoopSteps; step++) {
         if (params.abortSignal?.aborted) throw new Error('CANCELLED');
@@ -1066,6 +1075,14 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     }
 
     const loopMessages = await this.buildHistoryMessages(params.conversationId, params.userText, store, effRoot);
+    logChatSendComposedMessages(loopMessages, {
+      conversationId: params.conversationId,
+      userText: params.userText,
+      mode,
+      modelId,
+      workspaceRoot: effRoot,
+      toolsEnabled: baseModeConfig.toolsEnabled,
+    });
     const req: ChatCompletionRequest = {
       model: modelId,
       messages: loopMessages,

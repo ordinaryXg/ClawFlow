@@ -21,27 +21,30 @@ function toPosixRelUnderAgentTree(workspaceRoot: string, absPath: string): strin
   return path.join(WORKSPACE_AGENT_DIR, rel).split(path.sep).join('/');
 }
 
-function listSkillMdAbsolutePaths(skillsBaseAbs: string): string[] {
+/**
+ * 仅扫描 `.agent/.skills/<技能名>/SKILL.md`（两层：skills 根 + 一级子目录）。
+ * 不递归 `skill-creator/examples/**` 等嵌套示例。
+ */
+function listTopLevelSkillMdAbsolutePaths(skillsBaseAbs: string): string[] {
   const out: string[] = [];
-  function walk(dir: string): void {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const abs = path.join(dir, e.name);
-      if (e.isDirectory()) walk(abs);
-      else if (e.isFile() && e.name === 'SKILL.md') out.push(abs);
-    }
-  }
+  let entries: fs.Dirent[];
   try {
     fs.accessSync(skillsBaseAbs);
+    entries = fs.readdirSync(skillsBaseAbs, { withFileTypes: true });
   } catch {
     return [];
   }
-  walk(skillsBaseAbs);
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name.startsWith('.')) continue;
+    const skillRootAbs = path.join(skillsBaseAbs, e.name);
+    const absMd = path.join(skillRootAbs, 'SKILL.md');
+    try {
+      const st = fs.statSync(absMd);
+      if (st.isFile()) out.push(absMd);
+    } catch {
+      /* 非标准技能目录：无根级 SKILL.md 则跳过 */
+    }
+  }
   return out;
 }
 
@@ -55,7 +58,7 @@ export function listWorkspaceHermesSkills(workspaceRoot: string): WorkspaceSkill
   }
 
   const items: WorkspaceSkillListItem[] = [];
-  for (const absMd of listSkillMdAbsolutePaths(skillsBaseAbs)) {
+  for (const absMd of listTopLevelSkillMdAbsolutePaths(skillsBaseAbs)) {
     const skillRootAbs = path.dirname(absMd);
     const skillRootRel = toPosixRelUnderAgentTree(root, skillRootAbs);
     const skillMdRel = toPosixRelUnderAgentTree(root, absMd);

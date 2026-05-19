@@ -9,6 +9,7 @@ import {
   type ConversationModeClassification,
 } from '../../engine/conversation-mode-classifier';
 import { needsExpectationPlanning } from '../../shared/expectation-plan';
+import { logChatSendRenderer } from '../../shared/chat-send-debug';
 import {
   finishOutboundTurn,
   getMergedOutboundText,
@@ -856,6 +857,22 @@ export const useChatStore = create<ChatState>()((set, get) => {
           });
           activeRequestByConversation.set(sessionId, requestId);
 
+          logChatSendRenderer({
+            conversationId: sessionId,
+            bubbleContent: mergedContent,
+            textForMain,
+            mode: actualMode,
+            modelId: effectiveModelId,
+            workspaceRoot: sendWorkspaceRoot,
+            classification: {
+              category: classification.category,
+              categoryLabel: classification.categoryLabel,
+              mode: classification.mode,
+              summary: classification.summary,
+            },
+            expectationPlanningRan: needsExpectationPlanning(classification.category),
+          });
+
           const msg: GatewayWsSend = {
             type: 'chat:send',
             requestId,
@@ -872,6 +889,22 @@ export const useChatStore = create<ChatState>()((set, get) => {
         }
 
         if (abortSignal.aborted) return;
+
+        logChatSendRenderer({
+          conversationId: sessionId,
+          bubbleContent: mergedContent,
+          textForMain,
+          mode: actualMode,
+          modelId: effectiveModelId,
+          expectationPlanningRan: needsExpectationPlanning(classification.category),
+          classification: {
+            category: classification.category,
+            categoryLabel: classification.categoryLabel,
+            mode: classification.mode,
+            summary: classification.summary,
+          },
+        });
+
         const response = await window.electronAPI?.engineSendMessage?.({
           conversationId: sessionId,
           userText: textForMain,
