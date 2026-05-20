@@ -99,10 +99,16 @@ const MessageList: FC<Props> = ({ messages, scrollRoot, stickToBottomRef, conver
       return;
     }
     rowsLenRef.current = rows.length;
-    if (stickToBottomRef.current) {
-      setRenderStart(
-        computeTailWindowStart(rows, CHAT_MSG_LIST_INITIAL_MAX_ROWS, CHAT_MSG_LIST_INITIAL_MAX_CHARS)
-      );
+    // 贴底时仅滚到底部，勿把 renderStart 推到末尾，否则较早的「进化」合并卡片会被虚拟列表截出视口。
+    if (!stickToBottomRef.current) {
+      setRenderStart((s) => {
+        const tailStart = computeTailWindowStart(
+          rows,
+          CHAT_MSG_LIST_INITIAL_MAX_ROWS,
+          CHAT_MSG_LIST_INITIAL_MAX_CHARS
+        );
+        return Math.min(s, tailStart);
+      });
     }
   }, [rows.length, rows, stickToBottomRef]);
 

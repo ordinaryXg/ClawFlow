@@ -135,6 +135,30 @@ export async function appendEvolutionChatMessages(
   }
 }
 
+export const EVOLUTION_STREAM_DISPLAY_MAX = 24_000;
+
+/**
+ * 阶段结束时的展示正文：优先流式累积（与进行中 UI 一致）。
+ * `sendMessage` 返回的 message 多为工具循环最后一轮短句（如 “Now update the Changelog.”），
+ * 会覆盖用户已看到的流式内容。
+ */
+export function pickEvolutionPhaseDisplayText(streamAcc: string, finalMessage: string): string {
+  const stream = streamAcc.trim();
+  const final = finalMessage.trim();
+  if (!stream) return final.slice(0, EVOLUTION_STREAM_DISPLAY_MAX);
+  if (!final) {
+    return stream.length > EVOLUTION_STREAM_DISPLAY_MAX
+      ? stream.slice(-EVOLUTION_STREAM_DISPLAY_MAX)
+      : stream;
+  }
+  if (stream.length >= final.length) {
+    return stream.length > EVOLUTION_STREAM_DISPLAY_MAX
+      ? stream.slice(-EVOLUTION_STREAM_DISPLAY_MAX)
+      : stream;
+  }
+  return final.slice(0, EVOLUTION_STREAM_DISPLAY_MAX);
+}
+
 export type EvolutionChatBridge = {
   runId: string;
   manual: boolean;
@@ -211,7 +235,9 @@ export function createEvolutionChatBridge(
       const id = phaseIds.get(aspect);
       const title =
         aspect === 'memory' ? '记忆整理' : aspect === 'skills' ? '技能维护' : '角色同步';
-      const body = String(content ?? '').trim() || (ok ? '（本阶段无文字输出）' : '（本阶段失败）');
+      const buf = streamBuf.get(aspect) ?? '';
+      const picked = pickEvolutionPhaseDisplayText(buf, String(content ?? ''));
+      const body = picked.trim() || (ok ? '（本阶段无文字输出）' : '（本阶段失败）');
       if (id) {
         await patchEvolutionChatMessage(workspaceRoot, conversationId, id, {
           content: `### ${title}\n\n${body}`,
@@ -224,6 +250,7 @@ export function createEvolutionChatBridge(
         });
       }
       streamBuf.delete(aspect);
+      lastStreamPatchMs.delete(aspect);
     },
   };
 }

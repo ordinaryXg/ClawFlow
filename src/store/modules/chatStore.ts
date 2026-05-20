@@ -234,6 +234,8 @@ export interface ChatState {
   pendingSendQueue: PendingSendDisplayItem[];
   /** Gateway 工具执行前待用户确认（仅当前连接会话） */
   toolApprovalPending: ToolApprovalPendingState | null;
+  /** 最近一次 fetchConversations 对应的工作区路径（用于禁止跨工作区合并本地 messages） */
+  conversationFetchWorkspaceKey: string | null;
 
   // Actions
   fetchConversations: () => Promise<void>;
@@ -282,8 +284,39 @@ function conversationForEngineUpsert(conv: Conversation) {
       ...(m.role === 'assistant' && m.reasoningContent?.trim()
         ? { reasoning_content: m.reasoningContent.trim() }
         : {}),
+      ...(m.role === 'tool' && m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
+      ...(m.meta && Object.keys(m.meta).length ? { meta: m.meta } : {}),
     })),
   };
+}
+
+/** fetch 后合并：保留本地 meta/channel 等，避免 upsert 未带 meta 时进化卡片被「打散」或丢失 */
+function mergeServerMessagesWithLocal(prev: Message[], fromServer: Message[]): Message[] {
+  if (!fromServer.length) return fromServer;
+  if (!prev.length) return fromServer;
+  const prevById = new Map(prev.map((m) => [m.id, m]));
+  const merged = fromServer.map((m) => {
+    const local = prevById.get(m.id);
+    if (!local) return m;
+    const meta =
+      local.meta || m.meta
+        ? { ...(local.meta ?? {}), ...(m.meta ?? {}) }
+        : undefined;
+    return {
+      ...m,
+      channel: m.channel ?? local.channel,
+      ...(meta && Object.keys(meta).length ? { meta } : {}),
+      ...(m.toolCallId ?? local.toolCallId ? { toolCallId: m.toolCallId ?? local.toolCallId } : {}),
+      ...(m.reasoningContent ?? local.reasoningContent
+        ? { reasoningContent: m.reasoningContent ?? local.reasoningContent }
+        : {}),
+    };
+  });
+  const serverIds = new Set(fromServer.map((m) => m.id));
+  for (const m of prev) {
+    if (!serverIds.has(m.id)) merged.push(m);
+  }
+  return merged.sort((a, b) => a.timestamp - b.timestamp);
 }
 
 function cancelAssistantReveal() {
@@ -552,6 +585,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   expectationPlanAnchorMessageId: null,
   pendingSendQueue: [],
   toolApprovalPending: null,
+  conversationFetchWorkspaceKey: null,
 
   removePendingSend: (id) => {
     const sessionId = get().activeConversationId;
@@ -583,6 +617,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   applyEvolutionChatUpdate: ({ conversationId, kind, message }) => {
     const convId = String(conversationId ?? '').trim();
     if (!convId || !message?.id) return;
+    if (!get().conversations.some((c) => c.id === convId)) return;
 
     const mergeInto = (msgs: Message[]): Message[] => {
       const idx = msgs.findIndex((m) => m.id === message.id);
@@ -609,6 +644,31 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
   fetchConversations: async () => {
     cancelAssistantReveal();
+    let activeWs = '';
+    try {
+      const a = await window.electronAPI?.workspaceGetActive?.();
+      activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
+    } catch {
+      activeWs = '';
+    }
+
+    const prevFetchWs = get().conversationFetchWorkspaceKey ?? '';
+    const workspaceSwitched =
+      Boolean(activeWs && prevFetchWs) &&
+      normWorkspacePath(activeWs) !== normWorkspacePath(prevFetchWs);
+    if (workspaceSwitched) {
+      set({
+        messages: [],
+        streamingActivity: null,
+        streamingThinking: null,
+        activeModeClassification: null,
+        isExpectationPlanning: false,
+        expectationPlanStream: null,
+        activeExpectationPlanDisplay: null,
+        expectationPlanAnchorMessageId: null,
+      });
+    }
+
     try {
       const res = await window.electronAPI?.engineGetConversations?.();
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : null;
@@ -622,14 +682,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
       const fromRes = rawList.map(normalizeConversation).filter(Boolean) as Conversation[];
       const current = get().conversations;
-
-      let activeWs = '';
-      try {
-        const a = await window.electronAPI?.workspaceGetActive?.();
-        activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
-      } catch {
-        activeWs = '';
-      }
 
       // 合并：服务端列表 + 同一工作区下尚未出现在本次拉取中的乐观新建会话
       const mergedMap = new Map<string, Conversation>();
@@ -650,10 +702,23 @@ export const useChatStore = create<ChatState>()((set, get) => {
       const stillValid = Boolean(prev && merged.some((c) => c.id === prev));
       const activeId = stillValid ? prev : (merged[0]?.id ?? null);
       const active = activeId ? merged.find((c) => c.id === activeId) : null;
+      const prevMessages = get().messages;
+      const canMergeLocalMessages =
+        !workspaceSwitched && stillValid && activeId === prev && prevMessages.length > 0;
+      const nextMessages =
+        activeId && active
+          ? canMergeLocalMessages
+            ? mergeServerMessagesWithLocal(prevMessages, active.messages)
+            : active.messages
+          : (active?.messages ?? []);
+      const conversationsWithMerged = merged.map((c) =>
+        c.id === activeId ? { ...c, messages: nextMessages } : c
+      );
       set({
-        conversations: merged,
+        conversations: conversationsWithMerged,
         activeConversationId: activeId,
-        messages: active?.messages ?? [],
+        messages: nextMessages,
+        conversationFetchWorkspaceKey: activeWs || null,
         error: null,
       });
     } catch (e: any) {

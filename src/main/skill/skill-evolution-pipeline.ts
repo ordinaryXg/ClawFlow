@@ -21,7 +21,11 @@ import {
 } from './skill-evolution-snapshot';
 import { appendEvolutionRun, type EvolutionRunPhaseRecord, type EvolutionRunRecord } from './skill-evolution-runs';
 import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
-import { createEvolutionChatBridge, type EvolutionChatBridge } from './skill-evolution-chat';
+import {
+  createEvolutionChatBridge,
+  pickEvolutionPhaseDisplayText,
+  type EvolutionChatBridge,
+} from './skill-evolution-chat';
 
 const PHASE_ORDER: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
 
@@ -225,7 +229,11 @@ export async function runEvolutionPipeline(params: {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (evolutionChat) {
-        await evolutionChat.phaseEnd(aspect, msg.slice(0, 1500), false);
+        await evolutionChat.phaseEnd(
+          aspect,
+          pickEvolutionPhaseDisplayText(streamAcc, msg),
+          false
+        );
       }
       phases.push({
         aspect,
@@ -256,16 +264,25 @@ export async function runEvolutionPipeline(params: {
 
     if (!res.ok) {
       if (evolutionChat) {
-        await evolutionChat.phaseEnd(aspect, String(res.error ?? 'run_failed').slice(0, 1500), false);
+        const errText = String(res.error ?? 'run_failed');
+        await evolutionChat.phaseEnd(
+          aspect,
+          pickEvolutionPhaseDisplayText(streamAcc, errText),
+          false
+        );
       }
       return fail('phase_agent_failed', String(res.error ?? 'run_failed'));
     }
-    const excerpt = (res.ok ? res.message : '').trim().slice(0, 1500);
+    const excerpt = (res.ok ? res.message : '').trim().slice(0, 2000);
     if (excerpt) {
       messages.push(`### ${PHASE_TITLE[aspect]}\n${excerpt}`);
     }
     if (evolutionChat) {
-      await evolutionChat.phaseEnd(aspect, excerpt || streamAcc.trim().slice(-1500), res.ok);
+      await evolutionChat.phaseEnd(
+        aspect,
+        pickEvolutionPhaseDisplayText(streamAcc, excerpt),
+        res.ok
+      );
     }
   }
 
