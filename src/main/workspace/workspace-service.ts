@@ -593,6 +593,8 @@ export async function ensureWorkspaceInitialized(
   opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
+  /** 须在 blob 可能迁回 `.agent/` 之前采样，否则「新建工作区」会被误判为既有布局并跳过 skill-creator */
+  const hadAgentBeforeTriadMigrate = await workspaceHasExistingAgentAndSubagent(root);
   migrateWorkspaceTriadFromLegacyRootsSync(root);
   migrateAgentManifestAndKnowledgePathsSync(root);
   const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
@@ -630,8 +632,8 @@ export async function ensureWorkspaceInitialized(
     console.warn('[workspace-service] refreshSystemSkillAgentForWorkspace failed:', msg);
   }
 
-  // 新建工作区（尚无 `.agent/`）：安装 skill-creator v2 整包；既有工作区不补写（无 v1 增量逻辑）
-  if (!preserveExistingLayout) {
+  // 用户侧「新建工作区」：工作区根在打开前尚无 `.agent/`（blob 迁回不算）；安装 skill-creator v2 整包。既有工作区不补写。
+  if (!hadAgentBeforeTriadMigrate) {
     try {
       await installWorkspaceSkillCreatorPackage(root);
     } catch (e: unknown) {

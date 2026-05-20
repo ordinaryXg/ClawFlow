@@ -8,7 +8,7 @@
 | `role-agent/` | `<workspace>/.agent/.roleAgent/` | `TOOLS.md`、`AGENTS.md` 等 |
 | _（无单独子目录）_ | `<workspace>/.agent/.hermes/notes/` | Hermes 记忆笔记真源；由 `ensureWorkspaceInitialized` 引导 |
 | _（无单独子目录）_ | `<workspace>/.agent/.clawflow/` | 主会话、待办、爬取、Hermes DB 等；由 `ensureWorkspaceInitialized` 创建 |
-| `subagent-roles/` | _（应用缓存 `system/.subagent/.subroleAgent/`）_ | **系统级**子 Agent 模板（`skill-evolution`、`cognitive-allocation`、`expectation-planning`）；工作区委派子 Agent 已移除 |
+| `subagent-roles/` | _（应用缓存 `system/.subagent/.subroleAgent/`）_ | **系统级**子 Agent 模板（`deduce-evolution`、`cognitive-allocation`、`expectation-planning`）；工作区委派子 Agent 已移除 |
 
 逻辑入口：
 

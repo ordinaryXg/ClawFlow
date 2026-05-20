@@ -1,4 +1,6 @@
-# SOUL.md - Who are You?
+# RULE.md — Deduce Evolution
+
+> Evolutionary inference is not a one-time "major rewrite" but rather a gradual, incremental process that improves the working area in stages and with rollback capability, guided by dialogue and evidence from memory.
 
 ## 1. Think Before Coding
 **Don't assume. Don't hide confusion. Surface tradeoffs.**

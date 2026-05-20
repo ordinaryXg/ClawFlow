@@ -3,9 +3,9 @@ import * as path from 'path';
 import type { SubAgentRoleTemplateId } from '../../shared/sub-agent-types';
 import { systemSubagentRolesDirAbs } from './system-agent-layout';
 
-import templateSkillEvolutionAgents from '../../workspace-templates/subagent-roles/skill-evolution/AGENTS.md';
-import templateSkillEvolutionSoul from '../../workspace-templates/subagent-roles/skill-evolution/SOUL.md';
-import templateSkillEvolutionTools from '../../workspace-templates/subagent-roles/skill-evolution/TOOLS.md';
+import templateDeduceEvolutionAgents from '../../workspace-templates/subagent-roles/deduce-evolution/AGENTS.md';
+import templateDeduceEvolutionRule from '../../workspace-templates/subagent-roles/deduce-evolution/RULE.md';
+import templateDeduceEvolutionTools from '../../workspace-templates/subagent-roles/deduce-evolution/TOOLS.md';
 
 import templateCogAgents from '../../workspace-templates/subagent-roles/cognitive-allocation/AGENTS.md';
 import templateCogSoul from '../../workspace-templates/subagent-roles/cognitive-allocation/SOUL.md';
@@ -15,15 +15,15 @@ import templateExpAgents from '../../workspace-templates/subagent-roles/expectat
 import templateExpSoul from '../../workspace-templates/subagent-roles/expectation-planning/SOUL.md';
 import templateExpTools from '../../workspace-templates/subagent-roles/expectation-planning/TOOLS.md';
 
-type RoleMd = 'AGENTS.md' | 'SOUL.md' | 'TOOLS.md';
+export type SystemRoleTemplateId = 'deduce-evolution' | 'cognitive-allocation' | 'expectation-planning';
 
-export type SystemRoleTemplateId = 'skill-evolution' | 'cognitive-allocation' | 'expectation-planning';
+type RoleTemplateFile = { name: string; content: string };
 
-const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, Array<{ name: RoleMd; content: string }>> = {
-  'skill-evolution': [
-    { name: 'AGENTS.md', content: templateSkillEvolutionAgents },
-    { name: 'SOUL.md', content: templateSkillEvolutionSoul },
-    { name: 'TOOLS.md', content: templateSkillEvolutionTools },
+const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, RoleTemplateFile[]> = {
+  'deduce-evolution': [
+    { name: 'AGENTS.md', content: templateDeduceEvolutionAgents },
+    { name: 'RULE.md', content: templateDeduceEvolutionRule },
+    { name: 'TOOLS.md', content: templateDeduceEvolutionTools },
   ],
   'cognitive-allocation': [
     { name: 'AGENTS.md', content: templateCogAgents },
@@ -37,10 +37,20 @@ const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, Array<{ name: RoleMd; 
   ],
 };
 
-const STANDARD_ROLE_FILES: readonly RoleMd[] = ['AGENTS.md', 'SOUL.md', 'TOOLS.md'];
+/** @deprecated 旧模板 id，读取时映射到 deduce-evolution */
+const LEGACY_DEDUCE_EVOLUTION_TEMPLATE_ID = 'skill-evolution';
 
 function isSystemRoleTemplateId(id: SubAgentRoleTemplateId): id is SystemRoleTemplateId {
-  return id === 'skill-evolution' || id === 'cognitive-allocation' || id === 'expectation-planning';
+  return id === 'deduce-evolution' || id === 'cognitive-allocation' || id === 'expectation-planning';
+}
+
+function resolveSystemRoleTemplateId(id: SubAgentRoleTemplateId): SystemRoleTemplateId | null {
+  if (id === LEGACY_DEDUCE_EVOLUTION_TEMPLATE_ID) return 'deduce-evolution';
+  return isSystemRoleTemplateId(id) ? id : null;
+}
+
+function roleFilesForTemplate(id: SystemRoleTemplateId): readonly string[] {
+  return SYSTEM_ROLE_TEMPLATES[id].map((f) => f.name);
 }
 
 async function writeFileIfMissing(abs: string, body: string): Promise<boolean> {
@@ -68,7 +78,7 @@ export async function ensureSystemSubAgentRoleTemplates(): Promise<void> {
 async function readRoleMarkdownParts(roleTemplateId: SystemRoleTemplateId): Promise<string> {
   const dir = path.join(systemSubagentRolesDirAbs(), roleTemplateId);
   const parts: string[] = [];
-  for (const name of STANDARD_ROLE_FILES) {
+  for (const name of roleFilesForTemplate(roleTemplateId)) {
     let body: string | null = null;
     try {
       body = await fs.promises.readFile(path.join(dir, name), 'utf-8');
@@ -88,8 +98,9 @@ async function readRoleMarkdownParts(roleTemplateId: SystemRoleTemplateId): Prom
 export async function buildSystemSubAgentRoleSystemContent(
   roleTemplateId: SubAgentRoleTemplateId
 ): Promise<string> {
-  if (!isSystemRoleTemplateId(roleTemplateId)) return '';
-  return readRoleMarkdownParts(roleTemplateId);
+  const resolved = resolveSystemRoleTemplateId(roleTemplateId);
+  if (!resolved) return '';
+  return readRoleMarkdownParts(resolved);
 }
 
 /** @deprecated 使用 buildSystemSubAgentRoleSystemContent('cognitive-allocation') */

@@ -61,6 +61,14 @@ describe('workspace-hermes-skill-bootstrap', () => {
     expect(r2.created.length).toBe(0);
   });
 
+  it('installs into existing empty skill-creator directory', async () => {
+    const scRoot = path.join(workspaceSkillsDirAbs(dir), 'skill-creator');
+    fs.mkdirSync(scRoot, { recursive: true });
+    const r = await installWorkspaceSkillCreatorPackage(dir);
+    expect(r.created.length).toBeGreaterThanOrEqual(5);
+    expect(fs.existsSync(path.join(scRoot, 'SKILL.md'))).toBe(true);
+  });
+
   it('skips install when skill-creator directory already exists (no v1 backfill)', async () => {
     const scRoot = path.join(workspaceSkillsDirAbs(dir), 'skill-creator');
     fs.mkdirSync(scRoot, { recursive: true });

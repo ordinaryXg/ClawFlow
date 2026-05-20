@@ -90,7 +90,7 @@ export function buildEvolutionPhaseTask(
       return [
         ...header,
         '## 本阶段：技能维护',
-        '在 `.agent/.skills/` 下基于近期主题创建或**最小改动**更新 Hermes 技能（`SKILL.md` + 必要时 `references/`）；遵守工作区工具与白名单；优先小步、可回滚。',
+        '在 `.agent/.skills/` 下基于近期主题创建或**最小改动**更新 Hermes 技能（`SKILL.md` + 必要时 `references/`）；优先小步、可回滚。',
         '收尾：3 条以内要点说明新建/更新了哪些技能目录。',
       ].join('\n');
     case 'role_doc':

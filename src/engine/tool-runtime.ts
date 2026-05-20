@@ -305,7 +305,13 @@ export class ToolRuntime {
     for (const call of calls) {
       if (ctx.abortSignal?.aborted) {
         results.push({ tool_call_id: call.id, content: 'Tool execution cancelled' });
-        break;
+        for (const rest of calls.slice(results.length)) {
+          results.push({
+            tool_call_id: rest.id,
+            content: 'Tool execution cancelled',
+          });
+        }
+        return results;
       }
       const name = call?.function?.name;
       const entry = name ? this.tools.get(name) : null;

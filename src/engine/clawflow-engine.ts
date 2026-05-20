@@ -29,6 +29,7 @@ import { buildModeConfig, type ChatIntent } from './mode-policy';
 import { buildGroupedChatModelCatalog } from './chat-model-catalog';
 import { resolveModelIdForInteractionMode } from './mode-defaults';
 import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
+import { repairToolCallMessageChain } from './repair-tool-call-message-chain';
 import { logChatSendComposedMessages } from '../shared/chat-send-debug';
 import {
   resolveWebSearchConfig,
@@ -740,7 +741,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         if (params.abortSignal?.aborted) throw new Error('CANCELLED');
         const req: ChatCompletionRequest = {
           model: modelId,
-          messages: loopMessages,
+          messages: repairToolCallMessageChain(loopMessages),
           modeConfig: baseModeConfig,
         };
 
@@ -944,6 +945,19 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         } else {
           // 无 UI（或无需要确认的工具）：全部直接执行
           toolResults = await executeCalls(indexed);
+        }
+        const resultByCallId = new Map(
+          toolResults.map((tr) => [String(tr.tool_call_id ?? '').trim(), tr] as const).filter(([id]) => Boolean(id))
+        );
+        for (const tc of allCalls) {
+          const id = String(tc.id ?? '').trim();
+          if (!id || resultByCallId.has(id)) continue;
+          const missing = {
+            tool_call_id: id,
+            content: 'Tool result missing (execution did not return a result for this call).',
+          };
+          toolResults.push(missing);
+          resultByCallId.set(id, missing);
         }
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];

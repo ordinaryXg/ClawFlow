@@ -28,15 +28,21 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
  * 新建工作区时安装 skill-creator v2 整包（各文件 wx，不覆盖已存在路径）。
  * 既有工作区（已有 `.agent/`）不调用，不做 v1 单文件或缺文件补写。
  */
+async function workspaceSkillCreatorSkillMdExists(workspaceRoot: string): Promise<boolean> {
+  const skillMd = path.join(workspaceSkillsDirAbs(workspaceRoot), 'skill-creator', 'SKILL.md');
+  try {
+    const st = await fs.promises.stat(skillMd);
+    return st.isFile();
+  } catch {
+    return false;
+  }
+}
+
 export async function installWorkspaceSkillCreatorPackage(workspaceRoot: string): Promise<{ created: string[] }> {
   const root = path.resolve(workspaceRoot);
   const skillCreatorRoot = path.join(workspaceSkillsDirAbs(root), 'skill-creator');
-  try {
-    await fs.promises.access(skillCreatorRoot);
+  if (await workspaceSkillCreatorSkillMdExists(root)) {
     return { created: [] };
-  } catch (e: unknown) {
-    const code = (e as NodeJS.ErrnoException)?.code;
-    if (code !== 'ENOENT') throw e;
   }
 
   await fs.promises.mkdir(skillCreatorRoot, { recursive: true });
