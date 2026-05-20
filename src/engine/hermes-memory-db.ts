@@ -1,5 +1,5 @@
 /**
- * Hermes 工作区记忆库：`.agent/.clawflow/hermes-memory.db` + FTS5。
+ * Hermes 工作区记忆库：`.agent/.hermes/index/hermes-memory.db` + FTS5。
  * 仅 Main 进程使用；webpack 将 better-sqlite3 标为 external。
  * 使用 Electron 运行时前请执行 `npm run rebuild:native`，使原生模块与当前 Electron 版本匹配（Jest 使用 Node 预编译二进制，勿在仅跑测试后忘记重编译）。
  */
@@ -7,11 +7,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
+import { workspaceAgentKnowledgeDirAbs, workspaceSkillsDirAbs } from '../main/workspace/workspace-agent-layout';
 import {
-  workspaceAgentDotMemoryDirAbs,
-  workspaceAgentKnowledgeDirAbs,
-  workspaceSkillsDirAbs,
-} from '../main/workspace/workspace-agent-layout';
+  getHermesMemoryDbPath as resolveHermesMemoryDbPath,
+  HERMES_MEMORY_REL_PREFIX,
+  WORKSPACE_HERMES_CHAT_DIGEST_REL,
+  workspaceHermesIndexDirAbs,
+} from '../main/workspace/workspace-hermes-layout';
 import { rebuildKnowledgeManifest } from '../main/workspace/workspace-knowledge-manifest';
 import { knowledgeIngestDirAbs } from '../main/workspace/workspace-knowledge-ingest';
 import { conversationsStorePath } from '../main/workspace/workspace-service';
@@ -76,7 +78,7 @@ export function getHermesMemoryLoadError(): string | undefined {
 const dbCache = new Map<string, BetterSqliteDb>();
 
 export function getHermesMemoryDbPath(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'hermes-memory.db');
+  return resolveHermesMemoryDbPath(workspaceRoot);
 }
 
 export function invalidateHermesMemoryDbCache(resolvedRoot?: string): void {
@@ -121,9 +123,9 @@ export function getOrOpenHermesMemoryDb(workspaceRoot: string): BetterSqliteDb |
       dbCache.delete(key);
     }
   }
-  const dir = clawflowDir(key);
+  const dir = workspaceHermesIndexDirAbs(key);
   fs.mkdirSync(dir, { recursive: true });
-  const dbPath = path.join(dir, 'hermes-memory.db');
+  const dbPath = getHermesMemoryDbPath(key);
   const db = new Ctor(dbPath);
   db.pragma('journal_mode = WAL');
   ensureHermesMemorySchema(db);
@@ -185,9 +187,9 @@ export type HermesMemorySearchHit = {
   source_path: string;
   skill_name: string | null;
   title: string | null;
-  /** L0，仅 source_kind=memory_md 时通常有值 */
+  /** L0，hermes_memory / knowledge_md 等可有值 */
   abstract: string | null;
-  /** L1，仅 source_kind=memory_md 时通常有值 */
+  /** L1，hermes_memory / knowledge_md 等可有值 */
   overview: string | null;
   snippet: string;
   rank: number;
@@ -255,40 +257,6 @@ function collectSkillIndexTargetsSync(
     return [];
   }
   walk(skillsRoot);
-  return out;
-}
-
-function collectMainMemoryIndexTargetsSync(
-  workspaceRoot: string
-): Array<{ abs: string; relPosix: string; source_kind: 'memory_md' }> {
-  const memoryRoot = workspaceAgentDotMemoryDirAbs(workspaceRoot);
-  const out: Array<{ abs: string; relPosix: string; source_kind: 'memory_md' }> = [];
-  function walk(dir: string): void {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      const abs = path.join(dir, ent.name);
-      if (ent.isDirectory()) {
-        walk(abs);
-      } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) {
-        out.push({
-          abs,
-          relPosix: toPosixRel(workspaceRoot, abs),
-          source_kind: 'memory_md',
-        });
-      }
-    }
-  }
-  try {
-    fs.accessSync(memoryRoot);
-  } catch {
-    return [];
-  }
-  walk(memoryRoot);
   return out;
 }
 
@@ -523,100 +491,6 @@ export function syncSkillTextSourcesToMemoryDb(
   try {
     const targets = collectSkillIndexTargetsSync(root);
     runUpserts(targets);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: msg };
-  }
-
-  return { ok: true, indexed, pruned };
-}
-
-/** 将 `.agent/.memory/` 下 Markdown 同步进 memory_docs（L0/L1 列 + FTS 索引 abstract、overview、正文）。 */
-export function syncMainMemorySourcesToMemoryDb(
-  workspaceRoot: string,
-  opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
-): HermesMemorySyncResult {
-  const db = opts?.db ?? getOrOpenHermesMemoryDb(workspaceRoot);
-  if (!db) {
-    return { ok: false, error: `better-sqlite3 unavailable: ${getHermesMemoryLoadError() ?? 'unknown'}` };
-  }
-  const root = path.resolve(workspaceRoot);
-  let indexed = 0;
-  let pruned = 0;
-
-  const delByPath = db.prepare(`DELETE FROM memory_docs WHERE source_path = ?`);
-  const selectMeta = db.prepare(
-    `SELECT mtime_ms FROM memory_docs WHERE source_path = ? AND source_kind = 'memory_md'`
-  );
-  const insert = db.prepare(
-    `INSERT INTO memory_docs (source_kind, source_path, skill_name, title, mtime_ms, body, abstract, overview)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`
-  );
-
-  const tx = db.transaction(() => {
-    if (opts?.fullRebuild) {
-      db.prepare(`DELETE FROM memory_docs WHERE source_kind = 'memory_md'`).run();
-    }
-
-    const staleRows = db
-      .prepare(`SELECT source_path FROM memory_docs WHERE source_kind = 'memory_md'`)
-      .all() as { source_path: string }[];
-
-    for (const { source_path } of staleRows) {
-      const abs = path.join(root, ...source_path.split('/'));
-      try {
-        fs.accessSync(abs);
-      } catch {
-        delByPath.run(source_path);
-        pruned++;
-      }
-    }
-  });
-
-  try {
-    tx();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: msg };
-  }
-
-  const runUpserts = db.transaction((targets: ReturnType<typeof collectMainMemoryIndexTargetsSync>) => {
-    for (const t of targets) {
-      let st: fs.Stats;
-      try {
-        st = fs.statSync(t.abs);
-      } catch {
-        continue;
-      }
-      const mtimeMs = Math.trunc(st.mtimeMs);
-      const prev = selectMeta.get(t.relPosix) as { mtime_ms: number } | undefined;
-      if (!opts?.fullRebuild && prev && prev.mtime_ms >= mtimeMs) {
-        continue;
-      }
-      let raw: string;
-      try {
-        raw = fs.readFileSync(t.abs, 'utf8');
-      } catch {
-        continue;
-      }
-      const parsed = parseWorkspaceMemoryMarkdown(raw);
-      delByPath.run(t.relPosix);
-      const title = parsed.title?.trim() || path.basename(t.relPosix, '.md');
-      insert.run(
-        t.source_kind,
-        t.relPosix,
-        title,
-        mtimeMs,
-        parsed.ftsBody,
-        parsed.abstract ?? null,
-        parsed.overview ?? null
-      );
-      indexed++;
-    }
-  });
-
-  try {
-    runUpserts(collectMainMemoryIndexTargetsSync(root));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg };
@@ -871,16 +745,44 @@ function buildConversationSummaryBody(conv: ConversationRow): string {
   return body;
 }
 
+function buildConversationDigestMarkdown(conv: ConversationRow): {
+  relPosix: string;
+  fileBody: string;
+  mtimeMs: number;
+} {
+  const id = String(conv.id ?? '').trim();
+  const title = String(conv.title ?? '对话').trim() || '对话';
+  const mtimeMs = Math.trunc(typeof conv.updatedAt === 'number' ? conv.updatedAt : Date.now());
+  const body = buildConversationSummaryBody(conv);
+  const abstract = `Chat · ${title}`;
+  const relPosix = `${WORKSPACE_HERMES_CHAT_DIGEST_REL}/${id}.md`;
+  const fileBody = `---\ntitle: ${JSON.stringify(title)}\nabstract: ${JSON.stringify(abstract)}\n---\n\n${body}\n`;
+  return { relPosix, fileBody, mtimeMs };
+}
+
+/** 将会话摘要写入 Hermes 索引（逻辑路径 `.agent/.hermes/memory/_chat-digest/*.md`）。 */
 export function syncConversationSummariesToMemoryDb(
   workspaceRoot: string,
   opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
 ): HermesMemorySyncResult {
+  const root = path.resolve(workspaceRoot);
   const db = opts?.db ?? getOrOpenHermesMemoryDb(workspaceRoot);
   if (!db) {
     return { ok: false, error: `better-sqlite3 unavailable: ${getHermesMemoryLoadError() ?? 'unknown'}` };
   }
 
-  const storePath = conversationsStorePath(path.resolve(workspaceRoot));
+  try {
+    db.prepare(`DELETE FROM memory_docs WHERE source_kind = 'conversation_summary'`).run();
+    const legacy = db
+      .prepare(`SELECT source_path FROM memory_docs WHERE source_path LIKE '%conversation-index/%'`)
+      .all() as { source_path: string }[];
+    const del = db.prepare(`DELETE FROM memory_docs WHERE source_path = ?`);
+    for (const { source_path } of legacy) del.run(source_path);
+  } catch {
+    /* ignore */
+  }
+
+  const storePath = conversationsStorePath(root);
   let conversations: ConversationRow[] = [];
   try {
     const raw = JSON.parse(fs.readFileSync(storePath, 'utf-8')) as unknown;
@@ -894,46 +796,63 @@ export function syncConversationSummariesToMemoryDb(
 
   let indexed = 0;
   let pruned = 0;
-  const delByPath = db.prepare(`DELETE FROM memory_docs WHERE source_path = ?`);
-  const delAll = db.prepare(`DELETE FROM memory_docs WHERE source_kind = 'conversation_summary'`);
-  const insert = db.prepare(
-    `INSERT INTO memory_docs (source_kind, source_path, skill_name, title, mtime_ms, body, abstract, overview)
-     VALUES ('conversation_summary', ?, NULL, ?, ?, ?, ?, NULL)`
-  );
-  const activePaths = new Set<string>();
+  const activeRels = new Set<string>();
 
-  const tx = db.transaction(() => {
-    if (opts?.fullRebuild) delAll.run();
-    for (const conv of conversations) {
-      if (!conv?.id) continue;
-      const rel = `.agent/.clawflow/conversation-index/${conv.id}.md`;
-      activePaths.add(rel);
-      const mtimeMs = Math.trunc(typeof conv.updatedAt === 'number' ? conv.updatedAt : Date.now());
-      const title = String(conv.title ?? '对话').trim() || '对话';
-      delByPath.run(rel);
-      insert.run(rel, title, mtimeMs, buildConversationSummaryBody(conv), `Chat · ${title}`);
-      indexed++;
+  const { upsertHermesMemoryDocument, deleteHermesMemoryDocument } =
+    require('./hermes-memory-store') as typeof import('./hermes-memory-store');
+
+  if (opts?.fullRebuild) {
+    const rows = db
+      .prepare(
+        `SELECT source_path FROM memory_docs WHERE source_kind = 'hermes_memory' AND source_path LIKE ?`
+      )
+      .all(`${HERMES_MEMORY_REL_PREFIX}/_chat-digest/%`) as { source_path: string }[];
+    for (const { source_path } of rows) {
+      deleteHermesMemoryDocument(root, source_path);
+      pruned++;
     }
-    const stale = db
-      .prepare(`SELECT source_path FROM memory_docs WHERE source_kind = 'conversation_summary'`)
-      .all() as { source_path: string }[];
-    for (const { source_path } of stale) {
-      if (!activePaths.has(source_path)) {
-        delByPath.run(source_path);
-        pruned++;
-      }
+  }
+
+  for (const conv of conversations) {
+    if (!conv?.id) continue;
+    const { relPosix, fileBody, mtimeMs } = buildConversationDigestMarkdown(conv);
+    activeRels.add(relPosix);
+    const parsed = parseWorkspaceMemoryMarkdown(fileBody);
+    const prev = db
+      .prepare(`SELECT mtime_ms FROM memory_docs WHERE source_path = ? AND source_kind = 'hermes_memory'`)
+      .get(relPosix) as { mtime_ms: number } | undefined;
+    if (!opts?.fullRebuild && prev && prev.mtime_ms >= mtimeMs) {
+      continue;
     }
-  });
+    const res = upsertHermesMemoryDocument(root, {
+      relativePath: relPosix,
+      title: parsed.title,
+      abstract: parsed.abstract,
+      overview: parsed.overview,
+      body: parsed.body,
+    });
+    if (res.ok) indexed++;
+  }
 
   try {
-    tx();
-  } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    const stale = db
+      .prepare(
+        `SELECT source_path FROM memory_docs WHERE source_kind = 'hermes_memory' AND source_path LIKE ?`
+      )
+      .all(`${HERMES_MEMORY_REL_PREFIX}/_chat-digest/%`) as { source_path: string }[];
+    for (const { source_path } of stale) {
+      if (activeRels.has(source_path)) continue;
+      deleteHermesMemoryDocument(root, source_path);
+      pruned++;
+    }
+  } catch {
+    /* ignore */
   }
+
   return { ok: true, indexed, pruned };
 }
 
-/** 同步技能树 + 主记忆目录（检索前增量、重建时全量） */
+/** 同步技能树 + 知识库 + 会话摘要（Hermes 记忆条目仅存于 DB，不经磁盘 notes） */
 export function syncHermesTextSourcesToMemoryDb(
   workspaceRoot: string,
   opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }
@@ -944,8 +863,6 @@ export function syncHermesTextSourcesToMemoryDb(
   }
   const skill = syncSkillTextSourcesToMemoryDb(workspaceRoot, { ...opts, db });
   if (!skill.ok) return skill;
-  const mem = syncMainMemorySourcesToMemoryDb(workspaceRoot, { ...opts, db });
-  if (!mem.ok) return mem;
   const kb = syncKnowledgeSourcesToMemoryDb(workspaceRoot, { ...opts, db });
   if (!kb.ok) return kb;
   const ingest = syncKnowledgeIngestSourcesToMemoryDb(workspaceRoot, { ...opts, db });
@@ -959,8 +876,8 @@ export function syncHermesTextSourcesToMemoryDb(
   }
   return {
     ok: true,
-    indexed: skill.indexed + mem.indexed + kb.indexed + ingest.indexed + conv.indexed,
-    pruned: skill.pruned + mem.pruned + kb.pruned + ingest.pruned + conv.pruned,
+    indexed: skill.indexed + kb.indexed + ingest.indexed + conv.indexed,
+    pruned: skill.pruned + kb.pruned + ingest.pruned + conv.pruned,
   };
 }
 

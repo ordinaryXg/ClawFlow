@@ -259,6 +259,21 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
+  onChatEvolutionUpdate: (
+    cb: (p: {
+      workspaceRoot: string;
+      conversationId: string;
+      kind: 'append' | 'patch';
+      message: {
+        id: string;
+        role: 'assistant';
+        content: string;
+        timestamp: number;
+        channel: 'assistant_evolution';
+        meta?: Record<string, unknown>;
+      };
+    }) => void
+  ) => () => void;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;
@@ -647,6 +662,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('chat:conversationsDirty', handler);
     return () => ipcRenderer.removeListener('chat:conversationsDirty', handler);
+  },
+  onChatEvolutionUpdate: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      const workspaceRoot = typeof p.workspaceRoot === 'string' ? p.workspaceRoot.trim() : '';
+      const conversationId = typeof p.conversationId === 'string' ? p.conversationId.trim() : '';
+      const kind = p.kind === 'append' || p.kind === 'patch' ? p.kind : null;
+      const m = p.message;
+      if (!workspaceRoot || !conversationId || !kind || !m || typeof m !== 'object') return;
+      const msg = m as Record<string, unknown>;
+      if (typeof msg.id !== 'string' || typeof msg.content !== 'string') return;
+      cb({
+        workspaceRoot,
+        conversationId,
+        kind,
+        message: {
+          id: msg.id,
+          role: 'assistant',
+          content: msg.content,
+          timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : Date.now(),
+          channel: 'assistant_evolution',
+          ...(msg.meta && typeof msg.meta === 'object' ? { meta: msg.meta as Record<string, unknown> } : {}),
+        },
+      });
+    };
+    ipcRenderer.on('chat:evolutionUpdate', handler);
+    return () => ipcRenderer.removeListener('chat:evolutionUpdate', handler);
   },
   onNavigate: (cb: (path: string) => void) => {
     const handler = (_event: unknown, path: unknown) => {

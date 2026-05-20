@@ -21,6 +21,7 @@ import {
 } from './skill-evolution-snapshot';
 import { appendEvolutionRun, type EvolutionRunPhaseRecord, type EvolutionRunRecord } from './skill-evolution-runs';
 import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
+import { createEvolutionChatBridge, type EvolutionChatBridge } from './skill-evolution-chat';
 
 const PHASE_ORDER: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
 
@@ -34,12 +35,29 @@ export function evolutionToolsGate(tools: WorkspaceToolSelection): boolean {
   return Boolean(tools.skills && tools.docs);
 }
 
+/** 按阶段裁剪上下文，避免三阶段重复塞满 8k+6k 摘录 */
+export function buildEvolutionPhaseContext(
+  aspect: EvolutionAspectKey,
+  ctx: { chatExcerpt: string; memoryExcerpt: string }
+): { chatExcerpt: string; memoryExcerpt: string } {
+  const chat = ctx.chatExcerpt.trim();
+  const mem = ctx.memoryExcerpt.trim();
+  if (aspect === 'memory') {
+    return { chatExcerpt: chat.slice(0, 3500), memoryExcerpt: mem.slice(0, 6500) };
+  }
+  if (aspect === 'skills') {
+    return { chatExcerpt: chat.slice(0, 5000), memoryExcerpt: mem.slice(0, 2000) };
+  }
+  return { chatExcerpt: chat.slice(0, 5500), memoryExcerpt: mem.slice(0, 1500) };
+}
+
 export function buildEvolutionPhaseTask(
   aspect: EvolutionAspectKey,
   ctx: { chatExcerpt: string; memoryExcerpt: string }
 ): string {
-  const chat = ctx.chatExcerpt.trim() || '（自上次进化以来的主对话摘录不可用。）';
-  const mem = ctx.memoryExcerpt.trim() || '（.agent/.memory 下暂无可读 Markdown 或目录为空。）';
+  const scoped = buildEvolutionPhaseContext(aspect, ctx);
+  const chat = scoped.chatExcerpt.trim() || '（自上次进化以来的主对话摘录不可用。）';
+  const mem = scoped.memoryExcerpt.trim() || '（Hermes 记忆索引中暂无条目。）';
   const shared = [
     '【主工作区进化 — 单阶段任务】',
     `当前阶段：**${PHASE_TITLE[aspect]}**（仅完成本阶段目标，勿越界改其它目录）。`,
@@ -49,31 +67,31 @@ export function buildEvolutionPhaseTask(
     chat,
     '---',
     '',
-    '### 记忆库摘录（.agent/.memory）',
-    '---',
-    mem,
-    '---',
-    '',
   ];
+  const memoryBlock =
+    aspect === 'memory' || mem.length > 80
+      ? ['### 记忆库摘录（Hermes 索引 · `.agent/.hermes/memory/*`）', '---', mem, '---', '']
+      : [];
+  const header = [...shared, ...memoryBlock];
 
   switch (aspect) {
     case 'memory':
       return [
-        ...shared,
+        ...header,
         '## 本阶段：记忆整理',
-        '合并对话与既有 `.agent/.memory/` 内容，剔除冗余流水账，将可长期复用的结论、偏好、约束写入 `.agent/.memory/`（可更新/新建 `.md`；勿写密钥）。',
-        '收尾：3 条以内要点说明变更了哪些文件。',
+        '基于上方「记忆库摘录」与对话，用 **`hermes_memory_upsert` / `hermes_memory_delete`** 与 **`hermes_search`** 在 Hermes 索引中整理记忆（逻辑路径 `.agent/.hermes/memory/*.md`）；勿写密钥。',
+        '收尾：3 条以内要点说明新增/更新/删除了哪些记忆路径（非磁盘文件）。',
       ].join('\n');
     case 'skills':
       return [
-        ...shared,
+        ...header,
         '## 本阶段：技能维护',
         '在 `.agent/.skills/` 下基于近期主题创建或**最小改动**更新 Hermes 技能（`SKILL.md` + 必要时 `references/`）；遵守工作区工具与白名单；优先小步、可回滚。',
         '收尾：3 条以内要点说明新建/更新了哪些技能目录。',
       ].join('\n');
     case 'role_doc':
       return [
-        ...shared,
+        ...header,
         '## 本阶段：角色同步',
         '根据当前记忆与技能现状，**扩写**（勿整文件覆盖）以下文件：',
         '- `.agent/.roleAgent/AGENTS.md`',
@@ -81,7 +99,7 @@ export function buildEvolutionPhaseTask(
         '收尾：3 条以内要点说明角色文档变更摘要。',
       ].join('\n');
     default:
-      return shared.join('\n');
+      return header.join('\n');
   }
 }
 
@@ -110,9 +128,14 @@ export async function runEvolutionPipeline(params: {
   chatExcerpt: string;
   memoryExcerpt: string;
   timeoutMs?: number;
+  /** 写入该主会话 id 的进化卡片（实时流式） */
+  mainConversationId?: string;
 }): Promise<EvolutionPipelineResult> {
   const root = String(params.workspaceRoot ?? '').trim();
   const runId = evolutionRunId();
+  const evolutionChat: EvolutionChatBridge | undefined = params.mainConversationId?.trim()
+    ? createEvolutionChatBridge(root, params.mainConversationId.trim(), runId, Boolean(params.manual))
+    : undefined;
   const phases: EvolutionRunPhaseRecord[] = [];
   const ctx = { chatExcerpt: params.chatExcerpt, memoryExcerpt: params.memoryExcerpt };
   const timeoutMs = params.timeoutMs ?? 20 * 60 * 1000;
@@ -164,15 +187,31 @@ export async function runEvolutionPipeline(params: {
   let phaseBefore = initialSnap;
   const messages: string[] = [];
 
+  if (evolutionChat) {
+    await evolutionChat.dispatchStart();
+  }
+
   for (const aspect of PHASE_ORDER) {
     releaseSystemSubAgentSlot(SKILL_AGENT_SLOT_ID);
     const taskText = buildEvolutionPhaseTask(aspect, ctx);
 
+    if (evolutionChat) {
+      await evolutionChat.phaseStart(aspect);
+    }
+
+    let streamAcc = '';
     const runPromise = runSystemSubAgentOnce({
       workspaceRoot: root,
       slotId: SKILL_AGENT_SLOT_ID,
       taskText,
       conversationId: SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID,
+      onDelta: evolutionChat
+        ? ({ text }) => {
+            streamAcc += String(text ?? '');
+            const snap = streamAcc.length > 24_000 ? streamAcc.slice(-24_000) : streamAcc;
+            void evolutionChat?.phaseStream(aspect, snap);
+          }
+        : undefined,
     });
 
     let res: Awaited<ReturnType<typeof runSystemSubAgentOnce>>;
@@ -185,6 +224,9 @@ export async function runEvolutionPipeline(params: {
       ]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (evolutionChat) {
+        await evolutionChat.phaseEnd(aspect, msg.slice(0, 1500), false);
+      }
       phases.push({
         aspect,
         agentOk: false,
@@ -213,10 +255,17 @@ export async function runEvolutionPipeline(params: {
     }
 
     if (!res.ok) {
+      if (evolutionChat) {
+        await evolutionChat.phaseEnd(aspect, String(res.error ?? 'run_failed').slice(0, 1500), false);
+      }
       return fail('phase_agent_failed', String(res.error ?? 'run_failed'));
     }
-    if (res.ok && res.message.trim()) {
-      messages.push(`### ${PHASE_TITLE[aspect]}\n${res.message.trim().slice(0, 1500)}`);
+    const excerpt = (res.ok ? res.message : '').trim().slice(0, 1500);
+    if (excerpt) {
+      messages.push(`### ${PHASE_TITLE[aspect]}\n${excerpt}`);
+    }
+    if (evolutionChat) {
+      await evolutionChat.phaseEnd(aspect, excerpt || streamAcc.trim().slice(-1500), res.ok);
     }
   }
 

@@ -40,5 +40,5 @@
 
 ## 在 ClawFlow 中的连续性
 
-技能图谱、常见问题、待重构清单写在 **`.subagent/.submemory/<本槽位 id>/`**；**技能正文**永远在 **`.agent/.skills/`**。  
+技能图谱、常见问题、待重构清单写在**应用缓存** `system/.subagent/.submemory/<槽位 id>/`；**技能正文**永远在 **`.agent/.skills/`**。  
 若更新了本 `SOUL.md`，请让用户知道。

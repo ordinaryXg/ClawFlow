@@ -5,25 +5,11 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 `**.agent/.roleAgent/`**（�
 ## ClawFlow 使用方式
 
 - 工作区工具仅在本工作区根目录范围内生效；不要越界操作。
-- 会话连续性：角色约定写在 `.agent/.roleAgent/*.md`；跨轮次片段备忘落在 `**.agent/.memory/**`（见下「记忆」）；可选的长期整理仍可用工作区根目录 `**MEMORY.md**`——不要依赖「模型内部隐藏记忆」。
-
-## 记忆
-
-应用初始化工作区时会在 `**.agent/.memory/**` 下**默认创建该目录**（与 `.agent/.roleAgent/`、`.agent/.skills/` 等并列；若已存在则保留）。你每个会话相当于「新启动」，以下路径承担**可检索、可编辑**的连续性：
-
-- **当日/片段笔记：** `.agent/.memory/YYYY-MM-DD.md`（通常按**本地日历日期**命名；若一日多文件可自行加后缀，保持目录整洁）
-- **长期整理（可选）：** 工作区根目录 `**MEMORY.md`** — 经筛选的长期记忆，更适合直连主会话、私密场景；在共享或群组场景慎用
-
-记录决策、偏好、约束；未经明确要求不要写入密钥类敏感信息。
-
-### MEMORY.md
-
-- 在**直连 / 主会话**中可加载；在共享或公开场合慎用。
-- 在合适时可读取、编辑、更新 MEMORY.md。
+- 会话连续性：角色约定写在 `.agent/.roleAgent/*.md`；跨轮次片段备忘落在 `**.agent/.hermes/notes/`**（见下「记忆」）；可选的长期整理仍可用工作区根目录 `**MEMORY.md**`——不要依赖「模型内部隐藏记忆」。
 
 ### 务必落盘
 
-需要跨会话记住的内容，**请写入 `.agent/.memory/` 或根目录 `MEMORY.md`**；仅存在于当轮对话里的「心里记一下」不会持久化。
+需要跨会话记住的内容，**请写入 `.agent/.hermes/notes/` 或根目录 `MEMORY.md`**；仅存在于当轮对话里的「心里记一下」不会持久化。
 
 ## 红线
 
@@ -32,7 +18,7 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 `**.agent/.roleAgent/`**（�
 - 优先可恢复操作，避免不可逆删除。
 - 不确定时先问用户。
 
-## 写入必须可验证（防“说写了但没写”）
+## 写入必须可验证
 
 当用户要求你“写入/更新/保存/生成文件”时，**只有在给出可核验的证据后**才允许你宣称“已写入/已完成”。否则必须明确说明“尚未写入”。
 
@@ -62,7 +48,7 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 `**.agent/.roleAgent/`**（�
 
 ## 工具与工作区能力
 
-由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；**未开启的工具不会下发给模型**。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
+由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；未开启的工具不会下发给模型。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
 
 > **系统级子 Agent**（Skill Agent、认知分配、预期规划）由应用在后台调度，数据在应用缓存而非工作区 `.subagent/`；主 Agent **无需**也**无法**通过工具委派它们。
 

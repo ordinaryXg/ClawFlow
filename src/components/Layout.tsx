@@ -92,6 +92,31 @@ const Layout: FC = () => {
   }, [refreshWorkspace, fetchConversations]);
 
   useEffect(() => {
+    const offEvolution = window.electronAPI?.onChatEvolutionUpdate?.((p) => {
+      const incoming = p.workspaceRoot?.trim() ?? '';
+      if (incoming) {
+        const active = useWorkspaceStore.getState().activePath?.trim() ?? '';
+        const ni = normalizeWorkspacePathForCompare(incoming);
+        const na = normalizeWorkspacePathForCompare(active);
+        if (ni && na && ni !== na) return;
+      }
+      useChatStore.getState().applyEvolutionChatUpdate({
+        conversationId: p.conversationId,
+        kind: p.kind,
+        message: {
+          id: p.message.id,
+          role: 'assistant',
+          content: p.message.content,
+          timestamp: p.message.timestamp,
+          channel: 'assistant_evolution',
+          ...(p.message.meta ? { meta: p.message.meta } : {}),
+        },
+      });
+    });
+    return () => offEvolution?.();
+  }, []);
+
+  useEffect(() => {
     const off = window.electronAPI?.onChatConversationsDirty?.((p) => {
       const incoming = typeof p?.workspaceRoot === 'string' ? p.workspaceRoot.trim() : '';
       if (incoming) {

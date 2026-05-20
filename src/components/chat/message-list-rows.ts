@@ -1,9 +1,11 @@
 import type { Message } from '../../store/modules/chatStore';
+import { evolutionMergeGroupKey } from './evolution-message-metadata';
 import { toolMergeGroupKey } from './tool-message-metadata';
 
 export type MessageListRow =
   | { type: 'single'; message: Message }
-  | { type: 'toolGroup'; key: string; messages: Message[] };
+  | { type: 'toolGroup'; key: string; messages: Message[] }
+  | { type: 'evolutionGroup'; key: string; messages: Message[] };
 
 export function buildGroupedRows(sorted: Message[]): MessageListRow[] {
   const rows: MessageListRow[] = [];
@@ -11,6 +13,26 @@ export function buildGroupedRows(sorted: Message[]): MessageListRow[] {
   while (i < sorted.length) {
     const m = sorted[i];
     if (!m) break;
+    const evoKey = evolutionMergeGroupKey(m);
+    if (evoKey) {
+      const group: Message[] = [m];
+      let j = i + 1;
+      while (j < sorted.length) {
+        const n = sorted[j];
+        if (!n) break;
+        if (evolutionMergeGroupKey(n) === evoKey) {
+          group.push(n);
+          j += 1;
+        } else {
+          break;
+        }
+      }
+      const head = group[0];
+      const headId = head ? head.id : 'unknown';
+      rows.push({ type: 'evolutionGroup', key: `${evoKey}:${headId}`, messages: group });
+      i = j;
+      continue;
+    }
     if (m.role !== 'tool') {
       rows.push({ type: 'single', message: m });
       i += 1;
@@ -52,7 +74,10 @@ function approxMessageChars(m: Message): number {
 
 export function approxRowChars(row: MessageListRow): number {
   if (row.type === 'single') return approxMessageChars(row.message);
-  return row.messages.reduce((acc, m) => acc + approxMessageChars(m), 0);
+  if (row.type === 'evolutionGroup' || row.type === 'toolGroup') {
+    return row.messages.reduce((acc, m) => acc + approxMessageChars(m), 0);
+  }
+  return 0;
 }
 
 /**

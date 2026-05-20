@@ -15,15 +15,12 @@ import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-i
 import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
 import { installWorkspaceSkillCreatorPackage } from './workspace-hermes-skill-bootstrap';
 import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
-import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
   migrateAgentManifestAndKnowledgePathsSync,
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
-  workspaceAgentDotMemoryDirAbs,
   workspaceAgentRootAbs,
-  workspaceSubagentRootAbs,
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
 import { launcherStashDirAbs, migrateWorkspaceTriadFromLegacyRootsSync, workspaceBlobDirAbs } from './workspace-blob-store';
@@ -608,22 +605,11 @@ export async function ensureWorkspaceInitialized(
   const metaPath = workspaceMetaPath(root);
 
   await fs.promises.mkdir(cf, { recursive: true });
-  try {
-    await fs.promises.mkdir(workspaceAgentDotMemoryDirAbs(root), { recursive: true });
-  } catch {
-    /* ignore */
-  }
   migrateLegacyConversationsOnce(root);
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
 
   // 缺失则补写（wx，不覆盖）；勿因已有 `.agent/` 而跳过 `.roleAgent` 模板
-  try {
-    await ensureWorkspaceMainMemoryTemplates(root);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[workspace-service] ensureWorkspaceMainMemoryTemplates failed:', msg);
-  }
   try {
     await ensureWorkspaceKnowledgeTemplates(root);
   } catch (e: unknown) {
@@ -768,7 +754,7 @@ export async function resetWorkspaceCacheDirs(
   const root = path.resolve(String(workspaceRoot || ''));
   invalidateHermesMemoryDbCache(root);
   const agentDir = workspaceAgentRootAbs(root);
-  const subagentDir = workspaceSubagentRootAbs(root);
+  const subagentDir = path.join(root, SUBAGENT_ROOT_DIR);
   const stashDir = launcherStashDirAbs(root);
   const legacyStashAtRoot = path.join(root, '.clawflow-launcher-stash');
   const removed = { agent: false, subagent: false };

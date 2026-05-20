@@ -94,7 +94,8 @@ export type MessageChannel =
   | 'user_workflow'
   | 'user_system'
   | 'assistant_llm'
-  | 'assistant_tool_summary';
+  | 'assistant_tool_summary'
+  | 'assistant_evolution';
 
 const MESSAGE_CHANNELS: readonly MessageChannel[] = [
   'user_manual',
@@ -105,6 +106,7 @@ const MESSAGE_CHANNELS: readonly MessageChannel[] = [
   'user_system',
   'assistant_llm',
   'assistant_tool_summary',
+  'assistant_evolution',
 ];
 
 function coerceMessageChannel(_role: Message['role'], raw: unknown): MessageChannel | undefined {
@@ -120,6 +122,7 @@ export function resolveMessagePresentationChannel(message: Message): MessageChan
 
 export function shouldShowMessageChannelStrip(message: Message): boolean {
   const ch = resolveMessagePresentationChannel(message);
+  if (ch === 'assistant_evolution') return false;
   return ch !== 'user_manual' && ch !== 'assistant_llm';
 }
 
@@ -234,6 +237,12 @@ export interface ChatState {
 
   // Actions
   fetchConversations: () => Promise<void>;
+  /** 进化卡片增量更新（不全量 fetch） */
+  applyEvolutionChatUpdate: (payload: {
+    conversationId: string;
+    kind: 'append' | 'patch';
+    message: Message;
+  }) => void;
   sendMessage: (
     content: string,
     modelId?: string | null,
@@ -569,6 +578,33 @@ export const useChatStore = create<ChatState>()((set, get) => {
         /* ignore */
       }
     })();
+  },
+
+  applyEvolutionChatUpdate: ({ conversationId, kind, message }) => {
+    const convId = String(conversationId ?? '').trim();
+    if (!convId || !message?.id) return;
+
+    const mergeInto = (msgs: Message[]): Message[] => {
+      const idx = msgs.findIndex((m) => m.id === message.id);
+      if (kind === 'append' && idx < 0) {
+        return [...msgs, message].sort((a, b) => a.timestamp - b.timestamp);
+      }
+      if (idx >= 0) {
+        const next = [...msgs];
+        next[idx] = { ...next[idx], ...message, id: message.id };
+        return next;
+      }
+      return [...msgs, message].sort((a, b) => a.timestamp - b.timestamp);
+    };
+
+    const state = get();
+    const conversations = state.conversations.map((c) =>
+      c.id === convId ? { ...c, messages: mergeInto(c.messages), updatedAt: Date.now() } : c
+    );
+    const activeId = state.activeConversationId;
+    const messages =
+      activeId === convId ? mergeInto(state.messages) : state.messages;
+    set({ conversations, messages });
   },
 
   fetchConversations: async () => {

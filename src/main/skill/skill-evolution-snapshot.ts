@@ -1,16 +1,13 @@
 /**
- * 进化相关路径的快照、diff 与备份恢复（`.agent/.memory`、`.agent/.skills`、角色文档）。
+ * 进化相关路径的快照、diff 与备份恢复（Hermes 记忆、`.agent/.skills`、角色文档）。
  */
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { clawflowDir } from '../workspace/workspace-service';
-import {
-  workspaceAgentDotMemoryDirAbs,
-  workspaceRoleAgentDirAbs,
-  workspaceSkillsDirAbs,
-} from '../workspace/workspace-agent-layout';
+import { evolutionBackupsDirAbs } from '../workspace/workspace-evolution-layout';
+import { workspaceRoleAgentDirAbs, workspaceSkillsDirAbs } from '../workspace/workspace-agent-layout';
+import { snapshotHermesMemoryDocuments } from '../../engine/hermes-memory-store';
 
 export type EvolutionDiffKind = 'added' | 'modified' | 'deleted';
 
@@ -72,12 +69,7 @@ export async function snapshotEvolutionWorkspace(workspaceRoot: string): Promise
   const root = path.resolve(workspaceRoot);
   const out: EvolutionFileSnapshot = {};
 
-  await walkFiles(
-    workspaceAgentDotMemoryDirAbs(root),
-    root,
-    (p) => p.toLowerCase().endsWith('.md'),
-    out
-  );
+  Object.assign(out, snapshotHermesMemoryDocuments(root));
 
   await walkFiles(workspaceSkillsDirAbs(root), root, () => true, out);
 
@@ -130,7 +122,7 @@ export function formatEvolutionDiffLines(diff: EvolutionDiffEntry[], maxLines = 
 }
 
 function evolutionBackupsDir(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'evolution-backups');
+  return evolutionBackupsDirAbs(workspaceRoot);
 }
 
 export type EvolutionBackupManifest = {

@@ -1,10 +1,11 @@
 /**
- * 进化运行记录（含各阶段 diff），存于 `.agent/.clawflow/evolution-runs.v1.json`。
+ * 进化运行记录（含各阶段 diff），存于 `.agent/.evolution/evolution-runs.v1.json`。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { clawflowDir } from '../workspace/workspace-service';
+import { EVOLUTION_RUNS_FILE, evolutionRunsStorePath } from '../workspace/workspace-evolution-layout';
 import { broadcastToWorkspaceWindows } from '../broadcast/workspace-window-broadcast';
 import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
 import type { EvolutionAspectKey } from './skill-evolution-scheduler';
@@ -39,20 +40,25 @@ export type EvolutionRunRecord = {
 type StoreFile = { version: typeof FILE_VERSION; runs: EvolutionRunRecord[] };
 
 function storePath(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'evolution-runs.v1.json');
+  return evolutionRunsStorePath(workspaceRoot);
 }
 
 async function readStore(workspaceRoot: string): Promise<StoreFile> {
-  try {
-    const raw = await fs.promises.readFile(storePath(workspaceRoot), 'utf8');
-    const j = JSON.parse(raw) as StoreFile;
-    if (!j || typeof j !== 'object' || !Array.isArray(j.runs)) {
-      return { version: FILE_VERSION, runs: [] };
+  const root = path.resolve(workspaceRoot);
+  const paths = [storePath(root), path.join(clawflowDir(root), EVOLUTION_RUNS_FILE)];
+  for (const fp of paths) {
+    try {
+      const raw = await fs.promises.readFile(fp, 'utf8');
+      const j = JSON.parse(raw) as StoreFile;
+      if (!j || typeof j !== 'object' || !Array.isArray(j.runs)) {
+        return { version: FILE_VERSION, runs: [] };
+      }
+      return { version: FILE_VERSION, runs: j.runs.filter((r) => r && typeof r.runId === 'string') };
+    } catch {
+      /* try next */
     }
-    return { version: FILE_VERSION, runs: j.runs.filter((r) => r && typeof r.runId === 'string') };
-  } catch {
-    return { version: FILE_VERSION, runs: [] };
   }
+  return { version: FILE_VERSION, runs: [] };
 }
 
 async function writeStore(workspaceRoot: string, data: StoreFile): Promise<void> {

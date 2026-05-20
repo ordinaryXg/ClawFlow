@@ -50,10 +50,10 @@
 
 | 用途 | 路径 |
 |------|------|
-| 当日 / 片段笔记 | `.subagent/.submemory/<本槽位 id>/YYYY-MM-DD.md`（常为 `cf-skill-agent`） |
-| 长期备忘（可选） | `.subagent/.submemory/<本槽位 id>/MEMORY.md` |
+| 当日 / 片段笔记 | 应用缓存 `system/.subagent/.submemory/<槽位 id>/YYYY-MM-DD.md`（常为 `cf-skill-agent`） |
+| 长期备忘（可选） | 应用缓存 `system/.subagent/.submemory/<槽位 id>/MEMORY.md` |
 
-技能正文在 **`.agent/.skills/`**；审查摘要跨会话保留用上表。勿向 **`.agent/.memory/`** 或根 **`MEMORY.md`** 写本子私有备忘（除非任务要求）。
+技能正文在 **`.agent/.skills/`**；工作区跨会话记忆在 **`.agent/.hermes/notes/`**。勿把本子私有备忘写入工作区 notes（除非任务要求）。
 
 ---
 

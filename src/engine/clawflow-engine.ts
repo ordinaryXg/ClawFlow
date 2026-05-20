@@ -502,7 +502,9 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
   ): void {
     const meta0 = assistantMessageMeta;
     if (meta0 && typeof meta0 === 'object' && 'subAgent' in meta0) return;
-    if (assistantMessageChannel === 'assistant_tool_summary') return;
+    if (assistantMessageChannel === 'assistant_tool_summary' || assistantMessageChannel === 'assistant_evolution') {
+      return;
+    }
     if (conversationId === SKILL_AUDIT_EPHEMERAL_CONVERSATION_ID) return;
     void maybeScheduleSkillEvolutionAfterMainTurn({
       workspaceRoot: effRoot,

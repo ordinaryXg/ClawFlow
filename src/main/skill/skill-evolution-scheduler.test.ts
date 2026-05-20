@@ -64,7 +64,7 @@ describe('isEvolutionCountedUserMessage', () => {
 
 describe('classifyEvolutionOutcomeMarkdown', () => {
   it('detects memory and skills aspects', () => {
-    const text = 'Updated `.agent/.memory/notes.md` and added `.agent/.skills/foo/SKILL.md` for Hermes.';
+    const text = 'Updated `.agent/.hermes/memory/notes.md` via hermes_memory_upsert and added `.agent/.skills/foo/SKILL.md`.';
     const r = classifyEvolutionOutcomeMarkdown(text);
     expect(r.aspectKeys).toEqual(['memory', 'skills']);
     expect(r.titleZh).toContain('记忆整理');

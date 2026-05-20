@@ -69,33 +69,24 @@ run('hermes-memory-db FTS5', () => {
     expect(res.hits.every((h) => h.skill_name === 'demo-skill')).toBe(true);
   });
 
-  it('indexes .agent/.memory with L0/L1 frontmatter', async () => {
-    fs.mkdirSync(path.join(dir, '.agent', '.memory'), { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, '.agent', '.memory', 'prefs.md'),
-      `---
-title: User prefs
-abstract: Prefer TypeScript strict mode
-overview: |
-  Project uses pnpm and electron-forge.
----
-## Details
-
-Always run lint before commit.
-`,
-      'utf8'
-    );
+  it('indexes hermes_memory via upsert with L0/L1', async () => {
+    const { upsertHermesMemoryDocument } = await import('./hermes-memory-store');
+    const up = upsertHermesMemoryDocument(dir, {
+      relativePath: '.agent/.hermes/memory/prefs.md',
+      title: 'User prefs',
+      abstract: 'Prefer TypeScript strict mode',
+      overview: 'Project uses pnpm and electron-forge.',
+      body: '## Details\n\nAlways run lint before commit.',
+    });
+    expect(up.ok).toBe(true);
     invalidateHermesMemoryDbCache(dir);
-    const sync = syncHermesTextSourcesToMemoryDb(dir, { fullRebuild: true });
-    expect(sync.ok).toBe(true);
-    if (!sync.ok) return;
 
     const res = await searchHermesMemory(dir, { query: 'TypeScript strict', limit: 10 });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const hit = res.hits.find((h) => h.source_path.includes('prefs.md'));
     expect(hit).toBeDefined();
-    expect(hit?.source_kind).toBe('memory_md');
+    expect(hit?.source_kind).toBe('hermes_memory');
     expect(hit?.abstract).toContain('TypeScript');
   });
 

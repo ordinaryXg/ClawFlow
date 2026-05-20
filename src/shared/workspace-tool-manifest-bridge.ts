@@ -35,7 +35,15 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
     'workspace_skill_write_aux',
     'workspace_skill_delete',
   ],
-  knowledge_base: ['workspace_knowledge_query', 'workspace_memory_search', 'workspace_memory_rebuild_index'],
+  knowledge_base: [
+    'hermes_search',
+    'hermes_memory_upsert',
+    'hermes_memory_delete',
+    'hermes_memory_list',
+    'workspace_knowledge_query',
+    'workspace_memory_search',
+    'workspace_memory_rebuild_index',
+  ],
 };
 
 /** 不纳入 manifest 关断、始终暴露给模型的轻量工具 */

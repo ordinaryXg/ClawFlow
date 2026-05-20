@@ -124,6 +124,134 @@
   display: none;
 }
 
+.cf-msgItem--evolution {
+  max-width: min(920px, 96%);
+  margin: 10px 0 14px;
+  padding: 0;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: var(--radiusSm, 6px);
+  background: rgba(34, 197, 94, 0.06);
+  box-sizing: border-box;
+}
+
+.cf-evolutionMsg__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.cf-evolutionMsg__head:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cf-evolutionMsg__badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.45);
+  color: rgba(5, 30, 15, 0.95);
+}
+
+:root[data-theme='light'] .cf-evolutionMsg__badge {
+  color: rgba(5, 50, 25, 0.95);
+}
+
+.cf-evolutionMsg__icon {
+  flex-shrink: 0;
+  color: rgba(74, 222, 128, 0.9);
+  font-size: 15px;
+}
+
+.cf-evolutionMsg__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cf-evolutionMsg__status {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.cf-evolutionMsg__status--running {
+  color: rgba(56, 189, 248, 0.95);
+  background: rgba(56, 189, 248, 0.12);
+  animation: cf-evolutionPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cf-evolutionPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.cf-evolutionMsg__status--ok {
+  color: rgba(74, 222, 128, 0.95);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.cf-evolutionMsg__status--failed {
+  color: rgba(248, 113, 113, 0.95);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.cf-evolutionMsg__diffCount {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cf-evolutionMsg__chev {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cf-evolutionMsg__body {
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.cf-evolutionMsg__section + .cf-evolutionMsg__section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.cf-evolutionMsg__sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(74, 222, 128, 0.9);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cf-evolutionMsg__content {
+  font-size: 13px;
+}
+
 .cf-msgItem__bubble {
   max-width: min(860px, 92%);
   width: fit-content;

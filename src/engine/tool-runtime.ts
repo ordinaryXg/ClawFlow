@@ -24,7 +24,14 @@ import {
   previewPdfBuffer,
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
 } from '../main/workspace/workspace-office-preview';
-import { rebuildHermesSkillFtsIndex, searchHermesMemory } from './hermes-memory-db';
+import { rebuildHermesSkillFtsIndex, searchHermesMemory, type HermesMemorySearchHit } from './hermes-memory-db';
+import {
+  deleteHermesMemoryDocument,
+  isHermesMemoryRel,
+  listHermesMemoryDocuments,
+  upsertHermesMemoryDocument,
+} from './hermes-memory-store';
+import { HERMES_MEMORY_REL_PREFIX } from '../main/workspace/workspace-hermes-layout';
 import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
 import { syncWorkspaceSkillManifest } from '../main/workspace/workspace-skill-manifest';
 import { readDisabledSkillRootsSync } from '../main/workspace/workspace-skills-ui-state';
@@ -42,6 +49,14 @@ import { runWorkspaceShellCommand } from './workspace-shell-exec';
 
 function notifyWorkspaceTreeChanged(workspaceRoot: string): void {
   broadcastWorkspaceFilesUpdated(workspaceRoot);
+}
+
+function isBlockedHermesMemoryDiskWrite(rel: string): boolean {
+  const n = String(rel ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (isHermesMemoryRel(n)) return true;
+  if (n === '.agent/.memory' || n.startsWith('.agent/.memory/')) return true;
+  if (n === '.agent/.hermes/notes' || n.startsWith('.agent/.hermes/notes/')) return true;
+  return false;
 }
 
 export type ToolExecutionContext = {
@@ -665,6 +680,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
     },
     async (args, ctx) => {
       const rel = String(args?.relativePath ?? '');
+      if (isBlockedHermesMemoryDiskWrite(rel)) {
+        return `ERROR: Hermes memory is index-only (use hermes_memory_upsert). Logical prefix: ${HERMES_MEMORY_REL_PREFIX}/`;
+      }
       const content = String(args?.content ?? '');
       const createIfMissing = Boolean(args?.createIfMissing);
       const overwrite = Boolean(args?.overwrite);
@@ -1647,13 +1665,159 @@ export function createDefaultToolRuntime(): ToolRuntime {
     }
   );
 
+  const formatHermesHitsMarkdown = (hits: HermesMemorySearchHit[]) => {
+    const kindLabel = (k: string) => {
+      if (k === 'hermes_memory' || k === 'memory_md') return 'memory';
+      if (k === 'knowledge_md' || k === 'knowledge_txt' || k === 'knowledge_ingest_md') return 'knowledge';
+      if (k === 'conversation_summary') return 'chat';
+      if (k.startsWith('skill')) return 'skill';
+      return k;
+    };
+    return hits
+      .map((h) => {
+        const head =
+          (h.source_kind === 'hermes_memory' || h.source_kind === 'memory_md' || h.source_kind === 'knowledge_md') &&
+          h.abstract
+            ? `**L0:** ${h.abstract}\n`
+            : '';
+        const skill = h.skill_name ? ` (skill: ${h.skill_name})` : '';
+        const title = h.title ? ` — ${h.title}` : '';
+        const tag = kindLabel(h.source_kind);
+        return `### [${tag}] ${h.source_path}${title}${skill}\n${head}${h.snippet}\n`;
+      })
+      .join('\n');
+  };
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'hermes_search',
+        description:
+          'Search Hermes index (FTS5 + optional vectors): Hermes memory (`.agent/.hermes/memory/*` logical paths), `.agent/.knowledge`, `.agent/.skills`. Returns JSON hits.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Keywords; whitespace-separated tokens are AND-ed' },
+            limit: { type: 'number', description: 'Max hits 1–50', minimum: 1, maximum: 50 },
+            skill_name: { type: 'string', description: 'Optional filter: parent folder name of SKILL.md' },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const q = String(args?.query ?? '').trim();
+      if (!q) return 'ERROR: missing query';
+      const lim = args?.limit;
+      const skillName = args?.skill_name != null ? String(args.skill_name).trim() : undefined;
+      const res = await searchHermesMemory(ctx.workspaceRoot, {
+        query: q,
+        limit: typeof lim === 'number' ? lim : 12,
+        skillName: skillName || undefined,
+      });
+      if (!res.ok) return JSON.stringify({ ok: false, error: res.error });
+      return JSON.stringify({ ok: true, hits: res.hits }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'hermes_memory_upsert',
+        description:
+          'Create or update a Hermes memory entry in the index (no disk file). Use logical path under `.agent/.hermes/memory/` with `.md` suffix; optional L0/L1 via abstract/overview.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            relative_path: { type: 'string', description: 'e.g. .agent/.hermes/memory/project/prefs.md' },
+            title: { type: 'string' },
+            abstract: { type: 'string', description: 'L0 one-line summary for FTS' },
+            overview: { type: 'string', description: 'L1 short overview for FTS' },
+            body: { type: 'string', description: 'L2 markdown body' },
+          },
+          required: ['relative_path', 'body'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const res = upsertHermesMemoryDocument(ctx.workspaceRoot, {
+        relativePath: String(args?.relative_path ?? ''),
+        title: args?.title != null ? String(args.title) : undefined,
+        abstract: args?.abstract != null ? String(args.abstract) : undefined,
+        overview: args?.overview != null ? String(args.overview) : undefined,
+        body: String(args?.body ?? ''),
+      });
+      if (!res.ok) return `ERROR: ${res.error}`;
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true, source_path: res.source_path }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'hermes_memory_delete',
+        description: 'Delete a Hermes memory entry from the index by logical path under `.agent/.hermes/memory/`.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            relative_path: { type: 'string' },
+          },
+          required: ['relative_path'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, ctx) => {
+      const res = deleteHermesMemoryDocument(ctx.workspaceRoot, String(args?.relative_path ?? ''));
+      if (!res.ok) return `ERROR: ${res.error}`;
+      refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
+      return JSON.stringify({ ok: true }, null, 2);
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'hermes_memory_list',
+        description: 'List Hermes memory entries (logical paths + L0/L1 metadata) from the index.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_args, ctx) => {
+      try {
+        const rows = listHermesMemoryDocuments(ctx.workspaceRoot);
+        return JSON.stringify({ ok: true, count: rows.length, entries: rows }, null, 2);
+      } catch (e: unknown) {
+        return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+  );
+
   rt.register(
     {
       type: 'function',
       function: {
         name: 'workspace_knowledge_query',
         description:
-          'Search indexed workspace text via SQLite FTS5: `.agent/.memory` notes (L0 abstract + L1 overview + body) and `.agent/.skills` SKILL/references. Returns snippets with paths.',
+          '[Deprecated — prefer hermes_search] Search Hermes FTS index; memory, knowledge, and skills.',
         strict: true,
         parameters: {
           type: 'object',
@@ -1671,27 +1835,9 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = await searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
       if (!res.ok) return `ERROR: ${res.error}`;
       if (!res.hits.length) {
-        return 'No matches in workspace FTS index. Add notes under `.agent/.memory/`, `.agent/.knowledge/`, or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
+        return `No matches in Hermes index. Use hermes_memory_upsert (${HERMES_MEMORY_REL_PREFIX}/), add .agent/.knowledge/, or .agent/.skills/**/SKILL.md, or run workspace_memory_rebuild_index.`;
       }
-      const kindLabel = (k: string) => {
-        if (k === 'memory_md') return 'memory';
-        if (k === 'knowledge_md' || k === 'knowledge_txt' || k === 'knowledge_ingest_md') return 'knowledge';
-        if (k === 'conversation_summary') return 'chat';
-        if (k.startsWith('skill')) return 'skill';
-        return k;
-      };
-      return res.hits
-        .map((h) => {
-          const head =
-            (h.source_kind === 'memory_md' || h.source_kind === 'knowledge_md') && h.abstract
-              ? `**L0:** ${h.abstract}\n`
-              : '';
-          const skill = h.skill_name ? ` (skill: ${h.skill_name})` : '';
-          const title = h.title ? ` — ${h.title}` : '';
-          const tag = kindLabel(h.source_kind);
-          return `### [${tag}] ${h.source_path}${title}${skill}\n${head}${h.snippet}\n`;
-        })
-        .join('\n');
+      return formatHermesHitsMarkdown(res.hits);
     }
   );
 
@@ -1701,7 +1847,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_memory_search',
         description:
-          'Full-text search over Hermes FTS index: `.agent/.memory` (abstract/overview/body) and `.agent/.skills`. Returns JSON hits with abstract, snippet, bm25 rank.',
+          '[Deprecated — prefer hermes_search] JSON search over Hermes FTS (memory + skills + knowledge).',
         strict: true,
         parameters: {
           type: 'object',
@@ -2037,7 +2183,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async (_args, ctx) => {
       const res = await rebuildHermesSkillFtsIndex(ctx.workspaceRoot);
       if (!res.ok) return `ERROR: ${res.error}`;
-      return `OK rebuilt Hermes FTS index (.agent/.memory + .agent/.skills); rows upserted this pass: ${res.indexed}, pruned: ${res.pruned}`;
+      return `OK rebuilt Hermes FTS index (memory index + .agent/.skills + knowledge); rows upserted this pass: ${res.indexed}, pruned: ${res.pruned}`;
     }
   );
 

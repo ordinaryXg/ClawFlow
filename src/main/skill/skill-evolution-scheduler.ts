@@ -10,7 +10,7 @@ import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
 import { releaseSystemSubAgentSlot } from '../system-agents/system-sub-agent-runner';
 import { SKILL_AGENT_SLOT_ID, computeSkillEvolutionSpacing } from '../../shared/skill-agent-constants';
-import { workspaceAgentDotMemoryDirAbs } from '../workspace/workspace-agent-layout';
+import { buildHermesMemoryExcerpt } from '../../engine/hermes-memory-store';
 import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 import {
   evolutionToolsGate,
@@ -18,6 +18,7 @@ import {
   runEvolutionPipeline,
 } from './skill-evolution-pipeline';
 import { formatEvolutionDiffLines } from './skill-evolution-snapshot';
+import { appendEvolutionChatMessages } from './skill-evolution-chat';
 
 export type EvolutionAspectKey = 'memory' | 'skills' | 'role_doc';
 
@@ -28,7 +29,13 @@ export function classifyEvolutionOutcomeMarkdown(text: string): {
 } {
   const sample = text.slice(0, 24_000);
   const keys = new Set<EvolutionAspectKey>();
-  if (/[\\/]\.agent[\\/]\.memory|记忆库|记忆瘦身|\.memory[\\/]/i.test(sample)) keys.add('memory');
+  if (
+    /[\\/]\.agent[\\/]\.hermes[\\/]\.memory|[\\/]\.agent[\\/]\.memory|记忆库|记忆瘦身|hermes_memory/i.test(
+      sample
+    )
+  ) {
+    keys.add('memory');
+  }
   if (/[\\/]\.agent[\\/]\.skills|Hermes|SKILL\.md|技能/i.test(sample)) keys.add('skills');
   if (/AGENTS\.md|SOUL\.md|角色文档|[\\/]\.roleAgent[\\/]/i.test(sample)) keys.add('role_doc');
   const order: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
@@ -56,7 +63,7 @@ export function lastRoundCountsTowardEvolution(messages: StoredMessage[]): boole
   if (messages.length < 2) return false;
   const last = messages[messages.length - 1];
   if (last.role !== 'assistant') return false;
-  if (last.channel === 'assistant_tool_summary') return false;
+  if (last.channel === 'assistant_tool_summary' || last.channel === 'assistant_evolution') return false;
   for (let i = messages.length - 2; i >= 0; i--) {
     const m = messages[i];
     if (m.role === 'tool') continue;
@@ -98,28 +105,12 @@ async function excerptMainConversationSinceLastEvolution(
   }
 }
 
-async function excerptDotMemoryMarkdown(workspaceRoot: string, maxChars: number): Promise<string> {
-  const dir = workspaceAgentDotMemoryDirAbs(workspaceRoot);
-  const parts: string[] = [];
-  let used = 0;
+async function excerptHermesMemoryForEvolution(workspaceRoot: string, maxChars: number): Promise<string> {
   try {
-    const names = await fs.promises.readdir(dir);
-    const mds = names.filter((n) => n.endsWith('.md')).sort();
-    for (const name of mds) {
-      if (used >= maxChars) break;
-      const p = path.join(dir, name);
-      const st = await fs.promises.stat(p).catch(() => null);
-      if (!st?.isFile()) continue;
-      const raw = await fs.promises.readFile(p, 'utf8').catch(() => '');
-      const header = `\n### .agent/.memory/${name}\n`;
-      const rest = raw.slice(0, Math.max(0, maxChars - used - header.length));
-      parts.push(header + rest);
-      used += header.length + rest.length;
-    }
+    return buildHermesMemoryExcerpt(workspaceRoot, maxChars);
   } catch {
-    /* ignore */
+    return '';
   }
-  return parts.join('\n').trim();
 }
 
 function aspectKeysFromPhases(phases: { aspect: EvolutionAspectKey; diff: { length: number } }[]): EvolutionAspectKey[] {
@@ -158,6 +149,26 @@ async function finalizeEvolutionSuccess(params: {
   }
   await applySuccessfulEvolutionRewards(root, typeof commitTotalRounds === 'number' ? commitTotalRounds : cur.totalUserManualRounds);
 
+  const summaryBody = [
+    `### ${titleZh}`,
+    '',
+    '各阶段输出见上方卡片；以下为本次磁盘变更摘要：',
+    '',
+    diffText.trim() || '（无文件 diff）',
+  ].join('\n');
+  void appendEvolutionChatMessages(root, convId, [
+    {
+      content: summaryBody,
+      meta: {
+        evolutionRunId: runId,
+        evolutionSegment: 'summary',
+        evolutionStatus: 'ok',
+        manual: Boolean(manual),
+        diffCount: aggregateDiff.length,
+      },
+    },
+  ]).catch(() => undefined);
+
   void appendWorkspaceChangeLog(root, {
     kind: 'evolution',
     title: manual ? `${titleZh}（手动）` : titleZh,
@@ -188,6 +199,19 @@ async function finalizeEvolutionFailure(params: {
   rolledBackRounds: boolean;
 }): Promise<void> {
   const { workspaceRoot: root, convId, total, runId, error, failureReason, manual, rolledBackRounds } = params;
+  void appendEvolutionChatMessages(root, convId, [
+    {
+      content: [`### ${manual ? '进化失败（手动）' : '进化失败'}`, '', String(error).slice(0, 3500)].join('\n'),
+      meta: {
+        evolutionRunId: runId,
+        evolutionSegment: 'summary',
+        evolutionStatus: 'failed',
+        manual: Boolean(manual),
+        failureReason,
+      },
+    },
+  ]).catch(() => undefined);
+
   void appendWorkspaceChangeLog(root, {
     kind: 'evolution',
     title: manual ? '进化失败（手动）' : '进化失败',
@@ -248,7 +272,7 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
   }
 
   const chatExcerpt = await excerptMainConversationSinceLastEvolution(root, convId, before.lastEvolutionAtMs, 8000);
-  const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
+  const memoryExcerpt = await excerptHermesMemoryForEvolution(root, 6000);
 
   void appendWorkspaceChangeLog(root, {
     kind: 'agent_dispatch',
@@ -265,6 +289,7 @@ export async function maybeScheduleSkillEvolutionAfterMainTurn(params: {
     spacing,
     chatExcerpt,
     memoryExcerpt,
+    mainConversationId: convId,
   }).then(async (result) => {
     if (result.ok) {
       const aspectKeys = aspectKeysFromPhases(result.phases);
@@ -317,7 +342,7 @@ export async function runManualSkillEvolutionTest(params: {
 
   const before = await readSkillEvolutionState(root);
   const chatExcerpt = await excerptMainConversationSinceLastEvolution(root, convId, before.lastEvolutionAtMs, 8000);
-  const memoryExcerpt = await excerptDotMemoryMarkdown(root, 6000);
+  const memoryExcerpt = await excerptHermesMemoryForEvolution(root, 6000);
 
   void appendWorkspaceChangeLog(root, {
     kind: 'agent_dispatch',
@@ -335,6 +360,7 @@ export async function runManualSkillEvolutionTest(params: {
     manual: true,
     chatExcerpt,
     memoryExcerpt,
+    mainConversationId: convId,
   });
 
   if (!result.ok) {
@@ -346,14 +372,16 @@ export async function runManualSkillEvolutionTest(params: {
           : result.error.includes('slot_already_running')
             ? 'slot_already_running'
             : String(result.error ?? 'run_failed');
-    void appendWorkspaceChangeLog(root, {
-      kind: 'evolution',
-      title: '主动进化失败',
-      conversationId: convId,
-      userPreview: formatPipelineDiffSummary(result),
-      assistantExcerpt: String(result.error).slice(0, 3500),
-      meta: { evolutionOk: false, manual: true, runId: result.runId, failureReason: result.failureReason },
-    }).catch(() => undefined);
+    await finalizeEvolutionFailure({
+      workspaceRoot: root,
+      convId,
+      total: before.totalUserManualRounds,
+      runId: result.runId,
+      error: String(result.error),
+      failureReason: result.failureReason,
+      manual: true,
+      rolledBackRounds: false,
+    });
     return { ok: false, error: errKey };
   }
 

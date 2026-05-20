@@ -194,11 +194,7 @@ import {
   LAUNCHER_STASH_DIR,
   launcherStashDirAbs,
 } from './workspace-blob-store';
-import {
-  WORKSPACE_AGENT_DIR,
-  workspaceAgentRootAbs,
-  workspaceSubagentRootAbs,
-} from './workspace-agent-layout';
+import { WORKSPACE_AGENT_DIR, workspaceAgentRootAbs } from './workspace-agent-layout';
 
 function isPathUnderOrEqualDir(absChild: string, absParent: string): boolean {
   const rel = path.relative(absParent, absChild);
@@ -219,14 +215,6 @@ export function resolvePathInsideWorkspace(workspaceRoot: string, relativePath: 
 
   if (first === WORKSPACE_AGENT_DIR) {
     const base = workspaceAgentRootAbs(root);
-    const full = path.resolve(base, ...tail);
-    if (!isPathUnderOrEqualDir(full, base)) {
-      throw new Error('Path escapes workspace');
-    }
-    return full;
-  }
-  if (first === '.subagent') {
-    const base = workspaceSubagentRootAbs(root);
     const full = path.resolve(base, ...tail);
     if (!isPathUnderOrEqualDir(full, base)) {
       throw new Error('Path escapes workspace');

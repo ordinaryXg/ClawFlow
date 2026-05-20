@@ -210,6 +210,21 @@ export interface IElectronAPI {
     cb: (p: { kind: 'delta'; conversationId: string; text: string }) => void
   ) => () => void;
   onChatConversationsDirty: (cb: (p?: { workspaceRoot?: string }) => void) => () => void;
+  onChatEvolutionUpdate: (
+    cb: (p: {
+      workspaceRoot: string;
+      conversationId: string;
+      kind: 'append' | 'patch';
+      message: {
+        id: string;
+        role: 'assistant';
+        content: string;
+        timestamp: number;
+        channel: 'assistant_evolution';
+        meta?: Record<string, unknown>;
+      };
+    }) => void
+  ) => () => void;
   onNavigate: (cb: (path: string) => void) => () => void;
   setShellViewWindowAppearance: (params: { compact: boolean }) => Promise<{ ok: boolean; error?: string }>;
   windowMinimize: () => Promise<void>;

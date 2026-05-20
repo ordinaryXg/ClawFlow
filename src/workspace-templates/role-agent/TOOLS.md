@@ -42,7 +42,7 @@
 
 | 目录 | 作用 |
 |------|------|
-| **`.agent/.memory/`** | 主 Agent 跨会话笔记（**L0 `abstract` / L1 `overview` frontmatter** + L2 正文）；由 FTS 索引 |
+| **`.agent/.hermes/notes/`** | 主 Agent 跨会话笔记（**L0/L1 frontmatter** + L2 正文）；Hermes 索引在 `.agent/.hermes/index/` |
 | **`.agent/.clawflow/`** | 主会话、待办调度、爬取与 Hermes DB 等 |
 
 ---

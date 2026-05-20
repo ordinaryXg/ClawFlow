@@ -1,11 +1,16 @@
 /**
  * 主对话「手动与通讯端」轮次累计 + 进化调度状态 + 智能经验。
- * 存于 `.agent/.clawflow/skill-evolution-state.v1.json`。
+ * 存于 `.agent/.evolution/skill-evolution-state.v1.json`。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { clawflowDir } from '../workspace/workspace-service';
+import {
+  EVOLUTION_STATE_FILE,
+  evolutionStateStorePath,
+  workspaceEvolutionRootAbs,
+} from '../workspace/workspace-evolution-layout';
 import { INTELLIGENCE_XP_PER_SUCCESSFUL_EVOLUTION } from '../../shared/intelligence-profile';
 
 const FILE_VERSION = 1 as const;
@@ -25,7 +30,7 @@ export type SkillEvolutionPersistedState = {
 };
 
 function statePath(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'skill-evolution-state.v1.json');
+  return evolutionStateStorePath(workspaceRoot);
 }
 
 function normalizeState(raw: unknown): SkillEvolutionPersistedState {
@@ -51,21 +56,27 @@ function normalizeState(raw: unknown): SkillEvolutionPersistedState {
   };
 }
 
-export async function readSkillEvolutionState(workspaceRoot: string): Promise<SkillEvolutionPersistedState> {
-  const fp = statePath(workspaceRoot);
+async function readStateFile(fp: string): Promise<SkillEvolutionPersistedState | null> {
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
-    const p = JSON.parse(buf) as unknown;
-    return normalizeState(p);
+    return normalizeState(JSON.parse(buf) as unknown);
   } catch {
-    return normalizeState(null);
+    return null;
   }
+}
+
+export async function readSkillEvolutionState(workspaceRoot: string): Promise<SkillEvolutionPersistedState> {
+  const root = path.resolve(workspaceRoot);
+  const primary = await readStateFile(statePath(root));
+  if (primary) return primary;
+  const legacy = path.join(clawflowDir(root), EVOLUTION_STATE_FILE);
+  const fromLegacy = await readStateFile(legacy);
+  return fromLegacy ?? normalizeState(null);
 }
 
 export async function writeSkillEvolutionState(workspaceRoot: string, next: SkillEvolutionPersistedState): Promise<void> {
   const root = path.resolve(workspaceRoot);
-  const dir = clawflowDir(root);
-  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.mkdir(workspaceEvolutionRootAbs(root), { recursive: true });
   const body: SkillEvolutionPersistedState = {
     version: FILE_VERSION,
     totalUserManualRounds: Math.max(0, Math.floor(next.totalUserManualRounds)),

@@ -5,7 +5,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { workspaceAgentRootAbs, workspaceSubagentRootAbs, workspaceToolDirAbs } from './workspace-agent-layout';
+import { workspaceAgentRootAbs, workspaceToolDirAbs } from './workspace-agent-layout';
+
+const LEGACY_WORKSPACE_SUBAGENT_DIR = '.subagent';
 
 function rmIfExistsSync(target: string): void {
   try {
@@ -24,7 +26,9 @@ export function pruneLegacyWorkspaceSubagentArtifactsSync(workspaceRoot: string)
   const resolved = path.resolve(String(workspaceRoot ?? '').trim());
   if (!resolved) return;
 
-  rmIfExistsSync(workspaceSubagentRootAbs(resolved));
+  rmIfExistsSync(path.join(resolved, LEGACY_WORKSPACE_SUBAGENT_DIR));
+  rmIfExistsSync(path.join(resolved, '.subclawflow'));
+  rmIfExistsSync(path.join(resolved, '.submemory'));
 
   const clawflow = workspaceClawflowDirAbs(resolved);
   for (const name of ['sub-agents.v1.json', 'sub-agents-run-snapshots.v1.json']) {

@@ -12,6 +12,7 @@ import type { MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import MessageItem from './MessageItem';
 import ToolMessageGroup from './ToolMessageGroup';
+import EvolutionMessageGroup from './EvolutionMessageGroup';
 import ExpectationPlanningPanel from './ExpectationPlanningPanel';
 import './chat.css';
 import {
@@ -188,6 +189,9 @@ const MessageList: FC<Props> = ({ messages, scrollRoot, stickToBottomRef, conver
       {visibleRows.map((row) => {
         if (row.type === 'toolGroup') {
           return <ToolMessageGroup key={row.key} messages={row.messages} />;
+        }
+        if (row.type === 'evolutionGroup') {
+          return <EvolutionMessageGroup key={row.key} messages={row.messages} />;
         }
         const showPlan =
           expectationPlan?.anchorMessageId &&

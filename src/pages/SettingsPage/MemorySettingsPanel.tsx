@@ -212,9 +212,9 @@ const MemorySettingsPanel: FC = () => {
           </div>
         </div>
         <div className="cf-help cf-settingsModels__mono" style={{ marginTop: 14, wordBreak: 'break-all' }}>
-          {t('settings.memory.storagePath')}: .agent/.memory/
+          {t('settings.memory.storagePath')}: .agent/.hermes/memory/ (index only)
           <br />
-          {t('settings.memory.indexPath')}: .agent/.clawflow/hermes-memory.db
+          {t('settings.memory.indexPath')}: .agent/.hermes/index/hermes-memory.db
         </div>
       </div>
 

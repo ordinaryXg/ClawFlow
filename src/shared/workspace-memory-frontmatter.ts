@@ -1,5 +1,5 @@
 /**
- * `.agent/.memory/*.md` 的 L0/L1 frontmatter 约定（YAML 子集，无外部依赖）。
+ * Hermes 记忆条目（逻辑路径 `.agent/.hermes/memory/*.md`）的 L0/L1 frontmatter 约定（YAML 子集，无外部依赖）。
  *
  * - **L0 `abstract`**：一句话摘要（检索与「要不要打开全文」）
  * - **L1 `overview`**：较短概览（背景 / 结论 / 待办）
@@ -92,6 +92,28 @@ export function parseWorkspaceMemoryMarkdown(raw: string): ParsedWorkspaceMemory
     ftsBody: parts.join('\n\n'),
     hasFrontmatter: true,
   };
+}
+
+/** 将 L0/L1/正文序列化为 Markdown（含 frontmatter）。 */
+export function serializeWorkspaceMemoryMarkdown(params: {
+  title?: string;
+  abstract?: string;
+  overview?: string;
+  body: string;
+}): string {
+  const title = String(params.title ?? '').trim();
+  const abstract = String(params.abstract ?? '').trim();
+  const overview = String(params.overview ?? '').trim();
+  const body = String(params.body ?? '').trimEnd();
+  const lines = ['---'];
+  if (title) lines.push(`title: ${JSON.stringify(title)}`);
+  if (abstract) lines.push(`abstract: ${JSON.stringify(abstract)}`);
+  if (overview) {
+    lines.push('overview: |');
+    for (const l of overview.split('\n')) lines.push(`  ${l}`);
+  }
+  lines.push('---', '', body, '');
+  return lines.join('\n');
 }
 
 /** 新建记忆笔记用的 frontmatter 模板（不含正文） */

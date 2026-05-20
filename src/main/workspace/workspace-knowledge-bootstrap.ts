@@ -11,7 +11,7 @@ import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-i
 
 const README = `# 工作区知识库（${WORKSPACE_AGENT_KNOWLEDGE_REL}）
 
-本目录用于**用户策展**的可检索文档（规范、参考资料、导入摘录等），与 \`.agent/.memory/\`（跨会话记忆/进化整理）分工不同。
+本目录用于**用户策展**的可检索文档（规范、参考资料、导入摘录等），与 \`.agent/.hermes/notes/\`（跨会话记忆/进化整理）分工不同。
 
 ## 子目录
 
@@ -24,7 +24,7 @@ const README = `# 工作区知识库（${WORKSPACE_AGENT_KNOWLEDGE_REL}）
 
 ## 检索
 
-启用 \`tools.knowledge_base\` 后，\`.md\` / \`.txt\` 会进入 Hermes FTS（\`.agent/.clawflow/hermes-memory.db\`），与 \`.agent/.memory\`、\`.agent/.skills\` 一并检索。
+启用 \`tools.knowledge_base\` 后，\`.md\` / \`.txt\` 会进入 Hermes FTS（\`.agent/.hermes/index/hermes-memory.db\`），与 notes、\`.agent/.skills\` 一并检索。
 
 建议在 \`.md\` 文首使用与记忆笔记相同的 frontmatter（\`title\` / \`abstract\` / \`overview\`），便于 Hub 列表与检索摘要展示。
 `;
