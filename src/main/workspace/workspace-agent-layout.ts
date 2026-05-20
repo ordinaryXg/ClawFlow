@@ -21,7 +21,10 @@ export const WORKSPACE_SUBAGENT_ROLE_DIR = '.subagent/.subroleAgent';
 export const WORKSPACE_AGENT_DOT_MEMORY_REL = '.agent/.memory';
 
 /** 用户知识库文档（可检索；与 `.memory` 分工：memory=进化/会话提炼，knowledge=用户策展文档） */
-export const WORKSPACE_AGENT_KNOWLEDGE_REL = '.agent/knowledge';
+export const WORKSPACE_AGENT_KNOWLEDGE_REL = '.agent/.knowledge';
+
+/** @deprecated 旧版目录名（无点前缀） */
+export const WORKSPACE_AGENT_KNOWLEDGE_LEGACY_REL = '.agent/knowledge';
 
 function resolvedWorkspaceRoot(workspaceRoot: string): string {
   return path.resolve(String(workspaceRoot ?? '').trim());
@@ -56,7 +59,19 @@ export function workspaceAgentDotMemoryDirAbs(workspaceRoot: string): string {
 }
 
 export function workspaceAgentKnowledgeDirAbs(workspaceRoot: string): string {
-  return path.join(workspaceAgentRootAbs(workspaceRoot), 'knowledge');
+  return path.join(workspaceAgentRootAbs(workspaceRoot), '.knowledge');
+}
+
+/** 将历史路径 `.agent/knowledge/...` 规范为 `.agent/.knowledge/...`。 */
+export function normalizeHermesKnowledgeWorkspaceRel(rel: string): string {
+  const n = String(rel ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  if (n === WORKSPACE_AGENT_KNOWLEDGE_LEGACY_REL || n.startsWith(`${WORKSPACE_AGENT_KNOWLEDGE_LEGACY_REL}/`)) {
+    return `${WORKSPACE_AGENT_KNOWLEDGE_REL}${n.slice(WORKSPACE_AGENT_KNOWLEDGE_LEGACY_REL.length)}`;
+  }
+  return n;
 }
 
 /** 将历史路径 `.clawflow/skills`、`.agent/.clawflow/skills`、旧版 `.agent/skills` 规范为 `.agent/.skills`（模型或旧数据可能仍传旧前缀）。 */
@@ -132,4 +147,31 @@ export function migrateLegacyWorkspaceAgentBundleSync(workspaceRoot: string): vo
 
   tryMove(path.join(root, '.subclawflow'), path.join(subagent, '.subclawflow'));
   tryMove(path.join(root, '.submemory'), path.join(subagent, '.submemory'));
+
+  migrateAgentManifestAndKnowledgePathsSync(workspaceRoot);
+}
+
+/**
+ * 路径约定迁移（每次打开工作区可安全调用；目标已存在则跳过）。
+ * - `knowledge/` → `.knowledge/`
+ * - `.clawflow/knowledge-manifest.json` → `.knowledge/knowledge-manifest.json`
+ * - `.tool/skillManifest.json` → `.skills/skillManifest.json`
+ */
+export function migrateAgentManifestAndKnowledgePathsSync(workspaceRoot: string): void {
+  const root = path.resolve(workspaceRoot);
+  const agent = workspaceAgentRootAbs(root);
+  const tryMove = (from: string, to: string) => {
+    try {
+      if (!fs.existsSync(from)) return;
+      if (fs.existsSync(to)) return;
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.renameSync(from, to);
+    } catch (e) {
+      console.warn('[workspace-agent-layout] migrate path failed:', from, '->', to, e);
+    }
+  };
+
+  tryMove(path.join(agent, 'knowledge'), path.join(agent, '.knowledge'));
+  tryMove(path.join(agent, '.clawflow', 'knowledge-manifest.json'), path.join(agent, '.knowledge', 'knowledge-manifest.json'));
+  tryMove(path.join(agent, '.tool', 'skillManifest.json'), path.join(agent, '.skills', 'skillManifest.json'));
 }

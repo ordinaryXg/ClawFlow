@@ -28,7 +28,6 @@ import {
   refreshOutboundMergeWindowMsFromEngine,
 } from '../../shared/outbound-merge-window-client';
 import ModeClassificationDebug from '../../components/chat/ModeClassificationDebug';
-import ExpectationPlanningPanel from '../../components/chat/ExpectationPlanningPanel';
 import {
   DEFAULT_SYSTEM_AGENT_SETTINGS,
   SYSTEM_AGENT_SETTINGS_BROADCAST,
@@ -65,6 +64,7 @@ const ChatPage: FC = () => {
     isExpectationPlanning,
     expectationPlanStream,
     activeExpectationPlanDisplay,
+    expectationPlanAnchorMessageId,
     pendingSendQueue,
     removePendingSend,
     toolApprovalPending,
@@ -88,6 +88,7 @@ const ChatPage: FC = () => {
       isExpectationPlanning: s.isExpectationPlanning,
       expectationPlanStream: s.expectationPlanStream,
       activeExpectationPlanDisplay: s.activeExpectationPlanDisplay,
+      expectationPlanAnchorMessageId: s.expectationPlanAnchorMessageId,
       pendingSendQueue: s.pendingSendQueue,
       removePendingSend: s.removePendingSend,
       toolApprovalPending: s.toolApprovalPending,
@@ -557,11 +558,13 @@ const ChatPage: FC = () => {
               scrollRoot={messagesScrollEl}
               stickToBottomRef={stickToBottomRef}
               conversationId={activeConversationId}
-            />
-            <ExpectationPlanningPanel
-              planning={isExpectationPlanning}
-              streamText={expectationPlanStream}
-              displayMarkdown={activeExpectationPlanDisplay}
+              expectationPlan={{
+                anchorMessageId: expectationPlanAnchorMessageId,
+                planning: isExpectationPlanning,
+                streamText: expectationPlanStream,
+                displayMarkdown: activeExpectationPlanDisplay,
+                categoryLabel: activeModeClassification?.categoryLabel ?? null,
+              }}
             />
             <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
             {toolApprovalForActive ? (

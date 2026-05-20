@@ -1,5 +1,6 @@
 import {
   FC,
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,6 +12,7 @@ import type { MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import MessageItem from './MessageItem';
 import ToolMessageGroup from './ToolMessageGroup';
+import ExpectationPlanningPanel from './ExpectationPlanningPanel';
 import './chat.css';
 import {
   buildGroupedRows,
@@ -28,14 +30,23 @@ const SCROLLABLE_SLACK_PX = 20;
 /** 视口填不满时自动向前补渲染的最大批次数（防止一次拉全历史） */
 const MAX_AUTO_FILL_CHUNKS = 14;
 
+export type ExpectationPlanListProps = {
+  anchorMessageId: string | null;
+  planning: boolean;
+  streamText: string | null;
+  displayMarkdown: string | null;
+  categoryLabel?: string | null;
+};
+
 interface Props {
   messages: Message[];
   scrollRoot: HTMLElement | null;
   stickToBottomRef: MutableRefObject<boolean>;
   conversationId: string | null;
+  expectationPlan?: ExpectationPlanListProps | null;
 }
 
-const MessageList: FC<Props> = ({ messages, scrollRoot, stickToBottomRef, conversationId }) => {
+const MessageList: FC<Props> = ({ messages, scrollRoot, stickToBottomRef, conversationId, expectationPlan }) => {
   const { t } = useTranslation();
   const sorted = useMemo(() => [...messages].sort((a, b) => a.timestamp - b.timestamp), [messages]);
   const rows = useMemo(() => buildGroupedRows(sorted), [sorted]);
@@ -174,13 +185,28 @@ const MessageList: FC<Props> = ({ messages, scrollRoot, stickToBottomRef, conver
           </button>
         </div>
       ) : null}
-      {visibleRows.map((row) =>
-        row.type === 'single' ? (
-          <MessageItem key={row.message.id} message={row.message} />
-        ) : (
-          <ToolMessageGroup key={row.key} messages={row.messages} />
-        )
-      )}
+      {visibleRows.map((row) => {
+        if (row.type === 'toolGroup') {
+          return <ToolMessageGroup key={row.key} messages={row.messages} />;
+        }
+        const showPlan =
+          expectationPlan?.anchorMessageId &&
+          row.message.id === expectationPlan.anchorMessageId &&
+          (expectationPlan.planning || Boolean(expectationPlan.displayMarkdown?.trim()) || Boolean(expectationPlan.streamText?.trim()));
+        return (
+          <Fragment key={row.message.id}>
+            <MessageItem message={row.message} />
+            {showPlan ? (
+              <ExpectationPlanningPanel
+                planning={expectationPlan.planning}
+                streamText={expectationPlan.streamText}
+                displayMarkdown={expectationPlan.displayMarkdown}
+                categoryLabel={expectationPlan.categoryLabel}
+              />
+            ) : null}
+          </Fragment>
+        );
+      })}
     </div>
   );
 };

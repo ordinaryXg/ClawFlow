@@ -295,6 +295,30 @@ const StickyFileStrip: FC<Props> = ({ workspacePath, embedFill }) => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!workspacePath?.trim()) return;
+    let timer: number | null = null;
+    const scheduleRefresh = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void load();
+      }, 120);
+    };
+    const onFilesUpdated = () => scheduleRefresh();
+    window.addEventListener('cf-workspace-files-updated', onFilesUpdated as EventListener);
+    const offIpc = window.electronAPI?.onWorkspaceFilesUpdated?.(({ workspaceRoot }) => {
+      const active = workspacePath.trim();
+      const norm = (s: string) => s.trim().replace(/[/\\]+$/, '').replace(/\\/g, '/').toLowerCase();
+      if (norm(workspaceRoot) !== norm(active)) return;
+      onFilesUpdated();
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('cf-workspace-files-updated', onFilesUpdated as EventListener);
+      offIpc?.();
+    };
+  }, [workspacePath, load]);
+
   const tryAddLauncherFromDragPayload = useCallback(
     async (p: StickyLauncherDragPayloadV1): Promise<boolean> => {
       if (!workspacePath?.trim()) return false;

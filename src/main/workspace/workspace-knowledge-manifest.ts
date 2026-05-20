@@ -1,5 +1,5 @@
 /**
- * `.agent/.clawflow/knowledge-manifest.json` — 知识库文件清单（由磁盘扫描生成，可重建）。
+ * `.agent/.knowledge/knowledge-manifest.json` — 知识库文件清单（由磁盘扫描生成，可重建）。
  */
 
 import * as fs from 'fs';
@@ -10,6 +10,11 @@ import { knowledgeIngestDirAbs } from './workspace-knowledge-ingest';
 import { parseWorkspaceMemoryMarkdown } from '../../shared/workspace-memory-frontmatter';
 
 export const KNOWLEDGE_MANIFEST_VERSION = 1 as const;
+
+export const WORKSPACE_KNOWLEDGE_MANIFEST_REL = '.agent/.knowledge/knowledge-manifest.json';
+
+/** @deprecated 旧版位置 */
+export const WORKSPACE_KNOWLEDGE_MANIFEST_LEGACY_REL = '.agent/.clawflow/knowledge-manifest.json';
 
 export type KnowledgeManifestEntry = {
   /** 相对工作区根，POSIX */
@@ -33,8 +38,15 @@ function toPosixRel(workspaceRoot: string, absPath: string): string {
   return path.relative(path.resolve(workspaceRoot), absPath).split(path.sep).join('/');
 }
 
-function knowledgeManifestPath(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'knowledge-manifest.json');
+function knowledgeManifestPathCandidates(workspaceRoot: string): string[] {
+  return [
+    path.join(workspaceAgentKnowledgeDirAbs(workspaceRoot), 'knowledge-manifest.json'),
+    path.join(clawflowDir(workspaceRoot), 'knowledge-manifest.json'),
+  ];
+}
+
+function knowledgeManifestWritePath(workspaceRoot: string): string {
+  return knowledgeManifestPathCandidates(workspaceRoot)[0];
 }
 
 function inferTitleFromFile(relPosix: string, parsedTitle?: string): string {
@@ -120,7 +132,7 @@ export function rebuildKnowledgeManifest(workspaceRoot: string): KnowledgeManife
     updatedAt: Date.now(),
     entries,
   };
-  const outPath = knowledgeManifestPath(workspaceRoot);
+  const outPath = knowledgeManifestWritePath(workspaceRoot);
   try {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2), 'utf8');
@@ -131,15 +143,17 @@ export function rebuildKnowledgeManifest(workspaceRoot: string): KnowledgeManife
 }
 
 export function readKnowledgeManifestSync(workspaceRoot: string): KnowledgeManifest | null {
-  const p = knowledgeManifestPath(workspaceRoot);
-  try {
-    const raw = fs.readFileSync(p, 'utf8');
-    const j = JSON.parse(raw) as KnowledgeManifest;
-    if (!j || typeof j !== 'object' || !Array.isArray(j.entries)) return null;
-    return j;
-  } catch {
-    return null;
+  for (const p of knowledgeManifestPathCandidates(workspaceRoot)) {
+    try {
+      const raw = fs.readFileSync(p, 'utf8');
+      const j = JSON.parse(raw) as KnowledgeManifest;
+      if (!j || typeof j !== 'object' || !Array.isArray(j.entries)) continue;
+      return j;
+    } catch {
+      /* try next */
+    }
   }
+  return null;
 }
 
 export function listKnowledgeManifestEntries(workspaceRoot: string): KnowledgeManifestEntry[] {

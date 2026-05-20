@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { clawflowDir } from '../workspace/workspace-service';
 import { broadcastToWorkspaceWindows } from '../broadcast/workspace-window-broadcast';
+import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
 import type { EvolutionAspectKey } from './skill-evolution-scheduler';
 import type { EvolutionDiffEntry } from './skill-evolution-snapshot';
 import { restoreEvolutionBackup } from './skill-evolution-snapshot';
@@ -110,6 +111,7 @@ export async function revertEvolutionRun(
   try {
     await restoreEvolutionBackup(workspaceRoot, id);
     await markEvolutionRunReverted(workspaceRoot, id);
+    broadcastWorkspaceFilesUpdated(workspaceRoot);
     return { ok: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

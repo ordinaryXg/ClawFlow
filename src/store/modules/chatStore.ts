@@ -225,6 +225,8 @@ export interface ChatState {
   expectationPlanStream: string | null;
   /** 规划完成后的展示文本（Markdown 风格纯文本） */
   activeExpectationPlanDisplay: string | null;
+  /** 本轮触发预期规划的用户消息 id（面板插在该条消息之后） */
+  expectationPlanAnchorMessageId: string | null;
   /** 模型回复中挂起、待自动发送的用户消息（当前会话） */
   pendingSendQueue: PendingSendDisplayItem[];
   /** Gateway 工具执行前待用户确认（仅当前连接会话） */
@@ -538,6 +540,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   isExpectationPlanning: false,
   expectationPlanStream: null,
   activeExpectationPlanDisplay: null,
+  expectationPlanAnchorMessageId: null,
   pendingSendQueue: [],
   toolApprovalPending: null,
 
@@ -1009,6 +1012,10 @@ export const useChatStore = create<ChatState>()((set, get) => {
         streamingActivity: null,
         streamingThinking: null,
         error: null,
+        expectationPlanAnchorMessageId: userMessage.id,
+        activeExpectationPlanDisplay: null,
+        expectationPlanStream: null,
+        isExpectationPlanning: false,
       };
     });
 
@@ -1063,6 +1070,12 @@ export const useChatStore = create<ChatState>()((set, get) => {
         streamingActivity: null,
         streamingThinking: null,
         error: null,
+        isExpectationPlanning: false,
+        expectationPlanStream: null,
+        activeExpectationPlanDisplay: null,
+        expectationPlanAnchorMessageId: null,
+        activeModeClassification: null,
+        isClassifyingMode: false,
       });
       syncPendingSendQueueToStore(set, id);
     }

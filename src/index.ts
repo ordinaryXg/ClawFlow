@@ -26,6 +26,7 @@ import {
 } from './main/workspace/workspace-blob-store';
 import { getDefaultAppCacheRootSync, getEffectiveAppCacheRootSync, readAppCachePrefsFile } from './main/prefs/app-cache-prefs';
 import * as workspaceExplorer from './main/workspace/workspace-explorer';
+import { broadcastWorkspaceFilesUpdated } from './main/workspace/workspace-files-broadcast';
 import {
   requireWorkspaceRootForWebContents,
   resolveWorkspaceRootForWebContents,
@@ -169,12 +170,14 @@ function registerWorkspaceImportExternalPathsIPC(): void {
     ) => {
       const root = requireWorkspaceRootForWebContents(event.sender);
       try {
-        return await workspaceExplorer.importExternalPathsIntoWorkspace(
+        const result = await workspaceExplorer.importExternalPathsIntoWorkspace(
           root,
           String(params?.targetRelativeDir ?? ''),
           Array.isArray(params?.sourceAbsolutePaths) ? params.sourceAbsolutePaths : [],
           { overwrite: params?.overwrite !== false }
         );
+        if (result.ok) broadcastWorkspaceFilesUpdated(root);
+        return result;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         return { ok: false as const, error: msg };

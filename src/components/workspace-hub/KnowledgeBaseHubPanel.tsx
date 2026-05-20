@@ -41,7 +41,11 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
     () =>
       entries.filter((e) => {
         const p = e.path.replace(/\\/g, '/');
-        return p.includes('.agent/knowledge/') || p.includes('.agent/.clawflow/knowledge-ingest/');
+        return (
+          p.includes('.agent/.knowledge/') ||
+          p.includes('.agent/knowledge/') ||
+          p.includes('.agent/.clawflow/knowledge-ingest/')
+        );
       }),
     [entries]
   );

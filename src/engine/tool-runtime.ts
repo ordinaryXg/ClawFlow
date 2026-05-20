@@ -15,6 +15,7 @@ import { runWebScrapeForTool } from '../main/scrape/scrape-runner';
 import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../main/todo/todo-triggers-service';
 import { rescheduleTodoTriggersForWorkspace } from '../main/todo/todo-triggers-scheduler';
 import { broadcastTodoTriggersUpdated } from '../main/todo/todo-triggers-broadcast';
+import { broadcastWorkspaceFilesUpdated } from '../main/workspace/workspace-files-broadcast';
 import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-triggers';
 import {
   EXCEL_PREVIEW_EXTENSIONS,
@@ -38,6 +39,10 @@ import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillW
 import { WORKSPACE_AGENT_SKILLS_REL } from '../main/workspace/workspace-agent-layout';
 import { clawflowDir, CLAWFLOW_DIR } from '../main/workspace/workspace-service';
 import { runWorkspaceShellCommand } from './workspace-shell-exec';
+
+function notifyWorkspaceTreeChanged(workspaceRoot: string): void {
+  broadcastWorkspaceFilesUpdated(workspaceRoot);
+}
 
 export type ToolExecutionContext = {
   workspaceRoot: string;
@@ -691,6 +696,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
         refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -760,6 +766,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
         refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -903,6 +910,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
 
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -947,6 +955,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         relativePath: rel,
         rollback: { available: false, hint: 'Directory creation rollback is not implemented.' },
       });
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         { ok: true, workspaceRoot: ctx.workspaceRoot, path: rel, absolutePath: full, absolutePathDisplay: String(full).replace(/\\/g, '/'), opId },
         null,
@@ -1006,6 +1015,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       ) {
         refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -1066,6 +1076,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       if (isWorkspaceRelativeUnderHermesIndexedTextTree(rel)) {
         refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       }
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -1110,6 +1121,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         const full = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, meta.relativePath);
         await fs.promises.mkdir(path.dirname(full), { recursive: true });
         await fs.promises.writeFile(full, before, 'utf8');
+        notifyWorkspaceTreeChanged(ctx.workspaceRoot);
         return JSON.stringify({ ok: true, opId, rolledBack: meta.kind, path: meta.relativePath }, null, 2);
       }
       if (meta.kind === 'delete_path') {
@@ -1119,6 +1131,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         const targetFull = await resolveRealPathInsideWorkspace(ctx.workspaceRoot, meta.relativePath);
         await fs.promises.mkdir(path.dirname(targetFull), { recursive: true });
         await fs.promises.rename(trashFull, targetFull);
+        notifyWorkspaceTreeChanged(ctx.workspaceRoot);
         return JSON.stringify({ ok: true, opId, rolledBack: meta.kind, path: meta.relativePath }, null, 2);
       }
       return `ERROR: rollback for kind ${meta.kind} not implemented`;
@@ -1658,7 +1671,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = await searchHermesMemory(ctx.workspaceRoot, { query: q, limit: 8 });
       if (!res.ok) return `ERROR: ${res.error}`;
       if (!res.hits.length) {
-        return 'No matches in workspace FTS index. Add notes under `.agent/.memory/`, `.agent/knowledge/`, or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
+        return 'No matches in workspace FTS index. Add notes under `.agent/.memory/`, `.agent/.knowledge/`, or `.agent/.skills/**/SKILL.md`, or run workspace_memory_rebuild_index.';
       }
       const kindLabel = (k: string) => {
         if (k === 'memory_md') return 'memory';
@@ -1821,6 +1834,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       );
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, path: rel, opId }, null, 2);
     }
   );
@@ -1885,6 +1899,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       );
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify(
         {
           ok: true,
@@ -1955,6 +1970,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
         { 'before.txt': before, 'after.txt': content }
       );
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, path: rel, opId, existed: exists }, null, 2);
     }
   );
@@ -1997,6 +2013,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       await fs.promises.rm(full, { recursive: true, force: true });
       refreshHermesMemoryIndexBestEffort(ctx.workspaceRoot);
       void syncWorkspaceSkillManifest(ctx.workspaceRoot).catch(() => undefined);
+      notifyWorkspaceTreeChanged(ctx.workspaceRoot);
       return JSON.stringify({ ok: true, deleted: skillRootRel }, null, 2);
     }
   );

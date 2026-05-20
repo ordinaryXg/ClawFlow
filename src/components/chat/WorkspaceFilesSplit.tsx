@@ -60,6 +60,7 @@ function pushToast(type: 'success' | 'error', title: string, message?: string): 
 }
 
 import { hasDataTransferFileDrag, pathsFromDataTransferFiles } from '../../utils/electron-data-transfer-files';
+import { workspacePathsLikelyEqual } from '../../utils/workspace-path';
 
 function isMarkdownFilename(rel: string): boolean {
   const base = rel.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? '';
@@ -339,21 +340,26 @@ const WorkspaceFilesSplit: FC<{ workspacePath: string | null }> = ({ workspacePa
   }, [workspacePath, loadDir]);
 
   useEffect(() => {
-    if (!workspacePath) return;
+    if (!workspacePath?.trim()) return;
     let timer: number | null = null;
-    const onFilesUpdated = () => {
+    const scheduleRefresh = () => {
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        // Refresh root and all currently expanded dirs.
         const dirs = Array.from(expandedRef.current.values());
         if (!dirs.includes('')) dirs.unshift('');
         for (const d of dirs) void loadDir(d);
       }, 120);
     };
-    window.addEventListener('cf-workspace-files-updated', onFilesUpdated as any);
+    const onFilesUpdated = () => scheduleRefresh();
+    window.addEventListener('cf-workspace-files-updated', onFilesUpdated as EventListener);
+    const offIpc = window.electronAPI?.onWorkspaceFilesUpdated?.(({ workspaceRoot }) => {
+      if (!workspacePathsLikelyEqual(workspaceRoot, workspacePath)) return;
+      onFilesUpdated();
+    });
     return () => {
       if (timer) window.clearTimeout(timer);
-      window.removeEventListener('cf-workspace-files-updated', onFilesUpdated as any);
+      window.removeEventListener('cf-workspace-files-updated', onFilesUpdated as EventListener);
+      offIpc?.();
     };
   }, [workspacePath, loadDir]);
 

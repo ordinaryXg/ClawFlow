@@ -20,6 +20,7 @@ import {
   type EvolutionDiffEntry,
 } from './skill-evolution-snapshot';
 import { appendEvolutionRun, type EvolutionRunPhaseRecord, type EvolutionRunRecord } from './skill-evolution-runs';
+import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
 
 const PHASE_ORDER: EvolutionAspectKey[] = ['memory', 'skills', 'role_doc'];
 
@@ -141,6 +142,7 @@ export async function runEvolutionPipeline(params: {
       diffEvolutionSnapshots(initialSnap, await snapshotEvolutionWorkspace(root));
     try {
       await restoreEvolutionBackup(root, runId);
+      broadcastWorkspaceFilesUpdated(root);
     } catch (e) {
       console.warn('[evolution] restore after failure failed:', e);
     }
@@ -206,6 +208,10 @@ export async function runEvolutionPipeline(params: {
       diff: phaseDiff,
     });
 
+    if (phaseDiff.length > 0) {
+      broadcastWorkspaceFilesUpdated(root);
+    }
+
     if (!res.ok) {
       return fail('phase_agent_failed', String(res.error ?? 'run_failed'));
     }
@@ -236,6 +242,7 @@ export async function runEvolutionPipeline(params: {
     aggregateDiff,
   };
   await appendEvolutionRun(root, record).catch(() => undefined);
+  broadcastWorkspaceFilesUpdated(root);
 
   return {
     ok: true,

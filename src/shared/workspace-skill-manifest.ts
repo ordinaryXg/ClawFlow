@@ -1,7 +1,9 @@
-/** `.agent/.tool/skillManifest.json` — 工作区 Hermes 技能名册（供主对话 system 注入） */
+/** `.agent/.skills/skillManifest.json` — 工作区 Hermes 技能名册（供主对话 system 注入） */
 
 export const WORKSPACE_SKILL_MANIFEST_VERSION = 1 as const;
-export const WORKSPACE_SKILL_MANIFEST_REL = '.agent/.tool/skillManifest.json';
+export const WORKSPACE_SKILL_MANIFEST_REL = '.agent/.skills/skillManifest.json';
+/** @deprecated 旧版位置 */
+export const WORKSPACE_SKILL_MANIFEST_LEGACY_REL = '.agent/.tool/skillManifest.json';
 
 export type WorkspaceSkillManifestEntry = {
   /** 展示名（frontmatter `name` 或目录名） */

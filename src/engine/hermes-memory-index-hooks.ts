@@ -31,7 +31,12 @@ export function isWorkspaceRelativeUnderKnowledgeTree(rel: string): boolean {
   const n = String(rel ?? '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '');
-  return n === '.agent/knowledge' || n.startsWith('.agent/knowledge/');
+  return (
+    n === '.agent/.knowledge' ||
+    n.startsWith('.agent/.knowledge/') ||
+    n === '.agent/knowledge' ||
+    n.startsWith('.agent/knowledge/')
+  );
 }
 
 export function isWorkspaceRelativeUnderKnowledgeIngestTree(rel: string): boolean {

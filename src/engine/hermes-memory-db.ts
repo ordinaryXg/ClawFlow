@@ -625,7 +625,7 @@ export function syncMainMemorySourcesToMemoryDb(
   return { ok: true, indexed, pruned };
 }
 
-/** 将 `.agent/knowledge/**` 下 Markdown/文本同步进 memory_docs。 */
+/** 将 `.agent/.knowledge/**` 下 Markdown/文本同步进 memory_docs。 */
 export function syncKnowledgeSourcesToMemoryDb(
   workspaceRoot: string,
   opts?: { fullRebuild?: boolean; db?: BetterSqliteDb | null }

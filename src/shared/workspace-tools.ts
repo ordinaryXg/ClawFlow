@@ -36,7 +36,8 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   todos: true,
   /** 新建工作区 / 未在 manifest 中显式写入时默认开启 Hermes 工作区技能 */
   skills: true,
-  knowledge_base: false,
+  /** 知识库与记忆 FTS 检索（workspace_memory_search / workspace_knowledge_query 等） */
+  knowledge_base: true,
 };
 
 /**

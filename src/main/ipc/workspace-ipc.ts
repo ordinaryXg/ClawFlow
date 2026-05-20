@@ -20,6 +20,7 @@ import {
   clearActiveWorkspaceRootInMemory,
   syncActiveWorkspaceRootToEngine,
 } from '../workspace/active-workspace-sync';
+import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
 import { rescheduleAllTodoTriggers } from '../todo/todo-triggers-scheduler';
 import { evictClawFlowSessionStore } from '../../engine/clawflow-engine';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes-memory-db';
@@ -371,6 +372,7 @@ export function registerWorkspaceIPC(): void {
           meta: { op: 'mkdir', relativePath: rel },
         })
         .catch(() => undefined);
+      broadcastWorkspaceFilesUpdated(root);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -403,6 +405,7 @@ export function registerWorkspaceIPC(): void {
             meta: { op: 'write_text', relativePath: rel, existed: exists },
           })
           .catch(() => undefined);
+        broadcastWorkspaceFilesUpdated(root);
         return { ok: true as const };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -436,6 +439,7 @@ export function registerWorkspaceIPC(): void {
           meta: { op: 'rename', from: fromRel, to: toRel },
         })
         .catch(() => undefined);
+      broadcastWorkspaceFilesUpdated(root);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -467,6 +471,7 @@ export function registerWorkspaceIPC(): void {
           meta: { op: 'delete', relativePath: rel },
         })
         .catch(() => undefined);
+      broadcastWorkspaceFilesUpdated(root);
       return { ok: true as const };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -548,6 +553,7 @@ export function registerWorkspaceIPC(): void {
         subdir: params?.subdir === 'docs' ? 'docs' : 'notes',
       });
       if (!res.ok) return res;
+      broadcastWorkspaceFilesUpdated(root);
       return { ok: true as const, relativePath: res.relativePath };
     }
   );
@@ -555,6 +561,7 @@ export function registerWorkspaceIPC(): void {
   ipcMain.handle('knowledge:ingestFile', async (event, relativePath: string) => {
     const root = requireWorkspaceRootForWebContents(event.sender);
     const res = await ingestWorkspaceFileToKnowledge(root, String(relativePath ?? ''));
+    if (res.ok) broadcastWorkspaceFilesUpdated(root);
     return res;
   });
 

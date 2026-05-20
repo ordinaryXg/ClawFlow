@@ -18,6 +18,7 @@ import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
 import { ensureWorkspaceMainMemoryTemplates } from './workspace-main-memory-bootstrap';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
+  migrateAgentManifestAndKnowledgePathsSync,
   migrateLegacyWorkspaceAgentBundleSync,
   WORKSPACE_AGENT_DIR,
   workspaceAgentDotMemoryDirAbs,
@@ -166,7 +167,7 @@ export async function ensureWorkspaceToolBundle(
       '',
       '- 总览入口：请阅读工作区内 `.agent/.roleAgent/TOOLS.md`',
       '- 能力开关：`manifest.json`',
-      '- Hermes 技能名册：`skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
+      '- Hermes 技能名册见 `.agent/.skills/skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
       '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md`',
       '',
     ].join('\n');
@@ -596,6 +597,7 @@ export async function ensureWorkspaceInitialized(
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
   migrateWorkspaceTriadFromLegacyRootsSync(root);
+  migrateAgentManifestAndKnowledgePathsSync(root);
   const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
   if (!preserveExistingLayout) {
     migrateLegacyWorkspaceAgentBundleSync(root);

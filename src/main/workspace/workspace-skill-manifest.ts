@@ -1,5 +1,5 @@
 /**
- * 同步 / 读取 `.agent/.tool/skillManifest.json`（与 listWorkspaceHermesSkills 两层扫描一致）。
+ * 同步 / 读取 `.agent/.skills/skillManifest.json`（与 listWorkspaceHermesSkills 两层扫描一致）。
  */
 
 import * as fs from 'fs';
@@ -13,7 +13,7 @@ import {
 } from '../../shared/workspace-skill-manifest';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
 import { readDisabledSkillRootsSync } from './workspace-skills-ui-state';
-import { workspaceToolDirAbs } from './workspace-agent-layout';
+import { workspaceSkillsDirAbs, workspaceToolDirAbs } from './workspace-agent-layout';
 import { resolvePathInsideWorkspace } from './workspace-explorer';
 
 function normRoot(rel: string): string {
@@ -23,8 +23,15 @@ function normRoot(rel: string): string {
     .replace(/^\/+/, '');
 }
 
-function manifestPath(workspaceRoot: string): string {
-  return path.join(workspaceToolDirAbs(workspaceRoot), 'skillManifest.json');
+function manifestPathCandidates(workspaceRoot: string): string[] {
+  return [
+    path.join(workspaceSkillsDirAbs(workspaceRoot), 'skillManifest.json'),
+    path.join(workspaceToolDirAbs(workspaceRoot), 'skillManifest.json'),
+  ];
+}
+
+function manifestWritePath(workspaceRoot: string): string {
+  return manifestPathCandidates(workspaceRoot)[0];
 }
 
 function entryFromSkill(
@@ -63,18 +70,18 @@ export async function syncWorkspaceSkillManifest(workspaceRoot: string): Promise
     updatedAt: Date.now(),
     skills,
   };
-  const dir = workspaceToolDirAbs(root);
-  await fs.promises.mkdir(dir, { recursive: true });
-  await fs.promises.writeFile(manifestPath(root), JSON.stringify(body, null, 2), 'utf-8');
+  const fp = manifestWritePath(root);
+  await fs.promises.mkdir(path.dirname(fp), { recursive: true });
+  await fs.promises.writeFile(fp, JSON.stringify(body, null, 2), 'utf-8');
   return body;
 }
 
 export async function readWorkspaceSkillManifest(workspaceRoot: string): Promise<WorkspaceSkillManifestFile | null> {
-  const fp = manifestPath(workspaceRoot);
-  try {
-    const buf = await fs.promises.readFile(fp, 'utf-8');
+  for (const fp of manifestPathCandidates(workspaceRoot)) {
+    try {
+      const buf = await fs.promises.readFile(fp, 'utf-8');
     const j = JSON.parse(buf) as Partial<WorkspaceSkillManifestFile>;
-    if (!j || typeof j !== 'object' || !Array.isArray(j.skills)) return null;
+    if (!j || typeof j !== 'object' || !Array.isArray(j.skills)) continue;
     const skills: WorkspaceSkillManifestEntry[] = j.skills
       .map((row) => {
         if (!row || typeof row !== 'object') return null;
@@ -93,14 +100,16 @@ export async function readWorkspaceSkillManifest(workspaceRoot: string): Promise
         };
       })
       .filter(Boolean) as WorkspaceSkillManifestEntry[];
-    return {
-      version: WORKSPACE_SKILL_MANIFEST_VERSION,
-      updatedAt: typeof j.updatedAt === 'number' ? j.updatedAt : 0,
-      skills,
-    };
-  } catch {
-    return null;
+      return {
+        version: WORKSPACE_SKILL_MANIFEST_VERSION,
+        updatedAt: typeof j.updatedAt === 'number' ? j.updatedAt : 0,
+        skills,
+      };
+    } catch {
+      /* try next path */
+    }
   }
+  return null;
 }
 
 export async function buildSkillManifestSystemContent(workspaceRoot: string): Promise<string> {

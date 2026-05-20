@@ -99,10 +99,10 @@ Always run lint before commit.
     expect(hit?.abstract).toContain('TypeScript');
   });
 
-  it('indexes .agent/knowledge markdown', async () => {
-    fs.mkdirSync(path.join(dir, '.agent', 'knowledge', 'notes'), { recursive: true });
+  it('indexes .agent/.knowledge markdown', async () => {
+    fs.mkdirSync(path.join(dir, '.agent', '.knowledge', 'notes'), { recursive: true });
     fs.writeFileSync(
-      path.join(dir, '.agent', 'knowledge', 'notes', 'ref.md'),
+      path.join(dir, '.agent', '.knowledge', 'notes', 'ref.md'),
       `---
 title: API ref
 abstract: Workspace knowledge FTS test phrase

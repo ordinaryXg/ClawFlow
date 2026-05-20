@@ -1,15 +1,15 @@
 /**
- * `.agent/knowledge/` 初始目录与说明（仅缺失时写入）。
+ * `.agent/.knowledge/` 初始目录与说明（仅缺失时写入）。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildWorkspaceMemoryNoteTemplate } from '../../shared/workspace-memory-frontmatter';
-import { workspaceAgentKnowledgeDirAbs } from './workspace-agent-layout';
+import { WORKSPACE_AGENT_KNOWLEDGE_REL, workspaceAgentKnowledgeDirAbs } from './workspace-agent-layout';
 import { rebuildKnowledgeManifest } from './workspace-knowledge-manifest';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 
-const README = `# 工作区知识库（.agent/knowledge）
+const README = `# 工作区知识库（${WORKSPACE_AGENT_KNOWLEDGE_REL}）
 
 本目录用于**用户策展**的可检索文档（规范、参考资料、导入摘录等），与 \`.agent/.memory/\`（跨会话记忆/进化整理）分工不同。
 
@@ -57,7 +57,7 @@ export async function ensureWorkspaceKnowledgeTemplates(workspaceRoot: string): 
   }
 
   if (await writeIfMissing(path.join(base, 'README.md'), README.endsWith('\n') ? README : `${README}\n`)) {
-    created.push('.agent/knowledge/README.md');
+    created.push(`${WORKSPACE_AGENT_KNOWLEDGE_REL}/README.md`);
   }
 
   const example = buildWorkspaceMemoryNoteTemplate({
@@ -72,7 +72,7 @@ export async function ensureWorkspaceKnowledgeTemplates(workspaceRoot: string): 
       example.endsWith('\n') ? example : `${example}\n`
     )
   ) {
-    created.push('.agent/knowledge/notes/example-knowledge-note.md');
+    created.push(`${WORKSPACE_AGENT_KNOWLEDGE_REL}/notes/example-knowledge-note.md`);
   }
 
   try {
@@ -103,7 +103,7 @@ export async function createKnowledgeNote(
   const title = String(opts?.title ?? '').trim() || 'Untitled';
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugifyTitle(title);
-  const relPosix = `.agent/knowledge/${subdir}/${date}-${slug}.md`;
+  const relPosix = `${WORKSPACE_AGENT_KNOWLEDGE_REL}/${subdir}/${date}-${slug}.md`;
   const abs = path.join(root, ...relPosix.split('/'));
 
   try {

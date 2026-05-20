@@ -509,6 +509,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  onWorkspaceFilesUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
   scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
@@ -813,6 +814,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
     ipcRenderer.on('todo-triggers:updated', handler);
     return () => ipcRenderer.removeListener('todo-triggers:updated', handler);
+  },
+  onWorkspaceFilesUpdated: (cb) => {
+    const handler = (_event: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const p = payload as Record<string, unknown>;
+      if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
+    };
+    ipcRenderer.on('workspace-files:updated', handler);
+    return () => ipcRenderer.removeListener('workspace-files:updated', handler);
   },
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) =>
     ipcRenderer.invoke('engine:resolveToolApproval', params),

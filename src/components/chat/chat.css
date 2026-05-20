@@ -1153,13 +1153,23 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.cf-expectationPlan {
+.cf-expectationPlanWrap {
   flex-shrink: 0;
-  margin: 8px 12px 4px;
+  margin: 4px 12px 10px;
+  padding-left: 10px;
+  border-left: 3px solid color-mix(in srgb, #a855f7 70%, var(--accent));
+}
+
+.cf-expectationPlan {
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-  background: color-mix(in srgb, var(--panel) 92%, var(--accent) 8%);
+  border: 1px dashed color-mix(in srgb, #a855f7 45%, var(--border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #a855f7 10%, var(--panel)) 0%,
+    color-mix(in srgb, var(--accent) 6%, var(--panel)) 100%
+  );
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 60%, transparent);
   max-height: min(42vh, 320px);
   display: flex;
   flex-direction: column;
@@ -1168,16 +1178,61 @@
 
 .cf-expectationPlan__head {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   margin-bottom: 8px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.cf-expectationPlan__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: #c084fc;
+  background: color-mix(in srgb, #a855f7 16%, transparent);
+  font-size: 15px;
+}
+
+.cf-expectationPlan__headText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cf-expectationPlan__kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #a855f7 85%, var(--muted));
 }
 
 .cf-expectationPlan__title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
+}
+
+.cf-expectationPlan__category {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #a855f7 22%, transparent);
+  color: #e9d5ff;
+  border: 1px solid color-mix(in srgb, #a855f7 35%, transparent);
+}
+
+:root[data-theme='light'] .cf-expectationPlan__category {
+  color: #6b21a8;
+  background: color-mix(in srgb, #a855f7 14%, white);
 }
 
 .cf-expectationPlan__badge {
@@ -1186,6 +1241,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
+  margin-left: auto;
 }
 
 .cf-expectationPlan__body {

@@ -475,6 +475,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  onWorkspaceFilesUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
   scrapeReadArtifact: (params: { jobId: string }) => Promise<{ ok: true; text: string } | { ok: false; error?: string }>;
