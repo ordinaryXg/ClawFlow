@@ -9,6 +9,7 @@ import { resolveContextTokenLimit } from '../utils/context-saturation';
 import { readWorkspaceToolManifest } from '../main/workspace/workspace-service';
 import { buildSkillManifestSystemContent } from '../main/workspace/workspace-skill-manifest';
 import { repairToolCallMessageChain } from './repair-tool-call-message-chain';
+import { truncateToolResultText } from '../utils/tool-result-truncate';
 
 /** 从持久化会话构造即将发给模型的 tail（不含 system；逻辑须与 ClawFlowEngine.buildHistoryMessages 一致） */
 export function buildTailChatMessagesFromStored(conv: StoredConversation | null, userText: string): ChatMessage[] {
@@ -27,7 +28,10 @@ export function buildTailChatMessagesFromStored(conv: StoredConversation | null,
     })
     .map((m) => ({
       role: m.role as ChatMessage['role'],
-      content: String(m.content ?? ''),
+      content:
+        m.role === 'tool'
+          ? truncateToolResultText(String(m.content ?? ''))
+          : String(m.content ?? ''),
       ...(typeof m.reasoning_content === 'string' ? { reasoning_content: m.reasoning_content } : {}),
       ...(Array.isArray(m.tool_calls) ? { tool_calls: m.tool_calls as ChatMessage['tool_calls'] } : {}),
       ...(m.role === 'tool' && typeof (m as { tool_call_id?: string }).tool_call_id === 'string'

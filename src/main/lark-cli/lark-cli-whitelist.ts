@@ -12,10 +12,40 @@ export const LARK_CLI_ALLOWED_DOMAINS = new Set([
   'contact',
   'task',
   'mail',
+  'sheets',
   'config',
 ]);
 
 const BLOCKED_ARG_PATTERNS = [/[;&|`$]/, /\.\./];
+
+/** `api` 域禁止的全量表格路径（易返回整表网格，撑爆上下文） */
+const LARK_CLI_BLOCKED_API_PATH_PATTERNS: readonly RegExp[] = [
+  /\/sheets\/v3\/spreadsheets\/[^/]+\/sheets\/query\b/i,
+  /\/sheets\/v2\/spreadsheets\/[^/]+\/values_batch_get\b/i,
+  /\/sheets\/v3\/spreadsheets\/[^/]+\/sheets\/values_batch_get\b/i,
+];
+
+function extractOpenApiPathFromArgs(args: readonly string[]): string | null {
+  for (const raw of args) {
+    const s = String(raw ?? '').trim();
+    if (s.startsWith('/open-apis/')) return s.split('?')[0] ?? s;
+  }
+  return null;
+}
+
+function validateApiDomainArgs(args: readonly string[]): { ok: true } | { ok: false; error: string } {
+  const apiPath = extractOpenApiPathFromArgs(args);
+  if (!apiPath) return { ok: true };
+  for (const pat of LARK_CLI_BLOCKED_API_PATH_PATTERNS) {
+    if (pat.test(apiPath)) {
+      return {
+        ok: false,
+        error: `api_path_blocked: ${apiPath}. Use domain "sheets" (+info, +read --range, +find) instead of full grid query.`,
+      };
+    }
+  }
+  return { ok: true };
+}
 
 export type LarkCliInvokeRequest = {
   domain: string;
@@ -41,6 +71,10 @@ export function validateLarkCliInvokeRequest(req: LarkCliInvokeRequest): { ok: t
       if (pat.test(arg)) return { ok: false, error: 'unsafe_arg' };
     }
   }
+  if (domain === 'api') {
+    const apiCheck = validateApiDomainArgs(args);
+    if (!apiCheck.ok) return apiCheck;
+  }
   if (req.as && req.as !== 'user' && req.as !== 'bot') return { ok: false, error: 'invalid_as' };
   return { ok: true };
 }
@@ -57,10 +91,15 @@ const LARK_CLI_INVOKE_FLAG_DOMAINS = new Set([
   'contact',
   'task',
   'mail',
+  'sheets',
 ]);
 
-/** Subcommands that emit JSON by default when --format is omitted. */
-const LARK_CLI_DEFAULT_JSON_DOMAINS = new Set(['api', 'docs', 'base', 'drive', 'wiki']);
+/** Domains where buildLarkCliArgv may append `--format json` (sheets + shortcuts do NOT support --format). */
+const LARK_CLI_AUTO_FORMAT_DOMAINS = new Set(['api', 'docs', 'base', 'drive', 'wiki']);
+
+export function larkCliDomainSupportsFormatFlag(domain: string): boolean {
+  return LARK_CLI_AUTO_FORMAT_DOMAINS.has(String(domain ?? '').trim().toLowerCase());
+}
 
 export function buildLarkCliArgv(req: LarkCliInvokeRequest): string[] {
   const domain = req.domain.trim().toLowerCase();
@@ -70,8 +109,11 @@ export function buildLarkCliArgv(req: LarkCliInvokeRequest): string[] {
   argv.push(...req.args.map(String));
   if (LARK_CLI_INVOKE_FLAG_DOMAINS.has(domain)) {
     if (req.as) argv.push('--as', req.as);
-    if (req.format) argv.push('--format', req.format);
-    else if (LARK_CLI_DEFAULT_JSON_DOMAINS.has(domain)) argv.push('--format', 'json');
+    if (req.format) {
+      if (larkCliDomainSupportsFormatFlag(domain)) argv.push('--format', req.format);
+    } else if (LARK_CLI_AUTO_FORMAT_DOMAINS.has(domain)) {
+      argv.push('--format', 'json');
+    }
   }
   if (req.dryRun) argv.push('--dry-run');
   if (req.yes) argv.push('--yes');

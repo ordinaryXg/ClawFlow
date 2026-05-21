@@ -5,6 +5,7 @@ import {
   buildEventConsumeArgv,
   buildImSendTextArgv,
   buildLarkCliArgv,
+  larkCliDomainSupportsFormatFlag,
   LARK_CLI_DEFAULT_USER_SCOPES,
   validateLarkCliInvokeRequest,
 } from './lark-cli-whitelist';
@@ -96,5 +97,43 @@ describe('lark-cli-whitelist', () => {
   it('rejects unknown domain', () => {
     const bad = validateLarkCliInvokeRequest({ domain: 'eval', args: ['x'] });
     expect(bad.ok).toBe(false);
+  });
+
+  it('allows sheets +read with range', () => {
+    const req = {
+      domain: 'sheets',
+      args: ['+read', '--url', 'https://example.feishu.cn/sheets/abc', '--range', 'uHMAXl!A1:F100'],
+      as: 'user' as const,
+    };
+    expect(validateLarkCliInvokeRequest(req)).toEqual({ ok: true });
+    const argv = buildLarkCliArgv(req);
+    expect(argv).toContain('sheets');
+    expect(argv).toContain('+read');
+    expect(argv).toContain('--as');
+    expect(argv).not.toContain('--format');
+  });
+
+  it('sheets domain does not support --format flag', () => {
+    expect(larkCliDomainSupportsFormatFlag('sheets')).toBe(false);
+    expect(larkCliDomainSupportsFormatFlag('docs')).toBe(true);
+  });
+
+  it('blocks api sheets full grid query', () => {
+    const bad = validateLarkCliInvokeRequest({
+      domain: 'api',
+      args: ['GET', '/open-apis/sheets/v3/spreadsheets/abc123/sheets/query', '--as', 'user'],
+      as: 'user',
+    });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toContain('api_path_blocked');
+  });
+
+  it('allows api sheets metadata GET', () => {
+    const ok = validateLarkCliInvokeRequest({
+      domain: 'api',
+      args: ['GET', '/open-apis/sheets/v3/spreadsheets/abc123', '--as', 'user'],
+      as: 'user',
+    });
+    expect(ok).toEqual({ ok: true });
   });
 });

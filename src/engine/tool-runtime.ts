@@ -44,6 +44,10 @@ import {
 import { isSkillIndexedDocumentRel, isSkillReferencesOnlyDocRel, normalizeSkillWorkspaceRel, normalizeWorkspaceRel } from './workspace-skill-paths';
 import { WORKSPACE_AGENT_SKILLS_REL } from '../main/workspace/workspace-agent-layout';
 import { clawflowDir, CLAWFLOW_DIR } from '../main/workspace/workspace-service';
+import {
+  formatFeishuInvokeToolResult,
+} from '../utils/tool-result-truncate';
+import { larkCliDomainSupportsFormatFlag } from '../main/lark-cli/lark-cli-whitelist';
 import { runWorkspaceShellCommand } from './workspace-shell-exec';
 
 function notifyWorkspaceTreeChanged(workspaceRoot: string): void {
@@ -2174,14 +2178,14 @@ export function createDefaultToolRuntime(): ToolRuntime {
       function: {
         name: 'workspace_feishu_invoke',
         description:
-          'Invoke Feishu/Lark Open Platform via bundled lark-cli. Use domain docs/base/drive/wiki/im/auth with args matching lark-cli subcommands. Prefer as=user for cloud docs and Base.',
+          'Invoke Feishu/Lark Open Platform via bundled lark-cli. Use domain docs/sheets/base/drive/wiki/im/auth with args matching lark-cli subcommands (+ shortcuts). Prefer as=user for cloud docs, sheets and Base.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
             domain: {
               type: 'string',
-              enum: ['docs', 'base', 'drive', 'wiki', 'im', 'event', 'auth', 'api', 'calendar', 'contact', 'task', 'mail'],
+              enum: ['docs', 'sheets', 'base', 'drive', 'wiki', 'im', 'event', 'auth', 'api', 'calendar', 'contact', 'task', 'mail'],
               description: 'lark-cli top-level domain',
             },
             args: {
@@ -2220,7 +2224,15 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const botId = typeof args?.botId === 'string' && args.botId.trim() ? args.botId.trim() : undefined;
       const yes = args?.yes === true;
       const dryRun = args?.dryRun === true;
-      const res = await invokeLarkCli({ domain, args: rawArgs, as, botId, yes, dryRun, format: 'json' });
+      const res = await invokeLarkCli({
+        domain,
+        args: rawArgs,
+        as,
+        botId,
+        yes,
+        dryRun,
+        ...(larkCliDomainSupportsFormatFlag(domain) ? { format: 'json' as const } : {}),
+      });
       if (res.confirmationRequired) {
         return JSON.stringify(
           {
@@ -2235,17 +2247,13 @@ export function createDefaultToolRuntime(): ToolRuntime {
           2
         );
       }
-      return JSON.stringify(
-        {
-          ok: res.ok,
-          exitCode: res.exitCode,
-          json: res.json,
-          stdout: res.stdout.slice(0, 48_000),
-          stderr: res.stderr.slice(0, 16_000),
-        },
-        null,
-        2
-      );
+      return formatFeishuInvokeToolResult({
+        ok: res.ok,
+        exitCode: res.exitCode,
+        json: res.json,
+        stdout: res.stdout,
+        stderr: res.stderr,
+      });
     }
   );
 

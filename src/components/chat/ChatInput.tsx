@@ -305,7 +305,7 @@ const ChatInput: FC<Props> = ({
             void submit();
           }
         }}
-        rows={3}
+        rows={2}
       />
       <div
         className={[

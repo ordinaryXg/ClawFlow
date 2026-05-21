@@ -30,7 +30,7 @@ metadata:
 
 \`\`\`json
 {
-  "domain": "docs | base | drive | wiki | im | auth",
+  "domain": "docs | sheets | base | drive | wiki | im | auth",
   "args": ["+fetch", "--api-version", "v2", "--doc", "URL或token"],
   "as": "user",
   "botId": "可选，多机器人时指定",
@@ -44,6 +44,8 @@ metadata:
 | 场景 | domain | args（节选） |
 |------|--------|----------------|
 | 读云文档 | docs | \`["+fetch","--api-version","v2","--doc","<url>"]\` |
+| 读表格区域 | sheets | \`["+read","--url","<sheet_url>","--range","<sheetId>!A1:F200"]\` |
+| 搜表格单元格 | sheets | \`["+find","--url","<sheet_url>","--find","关键词"]\` |
 | 写云文档 | docs | \`["+update","--api-version","v2","--doc","<url>","--command","append","--content","<p>...</p>"]\` |
 | 列 Base 表 | base | \`["+table-list","--base-token","<token>"]\` |
 | 搜 Base | drive | \`["+search","--query","名称","--doc-types","bitable"]\` |

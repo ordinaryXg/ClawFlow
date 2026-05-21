@@ -406,6 +406,7 @@ function clearStreamingState(): Pick<ChatState, 'streamingActivity' | 'streaming
 }
 
 const TOOL_CONV_SYNC_MIN_MS = 300;
+let lastToolConvSyncTs = 0;
 
 function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations: () => Promise<void> }): void {
   const now = Date.now();

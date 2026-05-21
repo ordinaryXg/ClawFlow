@@ -23,6 +23,19 @@
 - 用本能力读写**工作区磁盘文件** → 用 `tools.docs` 的 `workspace_*`
 - 用户只闲聊飞书、未给链接且任务不需要飞书数据 → **不要**调工具
 - 工具未返回正文时**不得**声称已读过文档
+- **禁止**用 `api` 拉整表（`sheets/query`、`values_batch_get` 等已在白名单层拦截）；大文档须**分块读**（见下）
+
+## 大文档：分块 / 检索（lark-cli 能力）
+
+| 类型 | 推荐 domain | 分块方式 |
+|------|-------------|----------|
+| 云文档 docx | `docs` | `+fetch --api-version v2 --scope outline`（目录）；`keyword`（关键词段）；`range` / `section`（块区间）；`--detail simple` |
+| 电子表格 | `sheets` | `+info` 元数据；`+read --range "uHMAXl!A1:F200"`；`+find --find "试玩组"` |
+| 多维表格 Base | `base` | `+table-list` → `+record-search` / `+record-list`；聚合用 `+data-query --dsl` |
+| 搜索定位 | `docs` / `drive` | `+search --query`；再用 fetch/read 读命中部分 |
+| 输出裁剪 | 任意 | CLI 支持 `-q` / `--jq` 过滤 JSON |
+
+返回 JSON 超过 **256KB** 会被截断；规划调用时应先窄后宽。
 
 ## 工具与参数
 
@@ -30,9 +43,9 @@
 
 | 字段 | 约束 |
 |------|------|
-| `domain` | `docs` / `base` / `drive` / `wiki` / `im` / `auth` 等；须为白名单域 |
-| `args` | lark-cli 子参数数组；**不含** domain；优先 `+` 快捷命令 |
-| `as` | 默认 `"user"`；IM 与 bot 资源用 `"bot"` |
+| `domain` | `docs` / `sheets` / `base` / `drive` / `wiki` / `im` / `auth` 等；须为白名单域 |
+| `args` | lark-cli 子参数数组；**不含** domain；**勿**把 `as` / `dryRun` / `botId` 写进 args |
+| `as` | 工具顶层字段，默认 `"user"`；**不要**在 `args` 里重复 `--as` |
 | `botId` | 多机器人时可选 |
 | `yes` | 仅当上次返回 `confirmation_required` 且**用户已明确同意**写操作 |
 | `dryRun` | 需预览请求时用 |
@@ -67,7 +80,8 @@
 
 | 用户意图 / 输入 | domain | args（示例） | as |
 |-----------------|--------|--------------|-----|
-| 读 docx 正文 | `docs` | `["+fetch","--api-version","v2","--doc","<url或token>"]` | user |
+| 读 docx 正文 | `docs` | `["+fetch","--api-version","v2","--doc","<url>","--scope","outline"]` 或 `keyword` | user |
+| 读表格区域 | `sheets` | `["+read","--url","<sheet_url>","--range","<sheetId>!A1:F100"]` | user |
 | 追加 docx 段落 | `docs` | `["+update","--api-version","v2","--doc","<url>","--command","append","--content","<p>…</p>"]` | user |
 | 解析 Wiki 链接 | `wiki` | `["+node-get","--token","<wiki_token>"]` | user |
 | 搜多维表格 | `drive` | `["+search","--query","<关键词>","--doc-types","bitable"]` | user |
@@ -94,6 +108,13 @@
 1. `drive` / `+search` / `--doc-types bitable`
 2. `base` / `+table-list` → 再读记录
 
+**D. 读电子表格（sheet URL）**
+
+1. `auth` / `status`（可选）
+2. `sheets` / `+info` / `--url <用户 sheet 链接>`
+3. `sheets` / `+read` / `--url` / `--range "<sheetId>!A1:F200"`（先小范围；按需扩大）
+4. 统计类任务：多次 `+read` 或 `+find`，勿 `api …/sheets/query`
+
 ## 失败时你怎么做
 
 | 工具信号 | 你的下一步 |
@@ -102,6 +123,8 @@
 | scope / 999916xx | 提示开放平台权限或需**退出用户授权后重新 OAuth** |
 | 403 / 无权限 | 说明文档可能未共享给当前授权用户；勿编造内容 |
 | `confirmation_required` | 向用户确认写 scope；未确认不得 `yes: true` |
+| `unknown flag: --format`（历史版本） | `sheets` 不支持 `--format`；升级 ClawFlow 或改用 `+info`/`+read` |
+| `api_path_blocked` | 改用 `sheets +read --range` / `+find`；勿调全表 query |
 | `domain_not_allowed` / 参数校验失败 | 修正 domain/args；勿改走 shell |
 | `ok: false` 且无正文 | 报告 stderr 要点；不要假装成功 |
 

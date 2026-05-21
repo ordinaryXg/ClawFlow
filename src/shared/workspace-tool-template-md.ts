@@ -33,9 +33,9 @@ function renderToolDoc(template: string): string {
   for (const [capId, names] of Object.entries(WORKSPACE_CAPABILITY_TOOL_NAMES) as Array<
     [ToolPlaceholderId, readonly string[]]
   >) {
-    out = out.replaceAll(`{{TOOLS:${capId}}}`, bulletTools(names));
+    out = out.split(`{{TOOLS:${capId}}}`).join(bulletTools(names));
   }
-  out = out.replaceAll('{{ALWAYS_ALLOWED}}', alwaysAllowedInline());
+  out = out.split('{{ALWAYS_ALLOWED}}').join(alwaysAllowedInline());
   return out.endsWith('\n') ? out : `${out}\n`;
 }
 

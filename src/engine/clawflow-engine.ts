@@ -8,6 +8,7 @@ import { filterToolSchemasByWorkspaceManifest } from '../shared/workspace-tool-m
 import { STREAM_REASONING_END, STREAM_REASONING_START } from '../utils/reasoning-stream-demux';
 import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content';
 import { createStreamReasoningPhaseEmitter } from '../utils/reasoning-stream-phase-emitter';
+import { truncateToolResultText } from '../utils/tool-result-truncate';
 import { SessionStore, StoredConversation, StoredMessage } from './session-store';
 import { broadcastChatConversationsDirty } from '../messaging/chat-broadcast';
 import { refreshHermesMemoryIndexBestEffort } from './hermes-memory-index-hooks';
@@ -602,7 +603,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return {
       id: randomUUID(),
       role: 'tool',
-      content: String(params.content ?? ''),
+      content: truncateToolResultText(String(params.content ?? '')),
       timestamp: now,
       tool_call_id: String(params.tool_call_id ?? ''),
       ...(params.meta && typeof params.meta === 'object' ? { meta: params.meta } : {}),
@@ -963,12 +964,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         const toolMsgs: ChatMessage[] = [];
         const storedTools: StoredMessage[] = [];
         for (const tr of toolResults) {
-          toolMsgs.push({ role: 'tool', tool_call_id: tr.tool_call_id, content: tr.content });
+          const content = truncateToolResultText(tr.content);
+          toolMsgs.push({ role: 'tool', tool_call_id: tr.tool_call_id, content });
           const meta0 = toolCallMetaById.get(tr.tool_call_id);
           storedTools.push(
             this.toStoredToolMessage({
               tool_call_id: tr.tool_call_id,
-              content: tr.content,
+              content,
               meta: meta0
                 ? {
                     kind: toolCardForName(meta0.toolName).kind,
