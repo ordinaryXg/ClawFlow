@@ -37,7 +37,8 @@ export const rules: Required<ModuleOptions>['rules'] = [
       return (
         n.includes('/workspace-templates/') ||
         n.endsWith('/workspace-templates') ||
-        n.includes('/engine/prompts/')
+        n.includes('/engine/prompts/') ||
+        n.includes('/shared/workspace-tool-docs/')
       );
     },
     type: 'asset/source',

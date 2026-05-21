@@ -1,337 +1,72 @@
 /**
- * `.agent/.tool/*.md` 正文由本模块按 `WORKSPACE_CAPABILITY_TOOL_NAMES` 自动生成，与引擎注册的工具名保持同步。
- * 修改能力清单请改 `workspace-tool-manifest-bridge.ts`，勿手写分裂列表。
+ * 从 `workspace-tool-docs/*.md` 加载工作区工具契约正文。
+ * 工具名列表仍由 `workspace-tool-manifest-bridge.ts` 注入（`{{TOOLS:…}}` 占位符）。
  */
 
-import { WORKSPACE_CAPABILITY_TOOL_NAMES, WORKSPACE_TOOLS_ALWAYS_ALLOWED } from './workspace-tool-manifest-bridge';
+import docsTemplate from './workspace-tool-docs/docs.md';
+import browserTemplate from './workspace-tool-docs/browser.md';
+import shellTemplate from './workspace-tool-docs/shell.md';
+import gitTemplate from './workspace-tool-docs/git.md';
+import todosTemplate from './workspace-tool-docs/todos.md';
+import skillsTemplate from './workspace-tool-docs/skills.md';
+import knowledgeBaseTemplate from './workspace-tool-docs/knowledge_base.md';
+import feishuTemplate from './workspace-tool-docs/feishu.md';
+
+import {
+  WORKSPACE_CAPABILITY_TOOL_NAMES,
+  WORKSPACE_TOOLS_ALWAYS_ALLOWED,
+} from './workspace-tool-manifest-bridge';
+import type { WorkspaceToolId } from './workspace-tools';
 
 function bulletTools(names: readonly string[]): string {
   return names.map((n) => `- \`${n}\``).join('\n');
 }
 
-/** `.agent/.tool/docs.md` */
+function alwaysAllowedInline(): string {
+  return WORKSPACE_TOOLS_ALWAYS_ALLOWED.map((n) => `\`${n}\``).join('、');
+}
+
+type ToolPlaceholderId = WorkspaceToolId | 'web_search' | 'web_scrape';
+
+function renderToolDoc(template: string): string {
+  let out = template;
+  for (const [capId, names] of Object.entries(WORKSPACE_CAPABILITY_TOOL_NAMES) as Array<
+    [ToolPlaceholderId, readonly string[]]
+  >) {
+    out = out.replaceAll(`{{TOOLS:${capId}}}`, bulletTools(names));
+  }
+  out = out.replaceAll('{{ALWAYS_ALLOWED}}', alwaysAllowedInline());
+  return out.endsWith('\n') ? out : `${out}\n`;
+}
+
 export function buildWorkspaceToolDocsMd(): string {
-  return [
-    `# 文档读写能力（docs）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `这是一组「对工作区文件/目录进行读取与写入」的模型工具。它们受工作区沙箱约束，只能在当前工作区内操作。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.docs\``,
-    ``,
-    `## 有什么用`,
-    ``,
-    `- 在对话中落地修改：创建/更新文件、批量替换、补丁式修改`,
-    `- 辅助理解代码：读取文件片段、预览目录结构（与后续工具/实现配合）`,
-    `- 形成可追溯交付：把“想法”写成 PRD/README/脚本/配置并落盘`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- **优先只读后写**：先读取相关文件确认现状，再进行写入/补丁。`,
-    `- **小步提交**：一次改动尽量聚焦一个目的，便于回滚与评审。`,
-    `- **严格遵守路径边界**：所有路径必须在工作区根目录下。`,
-    ``,
-    `典型流程：`,
-    `1) \`workspace_list_dir\` 找到目标文件`,
-    `2) \`workspace_read_file_preview\` / \`workspace_read_file\` 确认上下文`,
-    `3) \`workspace_apply_patch\` 做最小改动（或 \`workspace_write_file\` 新建/大段生成）`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 需要**真实落地交付**（代码/文档/配置）时`,
-    `- 需要从项目文件中取证、核对真实实现时`,
-    `- 需要把输出保存为资产（例如模板、脚本、规范）时`,
-    ``,
-    `## 支持的格式（读取 / 侧栏预览 / 工具读取）`,
-    ``,
-    `以下为应用侧对「读文件 / 预览」的增强能力；超出范围时按**纯文本尝试解码**或标记为**不可预览二进制**。单文件体积另有上限（图片、Office/PDF 等分别限制，过大将拒绝预览）。`,
-    ``,
-    `| 类型 | 扩展名 / 说明 | 行为概要 |`,
-    `| --- | --- | --- |`,
-    `| 纯文本与源码 | 无扩展名限制，按内容解码 | 以 UTF-8 为主尝试预览；过大截断。工具 \`workspace_read_file\` 按行范围读取文本。 |`,
-    `| Markdown | \`.md\`、\`.markdown\` | 侧栏可切换「渲染预览 / 源码」。 |`,
-    `| 图片 | \`.png\` \`.jpg\` \`.jpeg\` \`.gif\` \`.webp\` \`.bmp\` \`.svg\` \`.ico\` \`.avif\` \`.tif\` \`.tiff\` | 侧栏内嵌图片预览（超过体积上限则拒绝）。工具预览对图片仅返回短标记，不内联整段 Base64。 |`,
-    `| Excel | \`.xlsx\` \`.xls\` \`.xlsm\` \`.ods\` | 解析为**多工作表、制表符分隔的文本摘要**（行数/字符有上限）。\`workspace_read_file\` 对同扩展名返回提取后的纯文本再按行切片。 |`,
-    `| PDF | \`.pdf\` | 侧栏用 **PDF.js 画布**渲染版式；另抽取**文字层**供折叠查看。\`workspace_read_file_preview\` 返回 JSON（页数、\`text_extract\` 等）；无文字层的扫描件可能正文为空。\`workspace_read_file\` 返回前若干页的提取文本再按行切片。 |`,
-    `| CSV | \`.csv\` | 侧栏用 **Papa Parse** 渲染为**表格**（最多展示约 **500** 行；解析失败则退回纯文本）。 |`,
-    `| 其他二进制 | — | 侧栏提示不可预览；工具读取仍可能得到乱码或需换用专用流程。 |`,
-    ``,
-    `**写入（\`workspace_write_file\` 等）**：以 **UTF-8 文本**为主；不保证直接写入二进制或 Office/PDF 原生格式（需通过脚本/外部工具生成）。`,
-    ``,
-    `## 工具清单（受 tools.docs 关断）`,
-    ``,
-    `下列 **模型工具** 受 manifest 中 \`tools.docs\` 关断：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.docs),
-    ``,
-    `> 轻量工具 ${WORKSPACE_TOOLS_ALWAYS_ALLOWED.map((n) => `\`${n}\``).join('、')} 始终可用，不参与能力关断。`,
-    ``,
-    `提示：破坏性/高风险写入（例如删除、覆盖关键文件）会触发审批策略或需要明确确认。`,
-    ``,
-  ].join('\n');
+  return renderToolDoc(docsTemplate);
 }
 
-/** `.agent/.tool/browser.md` —— 网络搜索 / 爬取 / 内嵌打开 分项关断 */
 export function buildWorkspaceToolBrowserMd(): string {
-  return [
-    `# 网络与页面能力（browser）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `用于访问外部网站/页面的工具集合，分为：**搜索**、**爬取（抽取文本）**。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.web_search\` / \`tools.web_scrape\`（彼此独立）`,
-    ``,
-    `## 有什么用`,
-    ``,
-    `- 获取项目外的最新信息（搜索）`,
-    `- 把网页内容抽成可被模型处理的纯文本（爬取）`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- **查信息优先用 \`web_search\`**（快、结构化结果）`,
-    `- **需要正文细节再用 \`web_scrape\`**（会保存到 \`.agent/.clawflow/scrapes\` 并返回摘录）`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 需求依赖外部事实（版本、公告、API 文档、网页内容）`,
-    `- 需要引用来源或复核网页原文`,
-    ``,
-    `以下两类能力在 manifest 中 **彼此独立**（\`tools.web_search\`、\`tools.web_scrape\`）。`,
-    ``,
-    `## 网页搜索（tools.web_search）`,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.web_search),
-    ``,
-    `实现说明：**Brave Search API**（\`BRAVE_API_KEY\` 或系统设置）、**自建 SearXNG**（\`/search?format=json\`）与 **DuckDuckGo HTML** 回退的组合可在 **全局设置 → 系统设置** 中选择；亦可用环境变量 \`CLAWFLOW_SEARXNG_URL\` 等。**不是**百度站内搜索；若超时或失败可配置代理。`,
-    ``,
-    `## 网络数据爬取（tools.web_scrape）`,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.web_scrape),
-    ``,
-    `> 说明：\`web_scrape\` 当前为主进程 HTTP 拉取并解析 HTML（不执行页面 JS）。`,
-    `> 网络失败时会返回可诊断的 \`errorCode\` 与 \`hint\`，并支持 \`HTTP_PROXY/HTTPS_PROXY/NO_PROXY\`。`,
-    ``,
-  ].join('\n');
+  return renderToolDoc(browserTemplate);
 }
 
-/** `.agent/.tool/shell.md` */
 export function buildWorkspaceToolShellMd(): string {
-  return [
-    `# 命令行执行能力（shell）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `在工作区根目录（或其子目录）内，通过系统 shell 执行一条命令，并返回合并后的 stdout/stderr。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.shell\``,
-    ``,
-    `## 有什么用`,
-    ``,
-    `- 运行构建、测试、包管理器、脚本等需要真实终端输出的任务`,
-    `- 在模型无法仅靠读文件完成时，用命令结果作为证据（例如 \`npm test\`、\`python -m pytest\`）`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- 使用 **\`workspace_run_shell\`**，传入：`,
-    `  - \`command\`：完整命令行（由平台 shell 解释，Windows 为 cmd，Unix 为 sh）`,
-    `  - \`cwdRelative\`：相对工作区根的工作目录（空字符串表示工作区根；目录须已存在）`,
-    `  - \`timeoutMs\`（可选）：超时毫秒，默认 60000，上限 120000`,
-    `- **优先专用工具**：Git 用 \`workspace_git_*\`，全文搜索用 \`workspace_rg_search\`，TypeScript 检查用 \`workspace_run_tsc_no_emit\`（均在 \`tools.docs\` / \`tools.git\` 下）。`,
-    `- **先小后大**：先跑只读/短命令确认环境，再跑长任务。`,
-    `- **输出会截断**：过长 stdout/stderr 会截断并标注，需要完整日志时请让用户本地复现。`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 用户明确要求运行命令、安装依赖、执行测试或构建`,
-    `- 需要以退出码/终端输出验证某步是否成功`,
-    ``,
-    `## 安全与审批`,
-    ``,
-    `- 命令 **cwd 必须落在工作区内**；不能把工作目录指到工作区外。`,
-    `- 在 Plan/Multitask 下，本工具属于 **高风险**：默认需用户审批后才会执行（与删除文件等等级类似）。`,
-    `- 未经用户同意不要执行破坏性命令（批量删除、强制推送、格式化磁盘等）。`,
-    ``,
-    `下列工具受 \`tools.shell\` 关断：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.shell),
-    ``,
-    `相关（受其它开关约束）：\`docs.md\` 中的 \`workspace_rg_search\`、\`workspace_run_tsc_no_emit\`；\`git.md\` 中的 Git 只读命令。`,
-    ``,
-  ].join('\n');
+  return renderToolDoc(shellTemplate);
 }
 
-/** `.agent/.tool/git.md` */
 export function buildWorkspaceToolGitMd(): string {
-  return [
-    `# Git 操作能力（git）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `用于在当前工作区内执行受控的 Git 操作（只读/对比/日志等）。具体可用命令以工具清单为准。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.git\``,
-    ``,
-    `## 有什么用`,
-    ``,
-    `- 查看当前改动（status/diff）`,
-    `- 回溯提交历史（log）`,
-    `- 辅助生成可评审的变更说明与提交信息`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- 先 \`workspace_git_status\` 确认改动范围`,
-    `- 再 \`workspace_git_diff\` 查看细节（必要时 staged/unstaged）`,
-    `- 用 \`workspace_git_log\` 对齐仓库提交风格`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 你要提交/推送前`,
-    `- 你需要解释“改了什么/为什么改”`,
-    `- 你需要定位某段代码何时引入`,
-    ``,
-    `下列工具受 \`tools.git\` 关断：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.git),
-    ``,
-    `提示：提交/推送属于高影响操作，通常需要用户明确指示或审批通过。`,
-    ``,
-  ].join('\n');
+  return renderToolDoc(gitTemplate);
 }
 
-/** `.agent/.tool/todos.md` */
 export function buildWorkspaceToolTodosMd(): string {
-  return [
-    `# 待办与调度（todos）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `**自动待办 / 调度**是工作区内的**纯功能性**能力：创建、更新、删除「到点触发」的 todo trigger，由主进程在指定时间或间隔把**简短指令**写回会话并驱动后续处理。`,
-    ``,
-    `它是“**把一件明确的事，钉到时间表上**”：无人格、不做多轮澄清，也不替你拆解复杂项目；只负责**时间表 + 任务登记 + 状态跟踪**。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.todos\``,
-    ``,
-    `## 工具使用范围（能做 / 不能做）`,
-    ``,
-    `**能做**（范围内的事）`,
-    ``,
-    `- 创建一条「到点触发」或「周期触发」的待办（todo trigger）`,
-    `- 更新待办的：标题/指令文本、触发时间/周期、是否启用、备注、状态等元数据`,
-    `- 删除待办；或临时停用再启用`,
-    `- 到点后由主进程把“触发指令”写回会话（可选：触发后自动提交给模型继续处理）`,
-    ``,
-    `**不能做**（超出范围的事）`,
-    ``,
-    `- **不会**替你执行复杂任务：不做调研/写代码/跑命令/改文件（执行仍由主会话或子 Agent 完成）`,
-    `- **不会**把一串待办当作“项目计划”自动拆分、排期与验收`,
-    `- **不会**进行多轮澄清：如果指令不清晰，到点只会把原指令原样写回会话`,
-    ``,
-    `> 实践原则：把 trigger 的文本写成“一句话就能执行/判断”的短指令；不要把含糊的大块工作塞进待办里。`,
-    ``,
-    `## 有什么用`,
-    ``,
-    `- 定时提醒、间隔执行「写入对话 / 触发模型继续处理」`,
-    `- 周期性工作钉在时间表上（如每日检查、每周汇总）`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- 使用工具：\`workspace_todo_create\` / \`workspace_todo_update\` / \`workspace_todo_remove\`（以及列表/查看相关工具）`,
-    `- 数据落盘：\`.agent/.clawflow/\`（创建/修改后会刷新侧栏待办，并与主进程调度对齐）`,
-    ``,
-    `### 写对“指令文本”（最重要）`,
-    ``,
-    `到点触发时，系统写回会话的就是这段文本。要求：**短、明确、可执行、可验收**。`,
-    ``,
-    `好的例子：`,
-    ``,
-    `- 「今天 17:30 前，把 PR #123 的 CI 失败项跑一遍并贴回失败原因」`,
-    `- 「每周一 10:00，检查账单异常（>20%）并写一段结论」`,
-    `- 「明天 09:00，提醒我把版本号从 1.2.3 升到 1.2.4 并打 tag」`,
-    ``,
-    `不好的例子：`,
-    ``,
-    `- 「把这个项目做完」`,
-    `- 「研究一下怎么优化性能」`,
-    ``,
-    `### 触发方式（何时触发）`,
-    ``,
-    `- 一次性：在某个时间点触发一次（适合“某天提醒/截止前复核”）`,
-    `- 周期性：按间隔或周期触发（适合“每天检查/每周汇总”）`,
-    `- Cron 定点：用 cron 表达式指定“每周/每月/工作日”等定点触发（适合“每周一 10 点例会提醒”）`,
-    ``,
-    `### 触发后行为（写回会话 / 是否自动继续）`,
-    ``,
-    `- 写回会话：到点把指令写回当前工作区的会话（用于提醒/留下记录）`,
-    `- 可选自动继续：如果创建时选择“触发后自动提交给模型”，则到点会把该指令当作用户输入继续处理`,
-    ``,
-    `## 什么时候用`,
-    ``,
-    `- 任务**已经能写成一条清晰指令**，且需要**未来某时刻或周期**自动再出现`,
-    `- 不需要「像同事一样」包办实施，只需要**钉住时间与状态**`,
-    ``,
-    `下列工具受 \`tools.todos\` 关断：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.todos),
-    ``,
-  ].join('\n');
+  return renderToolDoc(todosTemplate);
 }
 
-/** `.agent/.tool/skills.md` — Hermes 式工作区技能（`.agent/.skills`） */
 export function buildWorkspaceToolSkillsMd(): string {
-  return [
-    `# 技能（Skills，Hermes 式工作区技能）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `工作区技能存放在 **\`.agent/.skills/<名称>/\`**，主文件为 **\`SKILL.md\`**，可选 **\`references/\`** 下放补充 \`.md\` / \`.txt\`。由应用内 FTS 索引与 UI 只读浏览；**无**外部技能市场安装流程。`,
-    ``,
-    `> **新建工作区**时会自动写入内置 **\`.agent/.skills/skill-creator/\`** v2 包（模板、示例、校验脚本）；既有工作区不自动补写。不再创建 \`default/\` 示例目录。`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.skills\`（仅影响下列 **只读** 模型工具；浏览技能请用应用内「技能」面板）`,
-    ``,
-    `## 模型工具（只读）`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.skills),
-    ``,
-  ].join('\n');
+  return renderToolDoc(skillsTemplate);
 }
 
-/** `.agent/.tool/knowledge_base.md` */
 export function buildWorkspaceToolKnowledgeBaseMd(): string {
-  return [
-    `# 知识库检索（knowledge_base）`,
-    ``,
-    `## 是什么`,
-    ``,
-    `工作区内的 **Hermes** 全文检索（\`.agent/.hermes/index/hermes-memory.db\`），覆盖：`,
-    ``,
-    `- **Hermes 记忆**（逻辑路径 \`.agent/.hermes/memory/*.md\`，仅存于索引；用 \`hermes_memory_upsert\` / \`hermes_search\`）`,
-    `- **\`.agent/.knowledge/**\`**：用户知识库文档（\`.md\` / \`.txt\`，见 Hub「知识库」）`,
-    `- **\`.agent/.skills/**\`**：Hermes 技能 \`SKILL.md\` 与 \`references/\` 文本`,
-    ``,
-    `> 开关：\`.agent/.tool/manifest.json\` → \`tools.knowledge_base\``,
-    ``,
-    `## L0 / L1 / L2（Hermes 记忆）`,
-    ``,
-    `在笔记文首使用 YAML frontmatter：`,
-    ``,
-    `- \`abstract\`（L0）：一句话摘要，参与检索`,
-    `- \`overview\`（L1）：较短概览，参与检索`,
-    `- frontmatter 之后为 **L2 正文**`,
-    ``,
-    `进化流程会整理记忆；Agent 用 \`hermes_memory_upsert\` 写入（可选 abstract / overview + body）。`,
-    ``,
-    `## 该怎么用`,
-    ``,
-    `- \`hermes_search\`：JSON 命中（推荐）`,
-    `- \`hermes_memory_upsert\` / \`hermes_memory_delete\` / \`hermes_memory_list\`：读写记忆索引`,
-    `- \`workspace_memory_rebuild_index\`：全量重建 FTS（技能 + 知识库 + 会话摘要）`,
-    ``,
-    `知识库与技能仍走磁盘文件并**增量索引**；记忆仅走 Hermes DB。清单见 \`.agent/.knowledge/knowledge-manifest.json\`。`,
-    ``,
-    `下列工具受 \`tools.knowledge_base\` 关断：`,
-    ``,
-    bulletTools(WORKSPACE_CAPABILITY_TOOL_NAMES.knowledge_base),
-    ``,
-  ].join('\n');
+  return renderToolDoc(knowledgeBaseTemplate);
+}
+
+export function buildWorkspaceToolFeishuMd(): string {
+  return renderToolDoc(feishuTemplate);
 }

@@ -53,6 +53,7 @@ const ChatPage: FC = () => {
     isLoading,
     streamingActivity,
     streamingThinking,
+    streamingToolHints,
     error,
     fetchConversations,
     switchConversation,
@@ -77,6 +78,7 @@ const ChatPage: FC = () => {
       isLoading: s.isLoading,
       streamingActivity: s.streamingActivity,
       streamingThinking: s.streamingThinking,
+      streamingToolHints: s.streamingToolHints,
       error: s.error,
       fetchConversations: s.fetchConversations,
       switchConversation: s.switchConversation,
@@ -402,9 +404,9 @@ const ChatPage: FC = () => {
     if (!isLoading) return 'idle';
     const act = typeof streamingActivity === 'string' ? streamingActivity.trim() : '';
     const think = typeof streamingThinking === 'string' ? streamingThinking.trim() : '';
-    if (act.length > 0 || think.length > 0) return 'typing';
+    if (act.length > 0 || think.length > 0 || streamingToolHints.length > 0) return 'typing';
     return 'waiting';
-  }, [isLoading, streamingActivity, streamingThinking]);
+  }, [isLoading, streamingActivity, streamingThinking, streamingToolHints]);
 
   const chatHeaderStatusRow = (
     <>
@@ -566,7 +568,11 @@ const ChatPage: FC = () => {
                 categoryLabel: activeModeClassification?.categoryLabel ?? null,
               }}
             />
-            <StreamingMessage activity={streamingActivity} thinking={streamingThinking} />
+            <StreamingMessage
+              activity={streamingActivity}
+              thinking={streamingThinking}
+              toolHints={streamingToolHints}
+            />
             {toolApprovalForActive ? (
               <ToolApprovalBar pending={toolApprovalForActive} onRespond={respondToolApproval} />
             ) : null}

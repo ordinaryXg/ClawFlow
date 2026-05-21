@@ -18,7 +18,6 @@ const MAIN_PROCESS_EXTERNAL_PACKAGES = [
   'ws',
   'better-sqlite3',
   'sqlite-vec',
-  '@larksuiteoapi/node-sdk',
 ] as const;
 
 async function copyExternalPackage(
@@ -58,8 +57,21 @@ const config: ForgeConfig = {
   outDir: `dist-pack-build-${Date.now()}`,
   packagerConfig: {
     asar: true,
+    extraResource: ['./resources/lark-cli'],
   },
   hooks: {
+    prePackage: async () => {
+      const projectRoot = path.resolve(__dirname);
+      const { defaultHostPlatformArch, fetchOne, targetOutDir, binaryName } = await import(
+        './scripts/lark-cli-download-lib.mjs'
+      );
+      const { platformKey, archKey } = defaultHostPlatformArch();
+      const destBin = path.join(targetOutDir(platformKey, archKey), binaryName(platformKey));
+      if (!(await fs.pathExists(destBin))) {
+        console.log(`[ClawFlow pack] lark-cli missing at ${destBin}, fetching…`);
+        await fetchOne(platformKey, archKey);
+      }
+    },
     packageAfterCopy: async (_forgeConfig, buildPath) => {
       const projectRoot = path.resolve(__dirname);
       const visited = new Set<string>();

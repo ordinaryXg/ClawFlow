@@ -7,6 +7,9 @@
   "private": true,
   "scripts": {
     "prestart": "node -e \"if(process.platform==='win32'){try{require('child_process').execSync('chcp 65001',{stdio:'ignore',shell:true})}catch(e){}}\"",
+    "lark-cli:fetch": "node scripts/download-lark-cli.mjs",
+    "prepackage": "node scripts/download-lark-cli.mjs",
+    "premake": "node scripts/download-lark-cli.mjs",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
@@ -23,7 +26,6 @@
   "license": "MIT",
   "dependencies": {
     "@ant-design/icons": "^5.5.0",
-    "@larksuiteoapi/node-sdk": "^1.63.1",
     "antd": "^5.22.0",
     "better-sqlite3": "^12.10.0",
     "cron-parser": "^5.5.0",

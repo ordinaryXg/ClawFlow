@@ -1,0 +1,5 @@
+# Downloaded release binaries (run npm run lark-cli:fetch)
+windows/
+darwin/
+linux/
+.tmp-*

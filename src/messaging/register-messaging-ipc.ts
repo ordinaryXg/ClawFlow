@@ -10,8 +10,10 @@ import {
   type FeishuReceiveIdType,
   type MessagingPrefsStored,
 } from '../main/prefs/messaging-prefs';
-import { feishuGetTenantAccessToken, feishuSendTextMessage, FeishuRequestError, resolveFeishuAppCredentials } from './feishu-api';
-import { restartFeishuEventServerFromPrefs } from './feishu-event-server';
+import { restartLarkBridgeFromPrefs } from './lark-bridge-service';
+import { sendFeishuTextViaLarkCli } from '../main/lark-cli/lark-cli-invoke';
+import { LarkCliError } from '../main/lark-cli/lark-cli-errors';
+import { registerLarkCliIPC, syncLarkCliAfterSaveBots, testLarkCliBotConnection } from '../main/lark-cli/register-lark-cli-ipc';
 
 const MESSAGING_IPC_CHANNELS = [
   'messaging:getFeishuBots',
@@ -21,10 +23,10 @@ const MESSAGING_IPC_CHANNELS = [
 ] as const;
 
 function feishuIpcFailure(e: unknown, logTag: string): { error: string; detail: string } {
-  if (e instanceof FeishuRequestError) {
-    const detail = e.detailJson();
+  if (e instanceof LarkCliError) {
+    const detail = e.stderr || e.stdout || e.message;
     console.error(`[messaging:${logTag}]`, e.message, '\n', detail);
-    return { error: e.message, detail };
+    return { error: e.message, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) };
   }
   const msg = e instanceof Error ? e.message : String(e);
   const stack = e instanceof Error ? e.stack ?? '' : '';
@@ -51,6 +53,7 @@ function botToPublicApi(b: FeishuBotConfig): {
   );
   const { appSecret, ...rest } = b;
   void appSecret;
+  void rest;
   const hasSecret = Boolean(String(b.appSecret ?? '').trim());
   return {
     id: b.id,
@@ -103,7 +106,20 @@ function parseIncomingBot(o: Record<string, unknown>): FeishuBotConfig | null {
   return fe;
 }
 
+function resolveBotCredentials(
+  botId: string | undefined,
+  override?: { appId?: string; appSecret?: string }
+): { bot?: FeishuBotConfig; appId: string; appSecret: string } {
+  const file = readMessagingPrefsFile();
+  const bot = botId ? findFeishuBotById(file, botId) : getNormalizedFeishuBots(file)[0];
+  const appId = String(override?.appId ?? bot?.appId ?? process.env.FEISHU_APP_ID ?? '').trim();
+  const appSecret = String(override?.appSecret ?? bot?.appSecret ?? process.env.FEISHU_APP_SECRET ?? '').trim();
+  return { bot, appId, appSecret };
+}
+
 export function registerMessagingIPC(): void {
+  registerLarkCliIPC();
+
   for (const ch of MESSAGING_IPC_CHANNELS) {
     ipcMain.removeHandler(ch);
   }
@@ -135,7 +151,12 @@ export function registerMessagingIPC(): void {
       feishuBots: merged,
     };
     writeMessagingPrefsFile(next);
-    restartFeishuEventServerFromPrefs();
+    try {
+      await syncLarkCliAfterSaveBots(merged);
+    } catch (e: unknown) {
+      console.warn('[messaging:saveFeishuBots] lark-cli profile sync failed:', e instanceof Error ? e.message : e);
+    }
+    restartLarkBridgeFromPrefs();
     return { ok: true as const };
   });
 
@@ -144,8 +165,7 @@ export function registerMessagingIPC(): void {
     const botId = typeof p.botId === 'string' ? p.botId.trim() : '';
     const oAppId = typeof p.appId === 'string' ? p.appId : undefined;
     const oSecret = typeof p.appSecret === 'string' ? p.appSecret : undefined;
-    const { appId, appSecret } = resolveFeishuAppCredentials({
-      botId: botId || undefined,
+    const { bot, appId, appSecret } = resolveBotCredentials(botId || undefined, {
       appId: oAppId,
       appSecret: oSecret,
     });
@@ -153,9 +173,16 @@ export function registerMessagingIPC(): void {
       console.warn('[messaging:testFeishu] missing_credentials');
       return { ok: false as const, error: 'missing_credentials' };
     }
+    const effectiveBotId = bot?.id ?? botId;
+    if (!effectiveBotId) {
+      return { ok: false as const, error: 'missing_bot_id' };
+    }
     try {
-      const { expireSeconds } = await feishuGetTenantAccessToken(appId, appSecret);
-      return { ok: true as const, expireSeconds };
+      if (oAppId && oSecret && bot) {
+        await syncLarkCliAfterSaveBots([{ ...bot, appId, appSecret }]);
+      }
+      await testLarkCliBotConnection(effectiveBotId);
+      return { ok: true as const, expireSeconds: 7200 };
     } catch (e: unknown) {
       const { error, detail } = feishuIpcFailure(e, 'testFeishu');
       return { ok: false as const, error, detail };
@@ -190,18 +217,21 @@ export function registerMessagingIPC(): void {
 
     const oAppId = typeof p.appId === 'string' ? p.appId : undefined;
     const oSecret = typeof p.appSecret === 'string' ? p.appSecret : undefined;
-    const { appId, appSecret } = resolveFeishuAppCredentials({
-      botId: bot?.id,
-      appId: oAppId,
-      appSecret: oSecret,
-    });
-    if (!appId || !appSecret) {
+    const { appId, appSecret } = resolveBotCredentials(bot?.id, { appId: oAppId, appSecret: oSecret });
+    if (!appId || !appSecret || !bot?.id) {
       console.warn('[messaging:sendFeishuTestMessage] missing_credentials');
       return { ok: false as const, error: 'missing_credentials' };
     }
     try {
-      const { token } = await feishuGetTenantAccessToken(appId, appSecret);
-      await feishuSendTextMessage({ token, receiveIdType, receiveId, text });
+      if (oAppId && oSecret) {
+        await syncLarkCliAfterSaveBots([{ ...bot, appId, appSecret }]);
+      }
+      await sendFeishuTextViaLarkCli({
+        botId: bot.id,
+        receiveIdType,
+        receiveId,
+        text,
+      });
       return { ok: true as const };
     } catch (e: unknown) {
       const ctx = { receiveIdType, receiveId, textLength: text.length, botId: bot?.id };

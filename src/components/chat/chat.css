@@ -1011,7 +1011,45 @@
 }
 
 .cf-stream__thinking {
-  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.cf-stream__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cf-stream__toolChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.22);
+  font-size: 12px;
+  color: var(--text);
+  max-width: 100%;
+}
+
+.cf-stream__toolChipIcon {
+  color: rgba(88, 166, 255, 0.85);
+  flex-shrink: 0;
+}
+
+.cf-stream__toolChipSpin {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cf-stream__toolChipLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 历史消息与流式区共用的「思考」折叠块 */

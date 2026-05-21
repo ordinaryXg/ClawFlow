@@ -200,6 +200,29 @@ export interface IElectronAPI {
     appId?: string;
     appSecret?: string;
   }) => Promise<{ ok: true } | { ok: false; error: string; detail?: string }>;
+  larkCliGetRuntimeStatus: () => Promise<
+    | {
+        ok: true;
+        installed: boolean;
+        binaryPath: string | null;
+        version: string;
+        source: 'userData' | 'bundled-packaged' | 'bundled-dev' | 'remote' | null;
+      }
+    | { ok: false; error: string }
+  >;
+  larkCliGetAuthStatus: (params: { botId: string; as?: 'user' | 'bot' }) => Promise<
+    | { ok: true; status: { ok: boolean; loggedIn: boolean; identity?: string; scopes?: string[] } }
+    | { ok: false; error: string; detail?: string }
+  >;
+  larkCliAuthLoginStart: (params: { botId: string; scope?: string; appId?: string; appSecret?: string }) => Promise<
+    | { ok: true; verificationUrl?: string; deviceCode?: string; raw?: unknown }
+    | { ok: false; error: string; detail?: string }
+  >;
+  larkCliAuthLoginComplete: (params: { botId: string; deviceCode: string; appId?: string; appSecret?: string }) => Promise<
+    | { ok: true; raw?: unknown; warning?: string; loggedIn?: boolean }
+    | { ok: false; error: string; detail?: string }
+  >;
+  larkCliAuthLogout: (params: { botId: string }) => Promise<{ ok: true } | { ok: false; error: string; detail?: string }>;
   engineSendMessageStream: (params: {
     conversationId: string;
     userText: string;
@@ -373,6 +396,7 @@ export interface IElectronAPI {
   workspaceDeletePath: (relativePath: string) => Promise<{ ok: boolean; error?: string }>;
   clipboardWriteText: (text: string) => Promise<{ ok: boolean; error?: string }>;
   appOpenPath: (absolutePath: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  openExternal: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   appGetFileIconDataUrl: (
     absolutePath: string
   ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error?: string }>;

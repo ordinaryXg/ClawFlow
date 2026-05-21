@@ -1,4 +1,4 @@
-/** `.agent/.skills/skillManifest.json` — 工作区 Hermes 技能名册（供主对话 system 注入） */
+/** `.agent/.skills/skillManifest.json` — 工作区技能名册（供主对话 system 注入） */
 
 export const WORKSPACE_SKILL_MANIFEST_VERSION = 1 as const;
 export const WORKSPACE_SKILL_MANIFEST_REL = '.agent/.skills/skillManifest.json';
@@ -25,14 +25,14 @@ export type WorkspaceSkillManifestFile = {
 export function buildSkillManifestSystemSection(entries: readonly WorkspaceSkillManifestEntry[]): string {
   if (!entries.length) {
     return [
-      '【工作区 Hermes 技能名册】',
+      '【工作区技能名册】',
       '当前无已登记技能（`.agent/.skills/<名称>/SKILL.md` 一层目录）。',
-      '可用 `workspace_skill_list` / `workspace_skill_view` 浏览；创建技能见 `workspace_skill_create`。',
+      '完整正文用 `workspace_skill_view`；新建技能先读 `.agent/.skills/skill-creator/SKILL.md`。',
     ].join('\n');
   }
   const lines: string[] = [
-    '【工作区 Hermes 技能名册】',
-    '下列为当前工作区已启用技能的摘要（完整正文请用 `workspace_skill_view` 或记忆检索）。',
+    '【工作区技能名册】',
+    '下列为当前工作区已启用技能摘要（与 skillManifest.json 一致；完整正文请 `workspace_skill_view` 读 `{skillRootRel}/SKILL.md`）。',
     '',
   ];
   entries.forEach((e, idx) => {

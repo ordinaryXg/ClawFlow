@@ -44,7 +44,7 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 `**.agent/.roleAgent/`**（�
 
 ## 工具与工作区能力
 
-由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；未开启的工具不会下发给模型。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
+由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；未开启的工具不会下发给模型。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md` / `feishu.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
 
 > **系统级子 Agent**（Skill Agent、认知分配、预期规划）由应用在后台调度，数据在应用缓存而非工作区 `.subagent/`；主 Agent **无需**也**无法**通过工具委派它们。
 

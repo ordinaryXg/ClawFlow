@@ -31,6 +31,11 @@ export type PendingSendDisplayItem = {
   enqueuedAt: number;
 };
 import { ReasoningStreamDemux } from '../../utils/reasoning-stream-demux';
+import {
+  pickRunningToolHints,
+  sanitizeStreamActivityForDisplay,
+  type StreamToolHint,
+} from '../../utils/stream-activity-sanitize';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
 import { useTodoTriggerStore } from './todoTriggerStore';
@@ -216,6 +221,8 @@ export interface ChatState {
   isLoading: boolean;
   /** 流式：工具进度等非思考文本 */
   streamingActivity: string | null;
+  /** 流式：进行中的工具名（用于占位，避免展示 raw JSON） */
+  streamingToolHints: StreamToolHint[];
   /** 流式：思考过程（已由 demux 剥离标记） */
   streamingThinking: string | null;
   error: string | null;
@@ -382,7 +389,22 @@ type Pending = {
   onFinal: (full: string) => void | Promise<void>;
 };
 
-let lastToolConvSyncTs = 0;
+function streamingFromDemuxer(demuxer: ReasoningStreamDemux): {
+  streamingActivity: string | null;
+  streamingToolHints: StreamToolHint[];
+} {
+  const sanitized = sanitizeStreamActivityForDisplay(demuxer.getActivity());
+  const text = sanitized.text.trim();
+  return {
+    streamingActivity: text ? sanitized.text : null,
+    streamingToolHints: pickRunningToolHints(sanitized.toolHints),
+  };
+}
+
+function clearStreamingState(): Pick<ChatState, 'streamingActivity' | 'streamingThinking' | 'streamingToolHints'> {
+  return { streamingActivity: null, streamingThinking: null, streamingToolHints: [] };
+}
+
 const TOOL_CONV_SYNC_MIN_MS = 300;
 
 function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations: () => Promise<void> }): void {
@@ -575,6 +597,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
   messages: [],
   isLoading: false,
   streamingActivity: null,
+  streamingToolHints: [],
   streamingThinking: null,
   error: null,
   activeModeClassification: null,
@@ -659,8 +682,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
     if (workspaceSwitched) {
       set({
         messages: [],
-        streamingActivity: null,
-        streamingThinking: null,
+        ...clearStreamingState(),
         activeModeClassification: null,
         isExpectationPlanning: false,
         expectationPlanStream: null,
@@ -748,7 +770,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       };
 
       cancelAssistantReveal();
-      set({ streamingActivity: '', streamingThinking: null, isLoading: true });
+      set({ streamingActivity: '', streamingToolHints: [], streamingThinking: null, isLoading: true });
 
       try {
         const t0 = performance.now();
@@ -762,8 +784,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
           set({
             isLoading: false,
-            streamingActivity: null,
-            streamingThinking: null,
+            ...clearStreamingState(),
           });
 
           const assistantText = String(fullText ?? '');
@@ -918,7 +939,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
             deltaBuf = '';
             demuxer.push(chunk);
             set({
-              streamingActivity: demuxer.getActivity(),
+              ...streamingFromDemuxer(demuxer),
               streamingThinking: demuxer.getThinkingDisplay() || null,
             });
             if (/\[tool:(start|done|fail)\]/.test(chunk)) {
@@ -942,7 +963,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
                 demuxer.push(deltaBuf);
                 deltaBuf = '';
                 set({
-                  streamingActivity: demuxer.getActivity(),
+                  ...streamingFromDemuxer(demuxer),
                   streamingThinking: demuxer.getThinkingDisplay() || null,
                 });
               }
@@ -1024,7 +1045,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
           `这是对"${mergedContent}"的回复（模拟）`;
 
         cancelAssistantReveal();
-        set({ streamingActivity: '', streamingThinking: null });
+        set({ streamingActivity: '', streamingToolHints: [], streamingThinking: null });
         let raf = 0;
         let stopped = false;
         const cleanup = () => {
@@ -1042,7 +1063,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
           const u = Math.min(1, (performance.now() - revealStart) / revealDurationMs);
           const smooth = u * u * (3 - 2 * u);
           const n = Math.min(replyText.length, Math.max(0, Math.round(replyText.length * smooth)));
-          set({ streamingActivity: replyText.slice(0, n), streamingThinking: null });
+          set({ streamingActivity: replyText.slice(0, n), streamingToolHints: [], streamingThinking: null });
           if (u >= 1) {
             revealCleanup = null;
             void finalizeReply(replyText, { ipcMs: Math.round(t1 - t0), label: 'reveal' });
@@ -1057,8 +1078,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
           cancelAssistantReveal();
           set({
             isLoading: false,
-            streamingActivity: null,
-            streamingThinking: null,
+            ...clearStreamingState(),
             error: error?.message || '发送消息失败',
           });
           const pending = takePendingSends(sessionId);
@@ -1110,8 +1130,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         conversations: updatedConversations,
         messages: [...state.messages, userMessage],
         isLoading: true,
-        streamingActivity: null,
-        streamingThinking: null,
+        ...clearStreamingState(),
         error: null,
         expectationPlanAnchorMessageId: userMessage.id,
         activeExpectationPlanDisplay: null,
@@ -1148,7 +1167,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
     if (route.action === 'merge') {
       cancelOutboundWsForConversation(sessionId);
       cancelAssistantReveal();
-      set({ streamingActivity: null, streamingThinking: null });
+      set(clearStreamingState());
     }
 
     await executeOutboundTurn(route.turn);
@@ -1168,8 +1187,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       set({
         activeConversationId: id,
         messages: conversation.messages,
-        streamingActivity: null,
-        streamingThinking: null,
+        ...clearStreamingState(),
         error: null,
         isExpectationPlanning: false,
         expectationPlanStream: null,
@@ -1200,8 +1218,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         messages: newActiveId
           ? updatedConversations.find((conv) => conv.id === newActiveId)?.messages || []
           : [],
-        streamingActivity: null,
-        streamingThinking: null,
+        ...clearStreamingState(),
         error: null,
       };
     });
@@ -1223,8 +1240,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
     set({
       conversations: conversations.map((conv) => (conv.id === activeConversationId ? cleared : conv)),
       messages: [],
-      streamingActivity: null,
-      streamingThinking: null,
+      ...clearStreamingState(),
     });
     void window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(cleared));
   },

@@ -14,6 +14,7 @@ import { ensureWorkspaceAgentRoleTemplates } from './workspace-agent-bootstrap';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 import { invalidateHermesMemoryDbCache } from '../../engine/hermes-memory-db';
 import { installWorkspaceSkillCreatorPackage } from './workspace-hermes-skill-bootstrap';
+import { installLarkCliSkillsPackage } from '../lark-cli/lark-cli-skills-bootstrap';
 import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
@@ -35,6 +36,7 @@ import {
 import {
   buildWorkspaceToolBrowserMd,
   buildWorkspaceToolDocsMd,
+  buildWorkspaceToolFeishuMd,
   buildWorkspaceToolGitMd,
   buildWorkspaceToolShellMd,
   buildWorkspaceToolKnowledgeBaseMd,
@@ -164,8 +166,8 @@ export async function ensureWorkspaceToolBundle(
       '',
       '- 总览入口：请阅读工作区内 `.agent/.roleAgent/TOOLS.md`',
       '- 能力开关：`manifest.json`',
-      '- Hermes 技能名册见 `.agent/.skills/skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
-      '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md`',
+      '- 工作区技能名册见 `.agent/.skills/skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
+      '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md` / `feishu.md`',
       '',
     ].join('\n');
     await fs.promises.writeFile(path.join(dir, 'README.md'), readme, 'utf-8');
@@ -180,6 +182,7 @@ export async function ensureWorkspaceToolBundle(
   const todosBody = buildWorkspaceToolTodosMd();
   const skillsBody = buildWorkspaceToolSkillsMd();
   const kbBody = buildWorkspaceToolKnowledgeBaseMd();
+  const feishuBody = buildWorkspaceToolFeishuMd();
 
   await writeIfMissing('docs.md', docsBody.endsWith('\n') ? docsBody : `${docsBody}\n`);
   await writeIfMissing('browser.md', browserBody.endsWith('\n') ? browserBody : `${browserBody}\n`);
@@ -188,6 +191,7 @@ export async function ensureWorkspaceToolBundle(
   await writeIfMissing('todos.md', todosBody.endsWith('\n') ? todosBody : `${todosBody}\n`);
   await writeIfMissing('skills.md', skillsBody.endsWith('\n') ? skillsBody : `${skillsBody}\n`);
   await writeIfMissing('knowledge_base.md', kbBody.endsWith('\n') ? kbBody : `${kbBody}\n`);
+  await writeIfMissing('feishu.md', feishuBody.endsWith('\n') ? feishuBody : `${feishuBody}\n`);
 }
 
 const LEGACY_MANIFEST_TOOL_KEYS = new Set<string>([
@@ -196,8 +200,32 @@ const LEGACY_MANIFEST_TOOL_KEYS = new Set<string>([
   'subagents', // 已移除工作区委派子 Agent
 ]);
 
+/** 将 manifest 补全为当前 WORKSPACE_TOOL_IDS 全集（例如新增 feishu 后迁移旧工作区）。 */
+async function migrateWorkspaceToolManifestIfNeeded(workspaceRoot: string): Promise<boolean> {
+  const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
+  let raw: Record<string, unknown> | null = null;
+  try {
+    const buf = await fs.promises.readFile(fp, 'utf-8');
+    const parsed = JSON.parse(buf) as { tools?: unknown; version?: unknown };
+    if (parsed?.tools && typeof parsed.tools === 'object') {
+      raw = parsed.tools as Record<string, unknown>;
+    }
+  } catch {
+    return false;
+  }
+  if (!raw) return false;
+  const missing = WORKSPACE_TOOL_IDS.some((id) => typeof raw![id] !== 'boolean');
+  if (!missing) return false;
+  const merged = mergeToolSelection(raw as WorkspaceToolSelectionInput);
+  const manifest = { version: 2 as const, tools: merged, updatedAt: Date.now() };
+  await fs.promises.mkdir(path.dirname(fp), { recursive: true });
+  await fs.promises.writeFile(fp, JSON.stringify(manifest, null, 2), 'utf-8');
+  return true;
+}
+
 /** 读取 `.agent/.tool/manifest.json` 中的 tools；缺失则返回默认全开；兼容 v1 `browser` */
 export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<Record<WorkspaceToolId, boolean>> {
+  await migrateWorkspaceToolManifestIfNeeded(workspaceRoot).catch(() => undefined);
   const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
@@ -610,6 +638,7 @@ export async function ensureWorkspaceInitialized(
   migrateLegacyConversationsOnce(root);
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
+  await migrateWorkspaceToolManifestIfNeeded(root).catch(() => undefined);
 
   // 缺失则补写（wx，不覆盖）；勿因已有 `.agent/` 而跳过 `.roleAgent` 模板
   try {
@@ -639,6 +668,12 @@ export async function ensureWorkspaceInitialized(
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[workspace-service] installWorkspaceSkillCreatorPackage failed:', msg);
+    }
+    try {
+      await installLarkCliSkillsPackage(root);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[workspace-service] installLarkCliSkillsPackage failed:', msg);
     }
   }
 

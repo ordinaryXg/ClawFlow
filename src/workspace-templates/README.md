@@ -4,7 +4,7 @@
 
 | 子目录 | 写入工作区路径 | 说明 |
 |--------|----------------|------|
-| `tool/` | _（模板文件已迁至代码生成）_ | `.agent/.tool/docs.md` / `browser.md` / `git.md` / `shell.md` 等由 `src/shared/workspace-tool-template-md.ts` 根据 `workspace-tool-manifest-bridge.ts` **自动生成**（缺失才写） |
+| `tool/` | _（模板文件已迁至 `src/shared/workspace-tool-docs/`）_ | `.agent/.tool/docs.md` / `browser.md` / … 由 `workspace-tool-template-md.ts` 加载并注入工具名列表（缺失才写） |
 | `role-agent/` | `<workspace>/.agent/.roleAgent/` | `TOOLS.md`、`AGENTS.md` 等 |
 | _（无单独子目录）_ | `<workspace>/.agent/.hermes/notes/` | Hermes 记忆笔记真源；由 `ensureWorkspaceInitialized` 引导 |
 | _（无单独子目录）_ | `<workspace>/.agent/.clawflow/` | 主会话、待办、爬取、Hermes DB 等；由 `ensureWorkspaceInitialized` 创建 |

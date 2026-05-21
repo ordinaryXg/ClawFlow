@@ -58,5 +58,37 @@ export async function ensureWorkspaceAgentRoleTemplates(workspaceRoot: string): 
     }
   }
 
+  await patchRoleAgentToolsMdIfStale(root).catch(() => undefined);
+
   return { created };
+}
+
+const ROLE_TOOLS_FEISHU_ROW =
+  '| **`feishu.md`** | 飞书 / Lark（lark-cli）；云文档、多维表格、Drive、Wiki、IM（与 `tools.feishu` 对应）。 |';
+
+/** 既有工作区 TOOLS.md 补全 feishu 行（不覆盖用户自定义备忘）。 */
+export async function patchRoleAgentToolsMdIfStale(workspaceRoot: string): Promise<boolean> {
+  const fp = path.join(workspaceRoleAgentDirAbs(workspaceRoot), WORKSPACE_AGENT_TOOLS_MD);
+  let body: string;
+  try {
+    body = await fs.promises.readFile(fp, 'utf-8');
+  } catch {
+    return false;
+  }
+  if (body.includes('feishu.md') || body.includes('tools.feishu')) return false;
+
+  let next = body;
+  next = next.replace(
+    '`tools.knowledge_base` 等。',
+    '`tools.knowledge_base`、`tools.feishu` 等。'
+  );
+  const kbRow =
+    '| **`knowledge_base.md`** | 知识库检索（与 `tools.knowledge_base` 对应）。 |';
+  if (next.includes(kbRow)) {
+    next = next.replace(kbRow, `${kbRow}\n${ROLE_TOOLS_FEISHU_ROW}`);
+  } else {
+    next = `${next.trimEnd()}\n\n${ROLE_TOOLS_FEISHU_ROW}\n`;
+  }
+  await fs.promises.writeFile(fp, next.endsWith('\n') ? next : `${next}\n`, 'utf-8');
+  return true;
 }

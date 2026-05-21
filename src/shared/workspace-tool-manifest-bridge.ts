@@ -28,7 +28,6 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
   shell: ['workspace_run_shell'],
   todos: ['workspace_todo_list', 'workspace_todo_create', 'workspace_todo_update', 'workspace_todo_remove'],
   skills: [
-    'workspace_skill_list',
     'workspace_skill_view',
     'workspace_skill_create',
     'workspace_skill_patch',
@@ -44,6 +43,7 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
     'workspace_memory_search',
     'workspace_memory_rebuild_index',
   ],
+  feishu: ['workspace_feishu_invoke'],
 };
 
 /** 不纳入 manifest 关断、始终暴露给模型的轻量工具 */

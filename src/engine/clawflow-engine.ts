@@ -825,6 +825,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           if (n === 'workspace_rg_search') return { kind: 'tool.exec.rg', title: '命令行：rg' };
           if (n === 'workspace_run_tsc_no_emit') return { kind: 'tool.exec.tsc', title: '命令行：tsc' };
           if (n === 'workspace_run_shell') return { kind: 'tool.exec.shell', title: '命令行：shell' };
+          if (n === 'workspace_feishu_invoke') return { kind: 'tool.feishu.invoke', title: '飞书：lark-cli' };
           if (n.startsWith('workspace_')) return { kind: 'tool.exec.fs', title: '工作区操作' };
           return { kind: 'tool.exec', title: '工具调用' };
         };

@@ -9,7 +9,8 @@ export type WorkspaceToolId =
   | 'web_scrape'
   | 'todos'
   | 'skills'
-  | 'knowledge_base';
+  | 'knowledge_base'
+  | 'feishu';
 
 export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'docs',
@@ -20,6 +21,7 @@ export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'todos',
   'skills',
   'knowledge_base',
+  'feishu',
 ] as const;
 
 export type WorkspaceToolSelection = Partial<Record<WorkspaceToolId, boolean>>;
@@ -34,10 +36,12 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   web_search: true,
   web_scrape: true,
   todos: true,
-  /** 新建工作区 / 未在 manifest 中显式写入时默认开启 Hermes 工作区技能 */
+  /** 新建工作区 / 未在 manifest 中显式写入时默认开启工作区技能 */
   skills: true,
   /** 知识库与记忆 FTS 检索（workspace_memory_search / workspace_knowledge_query 等） */
   knowledge_base: true,
+  /** 飞书 Open Platform（lark-cli 封装） */
+  feishu: true,
 };
 
 /**

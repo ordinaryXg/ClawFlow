@@ -105,7 +105,374 @@
   min-width: 0;
 }
 
+.cf-feishuSettings h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.cf-feishuHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.cf-feishuHero__lead {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 52rem;
+}
+
+.cf-feishuRuntimeBadge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.cf-feishuRuntimeBadge--ok {
+  border-color: rgba(30, 91, 69, 0.45);
+  background: rgba(30, 91, 69, 0.1);
+}
+
+.cf-feishuRuntimeBadge--warn {
+  border-color: rgba(201, 162, 39, 0.45);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.cf-feishuRuntimeBadge__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold, #c9a227);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.cf-feishuRuntimeBadge--ok .cf-feishuRuntimeBadge__dot {
+  background: #3d9a6a;
+}
+
+.cf-feishuRuntimeBadge__sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: inherit;
+}
+
+.cf-feishuCapGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+.cf-feishuCap {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cf-feishuCap__tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold, #c9a227);
+  margin-bottom: 6px;
+}
+
+.cf-feishuCap h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.cf-feishuCap p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.cf-feishuBotTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.cf-feishuBotTabs__btn {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cf-feishuBotTabs__btn--active {
+  border-color: rgba(30, 91, 69, 0.55);
+  background: rgba(30, 91, 69, 0.14);
+}
+
+.cf-feishuBotPanel {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.cf-feishuBotPanel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.cf-feishuBotPanel__nameInput {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 360px;
+  font-weight: 600;
+}
+
+.cf-feishuSetupSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.cf-feishuSetupSteps__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cf-feishuSetupSteps__item--done {
+  border-color: rgba(30, 91, 69, 0.45);
+  color: var(--text);
+}
+
+.cf-feishuSetupSteps__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cf-feishuSetupSteps__item--done .cf-feishuSetupSteps__num {
+  background: rgba(30, 91, 69, 0.35);
+  color: var(--text);
+}
+
+.cf-feishuSection {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.cf-feishuSection:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.cf-feishuSection__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cf-feishuSection__step {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(30, 91, 69, 0.2);
+  color: var(--gold, #c9a227);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cf-feishuSection__title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.cf-feishuSection__desc {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.cf-feishuSection__head .cf-feishuPill {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.cf-feishuSection__body {
+  padding-left: 32px;
+}
+
+.cf-feishuField {
+  margin-bottom: 12px;
+}
+
+.cf-feishuField .cf-sub {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.cf-feishuField .cf-input,
+.cf-feishuField .cf-textarea {
+  width: 100%;
+}
+
+.cf-feishuInlineStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.cf-feishuPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.cf-feishuPill--ok {
+  border-color: rgba(61, 154, 106, 0.5);
+  color: #3d9a6a;
+}
+
+.cf-feishuPill--fail {
+  border-color: rgba(220, 80, 80, 0.45);
+  color: #e07070;
+}
+
+.cf-feishuPill--muted {
+  color: var(--muted);
+}
+
+.cf-feishuDocLink {
+  font-size: 12px;
+  color: var(--gold, #c9a227);
+}
+
+.cf-feishuBridgeFields {
+  margin-top: 12px;
+}
+
+.cf-feishuOAuthBox {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.2));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cf-feishuOAuthBox__url {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--gold, #c9a227);
+}
+
+.cf-feishuDiagnostics {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.cf-feishuDiagnostics summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
+}
+
+.cf-feishuDiagnostics__body {
+  padding: 12px 0 4px;
+}
+
+.cf-feishuSaveBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+
+.cf-feishuSaveBar__hint {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 28rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 900px) {
+  .cf-feishuCapGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cf-feishuSection__body {
+    padding-left: 0;
+  }
+
+  .cf-feishuSection__head {
+    flex-wrap: wrap;
+  }
+
+  .cf-feishuSection__head .cf-feishuPill {
+    margin-left: 32px;
+  }
+
   .cf-messagingFeishuBotGrid {
     grid-template-columns: 1fr;
   }

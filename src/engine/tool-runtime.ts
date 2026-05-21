@@ -32,9 +32,8 @@ import {
   upsertHermesMemoryDocument,
 } from './hermes-memory-store';
 import { HERMES_MEMORY_REL_PREFIX } from '../main/workspace/workspace-hermes-layout';
-import { listWorkspaceHermesSkills, readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
+import { readWorkspaceSkillTextFile } from '../main/workspace/workspace-skills-read';
 import { syncWorkspaceSkillManifest } from '../main/workspace/workspace-skill-manifest';
-import { readDisabledSkillRootsSync } from '../main/workspace/workspace-skills-ui-state';
 import { atomicWriteUtf8File } from './atomic-write';
 import { assertValidSkillFolderName, guardHermesSkillTextContent } from './skills-guard';
 import {
@@ -1886,30 +1885,6 @@ export function createDefaultToolRuntime(): ToolRuntime {
     {
       type: 'function',
       function: {
-        name: 'workspace_skill_list',
-        description:
-          'List Hermes-style skills under `.agent/.skills/**` (directories containing SKILL.md). Read-only; returns JSON with skill roots and reference file paths.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-          additionalProperties: false,
-        },
-      },
-    },
-    async (_args, ctx) => {
-      const disabled = readDisabledSkillRootsSync(ctx.workspaceRoot);
-      const norm = (r: string) => r.replace(/\\/g, '/').replace(/^\/+/, '');
-      const skills = listWorkspaceHermesSkills(ctx.workspaceRoot).filter((s) => !disabled.has(norm(s.skillRootRel)));
-      return JSON.stringify({ ok: true, count: skills.length, skills }, null, 2);
-    }
-  );
-
-  rt.register(
-    {
-      type: 'function',
-      function: {
         name: 'workspace_skill_view',
         description:
           'Read a text file under `.agent/.skills` (SKILL.md or references/*.md|*.txt). Pass workspace-relative POSIX path.',
@@ -2190,6 +2165,87 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const res = await rebuildHermesSkillFtsIndex(ctx.workspaceRoot);
       if (!res.ok) return `ERROR: ${res.error}`;
       return `OK rebuilt Hermes FTS index (memory index + .agent/.skills + knowledge); rows upserted this pass: ${res.indexed}, pruned: ${res.pruned}`;
+    }
+  );
+
+  rt.register(
+    {
+      type: 'function',
+      function: {
+        name: 'workspace_feishu_invoke',
+        description:
+          'Invoke Feishu/Lark Open Platform via bundled lark-cli. Use domain docs/base/drive/wiki/im/auth with args matching lark-cli subcommands. Prefer as=user for cloud docs and Base.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            domain: {
+              type: 'string',
+              enum: ['docs', 'base', 'drive', 'wiki', 'im', 'event', 'auth', 'api', 'calendar', 'contact', 'task', 'mail'],
+              description: 'lark-cli top-level domain',
+            },
+            args: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Arguments after domain (e.g. +fetch, --doc, token)',
+            },
+            as: {
+              type: 'string',
+              enum: ['user', 'bot'],
+              description: 'Identity (default user for docs/base)',
+            },
+            botId: {
+              type: 'string',
+              description: 'Feishu bot profile id from settings (optional)',
+            },
+            yes: {
+              type: 'boolean',
+              description: 'Confirm high-risk write (after user approval)',
+            },
+            dryRun: {
+              type: 'boolean',
+              description: 'Preview request without executing',
+            },
+          },
+          required: ['domain', 'args'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async (args, _ctx) => {
+      const { invokeLarkCli } = await import('../main/lark-cli/lark-cli-invoke');
+      const domain = String(args?.domain ?? '').trim();
+      const rawArgs = Array.isArray(args?.args) ? args.args.map(String) : [];
+      const as = args?.as === 'bot' ? 'bot' : args?.as === 'user' ? 'user' : 'user';
+      const botId = typeof args?.botId === 'string' && args.botId.trim() ? args.botId.trim() : undefined;
+      const yes = args?.yes === true;
+      const dryRun = args?.dryRun === true;
+      const res = await invokeLarkCli({ domain, args: rawArgs, as, botId, yes, dryRun, format: 'json' });
+      if (res.confirmationRequired) {
+        return JSON.stringify(
+          {
+            ok: false,
+            confirmation_required: true,
+            message: res.confirmationRequired.message,
+            hint: res.confirmationRequired.hint,
+            action: res.confirmationRequired.action,
+            retry_with_yes: true,
+          },
+          null,
+          2
+        );
+      }
+      return JSON.stringify(
+        {
+          ok: res.ok,
+          exitCode: res.exitCode,
+          json: res.json,
+          stdout: res.stdout.slice(0, 48_000),
+          stderr: res.stderr.slice(0, 16_000),
+        },
+        null,
+        2
+      );
     }
   );
 
