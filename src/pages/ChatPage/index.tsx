@@ -33,6 +33,7 @@ import {
   SYSTEM_AGENT_SETTINGS_BROADCAST,
 } from '../../shared/system-agent-settings';
 import PendingSendQueue from '../../components/chat/PendingSendQueue';
+import SendPipelineStatusBar from '../../components/chat/SendPipelineStatusBar';
 import './styles.css';
 
 const CHAT_FOOTER_HEIGHT_KEY = 'clawflow.chatFooterHeightPx';
@@ -117,6 +118,7 @@ const ChatPage: FC = () => {
     ratio: number;
     isOverflow: boolean;
     isNearOverflow: boolean;
+    segments?: Array<{ id: 'role' | 'skills' | 'chat' | 'tools'; utf8Bytes: number; loadUnits: number }>;
   } | null>(null);
   const [nextCtxLoading, setNextCtxLoading] = useState(false);
   const [nextCtxErr, setNextCtxErr] = useState<string | null>(null);
@@ -363,6 +365,7 @@ const ChatPage: FC = () => {
             ratio: r.ratio,
             isOverflow: r.isOverflow,
             isNearOverflow: r.isNearOverflow,
+            segments: r.segments,
           });
         } else {
           setNextCtx(null);
@@ -408,22 +411,20 @@ const ChatPage: FC = () => {
     return 'waiting';
   }, [isLoading, streamingActivity, streamingThinking, streamingToolHints]);
 
-  const chatHeaderStatusRow = (
-    <>
-      <span className="cf-chatCenter__sessionWord">{t('chat.headerSession')}</span>
-      {chatStreamHeaderStatus === 'waiting' ? (
-        <span className="cf-chatCenter__streamStatus cf-chatCenter__streamStatus--wait">{t('chat.statusWaitingReply')}</span>
-      ) : null}
-      {chatStreamHeaderStatus === 'typing' ? (
-        <span className="cf-chatCenter__streamStatus cf-chatCenter__streamStatus--typing">{t('chat.statusTyping')}</span>
-      ) : null}
-    </>
-  );
-
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) ?? null,
     [conversations, activeConversationId]
   );
+
+  const sessionDisplayTitle = useMemo(() => {
+    const raw = activeConversation?.title?.trim();
+    if (!raw) return t('chat.noSessionSelected');
+    if (raw === '对话' || raw === 'Chat') return t('chat.defaultSessionTitle');
+    return raw;
+  }, [activeConversation?.title, t]);
+
+  const sendPipelineStreamPhase =
+    chatStreamHeaderStatus === 'waiting' ? 'waiting' : chatStreamHeaderStatus === 'typing' ? 'typing' : 'idle';
 
   const onDeleteConversation = (id: string) => {
     deleteConversation(id);
@@ -508,9 +509,8 @@ const ChatPage: FC = () => {
         <header className="cf-chatCenter__header">
           <div className="cf-chatCenter__title">
             <div className="cf-chatCenter__titleBlock">
-              <div className="cf-chatCenter__titleRow">{chatHeaderStatusRow}</div>
-              <div className="cf-chatCenter__titleSubtitle">
-                {activeConversation?.title?.trim() ? activeConversation.title : t('chat.noSessionSelected')}
+              <div className="cf-chatCenter__titleRow">
+                <span className="cf-chatCenter__primaryTitle">{sessionDisplayTitle}</span>
               </div>
             </div>
           </div>
@@ -535,10 +535,9 @@ const ChatPage: FC = () => {
           ) : null}
           <div className="cf-chatCenter__sessionHint" aria-live="polite">
             <div className="cf-chatCenter__sessionHintTop">
-              <div className="cf-chatCenter__titleRow">{chatHeaderStatusRow}</div>
-              <span className="cf-chatCenter__sessionHintTitle">
-                {activeConversation?.title?.trim() ? activeConversation.title : t('chat.noSessionSelected')}
-              </span>
+              <div className="cf-chatCenter__titleRow">
+                <span className="cf-chatCenter__primaryTitle">{sessionDisplayTitle}</span>
+              </div>
             </div>
           </div>
         </>
@@ -603,6 +602,13 @@ const ChatPage: FC = () => {
 
       <footer className="cf-chatCenter__input" style={{ height: inputPanelHeightPx }}>
         <div className="cf-chatCenter__inputInner">
+          <SendPipelineStatusBar
+            isClassifyingMode={isClassifyingMode}
+            isExpectationPlanning={isExpectationPlanning}
+            pendingQueueCount={pendingSendQueue.length}
+            streamPhase={sendPipelineStreamPhase}
+            toolApprovalActive={Boolean(toolApprovalForActive)}
+          />
           {showModeClassificationDebug ? (
             <ModeClassificationDebug classifying={isClassifyingMode} classification={activeModeClassification} />
           ) : null}

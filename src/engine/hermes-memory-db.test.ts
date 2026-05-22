@@ -8,19 +8,9 @@ import {
   syncSkillTextSourcesToMemoryDb,
 } from './hermes-memory-db';
 
-function canLoadSqlite(): boolean {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const BetterSqlite = require('better-sqlite3');
-    const db = new BetterSqlite(':memory:');
-    db.close();
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { canLoadBetterSqlite3 } from '../test-support/can-load-better-sqlite3';
 
-const run = canLoadSqlite() ? describe : describe.skip;
+const run = canLoadBetterSqlite3() ? describe : describe.skip;
 
 run('hermes-memory-db FTS5', () => {
   let dir: string;

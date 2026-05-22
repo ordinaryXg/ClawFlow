@@ -729,7 +729,7 @@
 .cf-chatRight__k{font-size:11px;color:var(--muted)}
 .cf-chatRight__v{font-size:12px;color:var(--text);word-break:break-all}
 
-/* Chat right: workspace split + embedded browser + change log */
+/* Chat right: workspace split + change log + scrape */
 .cf-rightWorkspace{
   flex:1;
   min-height:0;

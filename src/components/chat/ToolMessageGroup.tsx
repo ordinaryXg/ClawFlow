@@ -1,19 +1,10 @@
 import { FC, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  CheckCircleFilled,
-  CloudOutlined,
-  CodeOutlined,
-  DownOutlined,
-  ExperimentOutlined,
-  ExclamationCircleFilled,
-  LoadingOutlined,
-  RightOutlined,
-  ToolOutlined,
-} from '@ant-design/icons';
+import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import type { Message } from '../../store/modules/chatStore';
 import { pickToolKind } from './tool-message-metadata';
 import ToolMessageItem from './ToolMessageItem';
+import ToolStatusGlyph from './ToolStatusGlyph';
 import './chat.css';
 
 function coerceString(v: unknown): string | null {
@@ -70,22 +61,11 @@ const ToolMessageGroup: FC<{ messages: Message[] }> = ({ messages }) => {
     return null;
   }, [aggregateStatus, t]);
 
-  const icon = useMemo(() => {
-    if (!kind) return <ToolOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.network')) return <CloudOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.exec')) return <CodeOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.subagent')) return <ExperimentOutlined className="cf-toolMsg__icon" aria-hidden />;
-    return <ToolOutlined className="cf-toolMsg__icon" aria-hidden />;
-  }, [kind]);
-
-  const statusIcon =
-    aggregateStatus === 'running' ? (
-      <LoadingOutlined className="cf-toolMsg__loading" spin />
-    ) : aggregateStatus === 'error' ? (
-      <ExclamationCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--high" aria-hidden />
-    ) : aggregateStatus === 'result' ? (
-      <CheckCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--low" aria-hidden />
-    ) : null;
+  const glyphAria = useMemo(() => {
+    const parts = [title, t('chat.toolMessage.groupCount', { count: messages.length })];
+    if (statusLabel) parts.push(statusLabel);
+    return parts.join(' · ');
+  }, [messages.length, statusLabel, t, title]);
 
   const count = messages.length;
 
@@ -98,17 +78,11 @@ const ToolMessageGroup: FC<{ messages: Message[] }> = ({ messages }) => {
         aria-label={open ? t('chat.toolMessage.groupCollapse') : t('chat.toolMessage.groupExpand')}
         onClick={() => setOpen((v) => !v)}
       >
-        {icon}
-        {statusIcon}
+        <ToolStatusGlyph kind={kind} statusKey={aggregateStatus} ariaLabel={glyphAria} />
         <span className="cf-toolMsg__title">
           {title}
           <span className="cf-toolMsgGroup__count">{t('chat.toolMessage.groupCount', { count })}</span>
         </span>
-        {statusLabel ? (
-          <span className={`cf-toolMsg__badge cf-toolMsg__badge--${aggregateStatus}`} data-status={aggregateStatus}>
-            {statusLabel}
-          </span>
-        ) : null}
         <span className="cf-toolMsgGroup__chev" aria-hidden>
           {open ? <DownOutlined /> : <RightOutlined />}
         </span>

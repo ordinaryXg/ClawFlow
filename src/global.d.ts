@@ -1,19 +1,23 @@
 // 全局类型声明
 
 export interface IElectronAPI {
-  /** 应用版本；网关状态/启停映射到内置 engineGateway */
-  getVersion: () => Promise<string>;
-  getGatewayStatus: () => Promise<string>;
-  startGateway: () => Promise<void>;
-  stopGateway: () => Promise<void>;
+  /** 应用版本 */
   getAppVersion: () => Promise<string>;
+  /** @deprecated 请用 getAppVersion */
+  getVersion: () => Promise<string>;
+  engineGatewayStatus: () => Promise<{ status: string; port: number; uptimeMs?: number }>;
+  /** @deprecated 请用 engineGatewayStatus */
+  getGatewayStatus: () => Promise<string>;
+  /** @deprecated 请用 engineGatewayStart */
+  startGateway: () => Promise<void>;
+  /** @deprecated 请用 engineGatewayStop */
+  stopGateway: () => Promise<void>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
-  engineGatewayStatus: () => Promise<{ status: string; port: number; uptimeMs?: number }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
   engineGatewayStop: () => Promise<{ success: boolean }>;
   engineGatewayRestart: (params?: { port?: number }) => Promise<{ success: boolean }>;
@@ -110,6 +114,7 @@ export interface IElectronAPI {
         ratio: number;
         isOverflow: boolean;
         isNearOverflow: boolean;
+        segments?: Array<{ id: 'role' | 'skills' | 'chat' | 'tools'; utf8Bytes: number; loadUnits: number }>;
       }
     | { ok: false; error: string }
   >;

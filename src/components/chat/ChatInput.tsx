@@ -58,6 +58,7 @@ interface Props {
     budgetUnits: number;
     isOverflow: boolean;
     isNearOverflow: boolean;
+    segments?: Array<{ id: 'role' | 'skills' | 'chat' | 'tools'; utf8Bytes: number; loadUnits: number }>;
   } | null;
   nextContextLoading?: boolean;
   nextContextError?: string | null;
@@ -316,24 +317,26 @@ const ChatInput: FC<Props> = ({
           .filter(Boolean)
           .join(' ')}
       >
-        {nextContextLoading ? <span className="cf-chatInput__contextMeterInner">{t('chat.nextContextLoading')}</span> : null}
-        {!nextContextLoading && nextContextError ? (
-          <span className="cf-chatInput__contextMeterInner cf-errorText">{nextContextError}</span>
-        ) : null}
-        {!nextContextLoading && !nextContextError && nextContextPayload ? (
-          <span className="cf-chatInput__contextMeterInner" title={t('chat.nextContextHint')}>
-            {t('chat.nextContextLine', {
-              bytes: formatUtf8Bytes(nextContextPayload.utf8Bytes),
-              load: nextContextPayload.loadUnits.toLocaleString(),
-              budget: nextContextPayload.budgetUnits.toLocaleString(),
-              pct: Math.min(999, Math.round((nextContextPayload.loadUnits / nextContextPayload.budgetUnits) * 100)),
-            })}
-            {nextContextPayload.isOverflow ? ` · ${t('chat.nextContextOverflow')}` : ''}
-          </span>
-        ) : null}
-        {!nextContextLoading && !nextContextError && !nextContextPayload ? (
-          <span className="cf-chatInput__contextMeterInner cf-chatInput__contextMeterInner--muted">{t('chat.nextContextIdle')}</span>
-        ) : null}
+        <div className="cf-chatInput__contextMeterText">
+          {nextContextLoading ? <span className="cf-chatInput__contextMeterInner">{t('chat.nextContextLoading')}</span> : null}
+          {!nextContextLoading && nextContextError ? (
+            <span className="cf-chatInput__contextMeterInner cf-errorText">{nextContextError}</span>
+          ) : null}
+          {!nextContextLoading && !nextContextError && nextContextPayload ? (
+            <span className="cf-chatInput__contextMeterInner" title={t('chat.nextContextHint')}>
+              {t('chat.nextContextLine', {
+                bytes: formatUtf8Bytes(nextContextPayload.utf8Bytes),
+                load: nextContextPayload.loadUnits.toLocaleString(),
+                budget: nextContextPayload.budgetUnits.toLocaleString(),
+                pct: Math.min(999, Math.round((nextContextPayload.loadUnits / nextContextPayload.budgetUnits) * 100)),
+              })}
+              {nextContextPayload.isOverflow ? ` · ${t('chat.nextContextOverflow')}` : ''}
+            </span>
+          ) : null}
+          {!nextContextLoading && !nextContextError && !nextContextPayload ? (
+            <span className="cf-chatInput__contextMeterInner cf-chatInput__contextMeterInner--muted">{t('chat.nextContextIdle')}</span>
+          ) : null}
+        </div>
       </div>
       <div className="cf-chatInput__footer">
         <div className="cf-chatInput__footerLeft">
@@ -352,15 +355,17 @@ const ChatInput: FC<Props> = ({
               hintIconAriaBase={t('common.selectOptionHintAria')}
               popupMatchSelectWidth={false}
             />
-            <ContextUsageRing
-              ratio={typeof contextMeterRatio === 'number' ? contextMeterRatio : contextSaturation}
-              usedTokensApprox={contextUsedApprox}
-              limitTokensApprox={contextLimitApprox}
-              titleOverride={contextMeterTitle}
-            />
           </div>
         </div>
         <div className="cf-chatInput__actions">
+          <ContextUsageRing
+            ratio={typeof contextMeterRatio === 'number' ? contextMeterRatio : contextSaturation}
+            usedTokensApprox={contextUsedApprox}
+            limitTokensApprox={contextLimitApprox}
+            titleOverride={contextMeterTitle}
+            budgetUnits={nextContextPayload?.budgetUnits}
+            segments={nextContextPayload?.segments}
+          />
           <button
             className={canSend ? 'cf-btn cf-btnPrimary cf-chatSendBtn' : 'cf-btn cf-chatSendBtn'}
             onClick={() => void submit()}

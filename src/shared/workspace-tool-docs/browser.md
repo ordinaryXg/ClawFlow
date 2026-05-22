@@ -6,7 +6,7 @@
 
 - 搜索源、API 密钥、代理由**应用在后台**配置；你**不**改设置、**不**用 shell `curl` 替代。
 - manifest 中 **`tools.web_search`** 与 **`tools.web_scrape` 彼此独立**；仅已开启的工具会下发。
-- **无**内嵌浏览器 / webview / 可执行页面 JS 的工具；勿虚构 `workspace_browser_*` 等名称。
+- **无**应用内网页浏览 / webview 工具；勿虚构 `workspace_browser_*` 等名称。页面抓取请用 `web_scrape`。
 
 > 开关：`.agent/.tool/manifest.json` → `tools.web_search` / `tools.web_scrape`
 

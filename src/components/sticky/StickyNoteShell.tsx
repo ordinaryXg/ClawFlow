@@ -12,6 +12,7 @@ import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../workspace/WorkspaceCreateModal';
 import StickyFileStrip from './StickyFileStrip';
 import TodoTriggersPanel from '../chat/TodoTriggersPanel';
+import KnowledgeBaseHubPanel from '../workspace-hub/KnowledgeBaseHubPanel';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
 
@@ -628,7 +629,9 @@ const StickyNoteShell: FC = () => {
                   <TodoTriggersPanel workspacePath={activeWorkspacePath} />
                 </div>
               ) : (
-                <div className="cf-stickyKbPlaceholder">{t('sticky.kbPlaceholder')}</div>
+                <div className="cf-stickyKbEmbed">
+                  <KnowledgeBaseHubPanel workspacePath={activeWorkspacePath} />
+                </div>
               )}
             </div>
           </section>

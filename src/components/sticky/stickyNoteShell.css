@@ -404,6 +404,13 @@
   padding: 8px 10px 12px;
 }
 
+.cf-stickyKbEmbed {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 12px;
+}
+
 .cf-stickyKbPlaceholder {
   flex: 1;
   min-height: 0;

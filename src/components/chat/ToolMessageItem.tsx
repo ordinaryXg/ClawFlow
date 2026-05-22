@@ -1,17 +1,8 @@
 import { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  CheckCircleFilled,
-  CloudOutlined,
-  CodeOutlined,
-  ExclamationCircleFilled,
-  ExperimentOutlined,
-  LoadingOutlined,
-  ToolOutlined,
-  WarningFilled,
-} from '@ant-design/icons';
 import type { Message } from '../../store/modules/chatStore';
 import { pickToolKind } from './tool-message-metadata';
+import ToolStatusGlyph from './ToolStatusGlyph';
 import './chat.css';
 
 function coerceString(v: unknown): string | null {
@@ -24,10 +15,6 @@ function pickRiskLevel(meta: Record<string, unknown> | undefined): 'low' | 'medi
   return null;
 }
 
-function isSubAgentKind(kind: string | null): boolean {
-  if (!kind) return false;
-  return kind === 'tool.subagent.run' || kind.startsWith('tool.subagent.');
-}
 
 function summarize(content: string, maxLen: number): string {
   const oneLine = String(content ?? '')
@@ -91,32 +78,11 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
     return null;
   }, [isReadFileTool, statusKey, t]);
 
-  const loadingIcon = useMemo(() => {
-    if (statusKey !== 'running') return null;
-    const tn = coerceString(meta?.toolName);
-    if (tn === 'delegate_to_subagent' || isSubAgentKind(kind)) {
-      return <LoadingOutlined className="cf-toolMsg__loading" spin />;
-    }
-    if (tn === 'workspace_read_file' || tn === 'workspace_read_file_preview') {
-      return <LoadingOutlined className="cf-toolMsg__loading" spin />;
-    }
-    return null;
-  }, [kind, meta, statusKey]);
-
-  const riskIcon = useMemo(() => {
-    if (riskLevel === 'high') return <ExclamationCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--high" />;
-    if (riskLevel === 'medium') return <WarningFilled className="cf-toolMsg__risk cf-toolMsg__risk--medium" />;
-    if (riskLevel === 'low') return <CheckCircleFilled className="cf-toolMsg__risk cf-toolMsg__risk--low" />;
-    return null;
-  }, [riskLevel]);
-
-  const icon = useMemo(() => {
-    if (!kind) return <ToolOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.network')) return <CloudOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.exec')) return <CodeOutlined className="cf-toolMsg__icon" aria-hidden />;
-    if (kind.startsWith('tool.subagent')) return <ExperimentOutlined className="cf-toolMsg__icon" aria-hidden />;
-    return <ToolOutlined className="cf-toolMsg__icon" aria-hidden />;
-  }, [kind]);
+  const glyphAria = useMemo(() => {
+    const parts = [title];
+    if (statusLabel) parts.push(statusLabel);
+    return parts.join(' · ');
+  }, [statusLabel, title]);
 
   const metaJson = useMemo(() => {
     if (!meta) return '';
@@ -131,18 +97,13 @@ const ToolMessageItem: FC<{ message: Message }> = ({ message }) => {
     <div className="cf-toolMsg">
       <details className="cf-toolMsg__details">
         <summary className="cf-toolMsg__summary">
-          {icon}
-          {riskIcon}
-          {loadingIcon}
+          <ToolStatusGlyph
+            kind={kind}
+            statusKey={statusKey}
+            riskLevel={riskLevel}
+            ariaLabel={glyphAria}
+          />
           <span className="cf-toolMsg__title">{title}</span>
-          {statusLabel ? (
-            <span
-              className={`cf-toolMsg__badge cf-toolMsg__badge--${statusKey ?? 'unknown'}`}
-              data-status={statusKey ?? ''}
-            >
-              {statusLabel}
-            </span>
-          ) : null}
           {readFileCollapsedHint ? (
             <span className="cf-toolMsg__oneLine cf-toolMsg__oneLine--hint">{readFileCollapsedHint}</span>
           ) : summary ? (

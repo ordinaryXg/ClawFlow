@@ -3,19 +3,22 @@ import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
-  /** 应用版本；网关状态/启停映射到内置 engineGateway */
-  getVersion: () => Promise<string>;
-  getGatewayStatus: () => Promise<string>;
-  startGateway: () => Promise<void>;
-  stopGateway: () => Promise<void>;
   getAppVersion: () => Promise<string>;
+  /** @deprecated 请用 getAppVersion */
+  getVersion: () => Promise<string>;
+  engineGatewayStatus: () => Promise<{ status: string; port: number }>;
+  /** @deprecated 请用 engineGatewayStatus */
+  getGatewayStatus: () => Promise<string>;
+  /** @deprecated 请用 engineGatewayStart */
+  startGateway: () => Promise<void>;
+  /** @deprecated 请用 engineGatewayStop */
+  stopGateway: () => Promise<void>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
-  engineGatewayStatus: () => Promise<{ status: string; port: number }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
   engineGatewayStop: () => Promise<{ success: boolean }>;
   engineAuthListProfiles: () => Promise<{
@@ -159,6 +162,7 @@ export interface IElectronAPI {
         ratio: number;
         isOverflow: boolean;
         isNearOverflow: boolean;
+        segments?: Array<{ id: 'role' | 'skills' | 'chat' | 'tools'; utf8Bytes: number; loadUnits: number }>;
       }
     | { ok: false; error: string }
   >;
@@ -557,14 +561,19 @@ export interface IElectronAPI {
 
 // 通过 contextBridge 安全地暴露 API
 contextBridge.exposeInMainWorld('electronAPI', {
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  /** @deprecated 请用 getAppVersion */
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  engineGatewayStatus: () => ipcRenderer.invoke('engineGateway:status'),
+  /** @deprecated 请用 engineGatewayStatus */
   getGatewayStatus: async () => {
     const r = (await ipcRenderer.invoke('engineGateway:status')) as { status?: string } | null;
     return String(r?.status ?? 'unknown');
   },
+  /** @deprecated 请用 engineGatewayStart */
   startGateway: () => ipcRenderer.invoke('engineGateway:start', {}),
+  /** @deprecated 请用 engineGatewayStop */
   stopGateway: () => ipcRenderer.invoke('engineGateway:stop'),
-  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
   // 新引擎（Phase 0：stub）
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) =>
@@ -572,7 +581,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGetConversations: () => ipcRenderer.invoke('engine:getConversations'),
   engineDeleteConversation: (conversationId: string) => ipcRenderer.invoke('engine:deleteConversation', conversationId),
   engineUpsertConversation: (conversation: any) => ipcRenderer.invoke('engine:upsertConversation', conversation),
-  engineGatewayStatus: () => ipcRenderer.invoke('engineGateway:status'),
   engineGatewayStart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:start', params ?? {}),
   engineGatewayStop: () => ipcRenderer.invoke('engineGateway:stop'),
   engineGatewayRestart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:restart', params ?? {}),

@@ -137,7 +137,7 @@ export class SessionStore {
       const now = Date.now();
       const c: StoredConversation = {
         id: randomUUID(),
-        title: '对话',
+        title: '主会话',
         messages: [],
         createdAt: now,
         updatedAt: now,
@@ -162,7 +162,7 @@ export class SessionStore {
       ...keeper,
       messages: mergedMessages,
       updatedAt: Date.now(),
-      title: keeper.title?.trim() ? keeper.title : '对话',
+      title: keeper.title?.trim() ? keeper.title : '主会话',
     };
     await this.writeAll([next]);
     return [next];

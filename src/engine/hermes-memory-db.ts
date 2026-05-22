@@ -725,7 +725,7 @@ type ConversationRow = {
 };
 
 function buildConversationSummaryBody(conv: ConversationRow): string {
-  const title = String(conv.title ?? '对话').trim() || '对话';
+  const title = String(conv.title ?? '主会话').trim() || '主会话';
   const msgs = (conv.messages ?? []).filter(
     (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
   );
@@ -751,7 +751,7 @@ function buildConversationDigestMarkdown(conv: ConversationRow): {
   mtimeMs: number;
 } {
   const id = String(conv.id ?? '').trim();
-  const title = String(conv.title ?? '对话').trim() || '对话';
+  const title = String(conv.title ?? '主会话').trim() || '主会话';
   const mtimeMs = Math.trunc(typeof conv.updatedAt === 'number' ? conv.updatedAt : Date.now());
   const body = buildConversationSummaryBody(conv);
   const abstract = `Chat · ${title}`;

@@ -29,7 +29,7 @@ import { createDefaultToolRuntime } from './tool-runtime';
 import { buildModeConfig, type ChatIntent } from './mode-policy';
 import { buildGroupedChatModelCatalog } from './chat-model-catalog';
 import { resolveModelIdForInteractionMode } from './mode-defaults';
-import { composeNextRequestChatMessages, computeNextRequestContextStats } from './next-request-context';
+import { composeNextRequestChatMessages, computeNextRequestContextStats, computeNextRequestContextBreakdown, type NextRequestContextSegment } from './next-request-context';
 import { repairToolCallMessageChain } from './repair-tool-call-message-chain';
 import { logChatSendComposedMessages } from '../shared/chat-send-debug';
 import {
@@ -212,6 +212,7 @@ export interface ClawFlowEngine {
         ratio: number;
         isOverflow: boolean;
         isNearOverflow: boolean;
+        segments: NextRequestContextSegment[];
       }
     | { ok: false; error: string }
   >;
@@ -393,18 +394,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     conversationId: string;
     pendingUserText: string;
     modelId?: string | null;
-  }): Promise<
-    | {
-        ok: true;
-        utf8Bytes: number;
-        loadUnits: number;
-        budgetUnits: number;
-        ratio: number;
-        isOverflow: boolean;
-        isNearOverflow: boolean;
-      }
-    | { ok: false; error: string }
-  > {
+  }): ReturnType<ClawFlowEngine['estimateNextRequestContext']> {
     const effRoot = path.resolve(String(params.workspaceRoot ?? '').trim());
     if (!effRoot) return { ok: false, error: 'missing_workspace' };
     const convId = String(params.conversationId ?? '').trim();
@@ -419,7 +409,12 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
         pendingUserText: params.pendingUserText,
       });
       const s = computeNextRequestContextStats(messages, params.modelId ?? null);
-      return { ok: true, ...s };
+      const segments = await computeNextRequestContextBreakdown({
+        workspaceRoot: effRoot,
+        conversation: conv,
+        pendingUserText: params.pendingUserText,
+      });
+      return { ok: true, ...s, segments };
     } catch (e: unknown) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }

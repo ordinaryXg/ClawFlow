@@ -1,4 +1,4 @@
-/** 将用户或模型提供的字符串规范为可加载的 http(s) URL（与内嵌浏览器工具共用） */
+/** 将用户或模型提供的字符串规范为可加载的 http(s) URL（供 web_scrape 等使用） */
 export function normalizeHttpUrl(raw: string): string | null {
   const t = String(raw ?? '').trim();
   if (!t) return null;

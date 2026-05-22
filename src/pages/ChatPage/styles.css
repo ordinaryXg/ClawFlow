@@ -89,6 +89,19 @@
   min-width:0;
 }
 
+.cf-chatCenter__primaryTitle{
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0.02em;
+  color:var(--text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  flex:1 1 auto;
+  min-width:0;
+  max-width:min(520px,100%);
+}
+
 .cf-chatCenter__sessionWord{
   font-size:12px;
   font-weight:700;

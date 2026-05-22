@@ -194,6 +194,7 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
     <div className="cf-hubPage">
       <div className="cf-hubPage__toolbar">
         <HubToolbarHeader title={t('chat.workspaceHub.kbTitle')} hint={t('chat.workspaceHub.kbHint')} noWs={noWs} />
+        <p className="cf-sub cf-hubKbStatusLine">{t('chat.workspaceHub.kbStatusLine')}</p>
       </div>
       <div className="cf-hubPage__scroll">
         <div className="cf-hubCard">

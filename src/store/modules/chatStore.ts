@@ -41,43 +41,15 @@ import { useSettingsStore } from './settingsStore';
 import { useTodoTriggerStore } from './todoTriggerStore';
 import { dedupeUiToolMessages } from '../../engine/dedupe-tool-messages';
 import { normalizeWorkspacePathForCompare as normWorkspacePath } from '../../shared/workspace-path-compare';
-
-type GatewayWsEvent =
-  | { type: 'chat:ack'; requestId: string; conversationId: string }
-  | { type: 'chat:delta'; requestId: string; conversationId: string; text: string }
-  | { type: 'chat:final'; requestId: string; conversationId: string; message: string }
-  | {
-      type: 'chat:toolApproval';
-      requestId: string;
-      conversationId: string;
-      approvalId: string;
-      tools: Array<{ name: string; argumentsPreview: string }>;
-      riskLevel?: 'medium' | 'high';
-      timeoutMs?: number;
-      defaultApproved?: boolean;
-    }
-  | { type: 'gateway:log'; entry: { ts: number; level: string; msg: string } }
-  | { type: 'gateway:status'; status: string; port: number; uptimeMs: number };
-
-type GatewayWsSend =
-  | {
-      type: 'chat:send';
-      requestId: string;
-      conversationId: string;
-      text: string;
-      mode: 'ask' | 'plan' | 'multitask';
-      autoPick?: {
-        pickedMode: 'ask' | 'plan' | 'multitask';
-        reason: string;
-        category?: string;
-        categoryLabel?: string;
-      };
-      policyOverrides?: unknown;
-      modelId?: string;
-      workspaceRoot?: string;
-    }
-  | { type: 'gateway:ping' }
-  | { type: 'chat:toolApprovalResponse'; requestId: string; approvalId: string; approved: boolean };
+import {
+  cancelOutboundWsForConversation,
+  ensureGatewayWs,
+  registerGatewayPendingRequest,
+  sendGatewayChatMessage,
+  shouldUseGatewayChatTransport,
+  wireChatGatewayHandlers,
+  type GatewayWsSend,
+} from './chat-gateway-client';
 
 export type ToolApprovalPendingState = {
   requestId: string;
@@ -207,7 +179,7 @@ function normalizeConversation(raw: unknown): Conversation | null {
   const now = Date.now();
   return {
     id: c.id,
-    title: typeof c.title === 'string' ? c.title : '对话',
+    title: typeof c.title === 'string' ? c.title : '主会话',
     messages: dedupeUiToolMessages(messages),
     createdAt: typeof c.createdAt === 'number' ? c.createdAt : now,
     updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : now,
@@ -382,13 +354,6 @@ async function planExpectationForSend(
   return null;
 }
 
-type Pending = {
-  conversationId: string;
-  demuxer: ReasoningStreamDemux;
-  onDelta: (text: string) => void;
-  onFinal: (full: string) => void | Promise<void>;
-};
-
 function streamingFromDemuxer(demuxer: ReasoningStreamDemux): {
   streamingActivity: string | null;
   streamingToolHints: StreamToolHint[];
@@ -415,11 +380,6 @@ function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations
   void getState().fetchConversations().catch(() => undefined);
 }
 
-let wsClient: WebSocket | null = null;
-let wsConnecting: Promise<WebSocket> | null = null;
-const pendingById = new Map<string, Pending>();
-const activeRequestByConversation = new Map<string, string>();
-
 function syncPendingSendQueueToStore(
   set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
   conversationId: string | null
@@ -430,137 +390,9 @@ function syncPendingSendQueueToStore(
   });
 }
 
-function cancelOutboundWsForConversation(sessionId: string) {
-  const prevId = activeRequestByConversation.get(sessionId);
-  if (!prevId) return;
-  try {
-    if (wsClient?.readyState === WebSocket.OPEN) {
-      wsClient.send(JSON.stringify({ type: 'chat:cancel', requestId: prevId }));
-    }
-  } catch {
-    /* ignore */
-  }
-  pendingById.delete(prevId);
-  clearToolApprovalForRequest(prevId);
-  activeRequestByConversation.delete(sessionId);
-}
-
-let applyGatewayToolApproval: (payload: Extract<GatewayWsEvent, { type: 'chat:toolApproval' }>) => void =
-  () => undefined;
-let clearToolApprovalForRequest: (requestId: string) => void = () => undefined;
-
-async function ensureGatewayWs(): Promise<WebSocket> {
-  if (wsClient && wsClient.readyState === WebSocket.OPEN) return wsClient;
-  if (wsConnecting) return wsConnecting;
-
-  wsConnecting = (async () => {
-    const api = window.electronAPI;
-    if (!api?.engineGatewayStart || !api?.engineGatewayStatus) {
-      throw new Error('Gateway 仅在 Electron 应用内可用（缺少 engineGateway IPC）。');
-    }
-
-    // 必须先让 GatewayDaemon 在本机 listen，再连 WS；不可用默认 18789 猜测（未启动时必失败）。
-    try {
-      await api.engineGatewayStart();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`启动 Gateway 失败: ${msg}`);
-    }
-
-    let port: number | undefined;
-    for (let i = 0; i < 25; i++) {
-      const st = await api.engineGatewayStatus();
-      if (st?.status === 'running' && typeof st.port === 'number' && st.port > 0) {
-        port = st.port;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 60));
-    }
-    if (port == null) {
-      const st = await api.engineGatewayStatus();
-      throw new Error(
-        `Gateway 未在本地监听（状态: ${String(st?.status ?? 'unknown')}）。请在「设置」中启动或重启 Gateway，并确认 127.0.0.1 端口未被占用。`
-      );
-    }
-
-    const url = `ws://127.0.0.1:${port}/ws`;
-
-    const ws = await new Promise<WebSocket>((resolve, reject) => {
-      const sock = new WebSocket(url);
-      const onOpen = () => {
-        cleanup();
-        resolve(sock);
-      };
-      const onError = (ev: Event) => {
-        cleanup();
-        // 浏览器 WS 的 error 事件拿不到太多细节，但至少带上 url/port 便于诊断
-        reject(new Error(`Gateway WebSocket connect failed (${url})`));
-      };
-      const cleanup = () => {
-        sock.removeEventListener('open', onOpen);
-        sock.removeEventListener('error', onError);
-      };
-      sock.addEventListener('open', onOpen);
-      sock.addEventListener('error', onError);
-    });
-
-    ws.addEventListener('message', (ev) => {
-      let payload: GatewayWsEvent | null = null;
-      try {
-        payload = JSON.parse(String((ev as MessageEvent).data ?? '')) as GatewayWsEvent;
-      } catch {
-        return;
-      }
-      if (!payload || typeof payload !== 'object') return;
-
-      if (payload.type === 'gateway:log') {
-        return;
-      }
-
-      if (payload.type === 'chat:toolApproval') {
-        applyGatewayToolApproval(payload);
-        return;
-      }
-
-      if (payload.type === 'chat:delta') {
-        const p = pendingById.get(payload.requestId);
-        if (!p || p.conversationId !== payload.conversationId) return;
-        p.onDelta(String(payload.text ?? ''));
-        return;
-      }
-
-      if (payload.type === 'chat:final') {
-        clearToolApprovalForRequest(payload.requestId);
-        const p = pendingById.get(payload.requestId);
-        if (!p || p.conversationId !== payload.conversationId) return;
-        pendingById.delete(payload.requestId);
-        p.onFinal(String(payload.message ?? ''));
-        return;
-      }
-    });
-
-    ws.addEventListener('close', () => {
-      wsClient = null;
-      wsConnecting = null;
-    });
-
-    wsClient = ws;
-    wsConnecting = null;
-    return ws;
-  })();
-
-  try {
-    return await wsConnecting;
-  } catch (e) {
-    // 关键：第一次连接失败后必须清理 wsConnecting，否则后续永远复用“失败的 Promise”，导致一直报错。
-    wsClient = null;
-    wsConnecting = null;
-    throw e;
-  }
-}
-
 export const useChatStore = create<ChatState>()((set, get) => {
-  applyGatewayToolApproval = (payload) => {
+  wireChatGatewayHandlers({
+    onToolApproval: (payload) => {
     const tools = Array.isArray(payload.tools)
       ? payload.tools
           .filter((t) => t && typeof t === 'object')
@@ -588,9 +420,10 @@ export const useChatStore = create<ChatState>()((set, get) => {
         startedAt,
       },
     });
-  };
-  clearToolApprovalForRequest = (requestId) =>
-    set((s) => (s.toolApprovalPending?.requestId === requestId ? { toolApprovalPending: null } : {}));
+    },
+    onToolApprovalCleared: (requestId) =>
+      set((s) => (s.toolApprovalPending?.requestId === requestId ? { toolApprovalPending: null } : {})),
+  });
 
   return {
   conversations: [],
@@ -622,20 +455,12 @@ export const useChatStore = create<ChatState>()((set, get) => {
     const pending = get().toolApprovalPending;
     if (!pending) return;
     set({ toolApprovalPending: null });
-    void (async () => {
-      try {
-        const ws = await ensureGatewayWs();
-        const msg: GatewayWsSend = {
-          type: 'chat:toolApprovalResponse',
-          requestId: pending.requestId,
-          approvalId: pending.approvalId,
-          approved,
-        };
-        ws.send(JSON.stringify(msg));
-      } catch {
-        /* ignore */
-      }
-    })();
+    void sendGatewayChatMessage({
+      type: 'chat:toolApprovalResponse',
+      requestId: pending.requestId,
+      approvalId: pending.approvalId,
+      approved,
+    }).catch(() => undefined);
   },
 
   applyEvolutionChatUpdate: ({ conversationId, kind, message }) => {
@@ -853,10 +678,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
         if (abortSignal.aborted) return;
 
-        const useBuiltinStream =
-          typeof WebSocket !== 'undefined' &&
-          typeof window.electronAPI?.engineGatewayStatus === 'function' &&
-          typeof window.electronAPI?.engineGatewayStart === 'function';
+        const useBuiltinStream = shouldUseGatewayChatTransport();
 
         set({
           isClassifyingMode: true,
@@ -926,10 +748,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
             policyOverrides = null;
           }
           const requestId = uuidv4();
-          const ws = await ensureGatewayWs();
+          await ensureGatewayWs();
           if (abortSignal.aborted) return;
 
-          cancelOutboundWsForConversation(sessionId);
           const demuxer = new ReasoningStreamDemux();
           let deltaBuf = '';
           let rafId = 0;
@@ -948,9 +769,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
               scheduleSyncConversationsAfterTool(get);
             }
           };
-          pendingById.set(requestId, {
+          registerGatewayPendingRequest(sessionId, requestId, {
             conversationId: sessionId,
-            demuxer,
             onDelta: (text) => {
               deltaBuf += String(text ?? '');
               if (!rafId) rafId = requestAnimationFrame(flushDeltaBuf);
@@ -968,10 +788,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
                   streamingThinking: demuxer.getThinkingDisplay() || null,
                 });
               }
-              if (activeRequestByConversation.get(sessionId) === requestId) {
-                activeRequestByConversation.delete(sessionId);
-              }
-              clearToolApprovalForRequest(requestId);
               const t1 = performance.now();
               const reasoningPersist = demuxer.finalizeReasoning().trim() || null;
               void finalizeReply(
@@ -981,7 +797,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
               );
             },
           });
-          activeRequestByConversation.set(sessionId, requestId);
 
           logChatSendRenderer({
             conversationId: sessionId,
@@ -1010,7 +825,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
             modelId: effectiveModelId,
             ...(sendWorkspaceRoot ? { workspaceRoot: sendWorkspaceRoot } : {}),
           };
-          ws.send(JSON.stringify(msg));
+          await sendGatewayChatMessage(msg);
           return;
         }
 

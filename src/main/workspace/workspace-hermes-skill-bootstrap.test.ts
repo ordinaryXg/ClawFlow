@@ -8,8 +8,11 @@ import {
   WORKSPACE_SKILL_CREATOR_HERMES_SKILL_MD,
 } from './workspace-hermes-skill-bootstrap';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
+import { canLoadBetterSqlite3 } from '../../test-support/can-load-better-sqlite3';
 
-describe('workspace-hermes-skill-bootstrap', () => {
+const run = canLoadBetterSqlite3() ? describe : describe.skip;
+
+run('workspace-hermes-skill-bootstrap', () => {
   let dir: string;
   let warnSpy: jest.SpyInstance;
 

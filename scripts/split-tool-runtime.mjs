@@ -1,43 +1,53 @@
-import fs from 'node:fs';
+import fs from 'fs';
 
-const trPath = 'src/engine/tool-runtime.ts';
-let tr = fs.readFileSync(trPath, 'utf8');
-const marker = 'export function createDefaultToolRuntime(): ToolRuntime {';
-const i = tr.indexOf(marker);
-if (i < 0) {
-  console.error('marker missing');
-  process.exit(1);
-}
-const before = tr.slice(0, i).trimEnd();
-const body = tr.slice(i + marker.length);
-const regStart = body.indexOf('rt.register(');
-if (regStart < 0) {
-  console.error('rt.register missing');
-  process.exit(1);
-}
-const registerBlock = body.slice(regStart, body.lastIndexOf('return rt;')).trimEnd();
+const p = 'src/engine/tool-runtime.ts';
+const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
+const core = lines.slice(0, 393).join('\n');
+const defaultsBody = lines.slice(393).join('\n');
 
-const regFile = `/**
- * 内置工具注册；\`function.name\` 须与 \`workspace-tool-manifest-bridge\` 同步。
- */
-import { ToolRuntime } from './tool-runtime';
+const exportHelpers = [
+  'notifyWorkspaceTreeChanged',
+  'isBlockedHermesMemoryDiskWrite',
+  'truncateForToolLog',
+  'normalizePathForCompare',
+  'assertNoExistingPathAliases',
+  'assertResolvedPathStillInsideRoot',
+  'resolveRealPathInsideWorkspace',
+  'sha256',
+  'sanitizeRelForOp',
+  'writeOpRecord',
+  'readOpMeta',
+  'confirmRequiredMessage',
+];
 
-export function registerDefaultTools(rt: ToolRuntime): void {
-  ${registerBlock}
+let coreOut = core;
+for (const name of exportHelpers) {
+  coreOut = coreOut.replace(
+    new RegExp(`^(async )?function ${name}\\b`, 'm'),
+    (_, asyncKw) => `export ${asyncKw ?? ''}function ${name}`
+  );
 }
+// core 仅保留类与路径/校验辅助，imports 由后续手工精简
+fs.writeFileSync('src/engine/tool-runtime-core.ts', coreOut);
+
+const importLines = lines
+  .slice(0, 51)
+  .filter((l) => !l.includes('toolNameAllowedByWorkspaceManifest') && !l.includes('ToolCall'))
+  .join('\n');
+
+const defaultsImports = `${importLines}
+import {
+  ToolRuntime,
+  ${exportHelpers.join(',\n  ')},
+} from './tool-runtime-core';
+
 `;
-fs.writeFileSync('src/engine/register-default-tools.ts', regFile);
 
-const newTr = `${before}
-
-import { registerDefaultTools } from './register-default-tools';
-
-/** 注册的 \`function.name\` 须与 \`shared/workspace-tool-manifest-bridge.ts\` 中映射同步。 */
-export function createDefaultToolRuntime(): ToolRuntime {
-  const rt = new ToolRuntime();
-  registerDefaultTools(rt);
-  return rt;
-}
-`;
-fs.writeFileSync(trPath, newTr);
-console.log('ok', registerBlock.length);
+fs.writeFileSync('src/engine/tool-runtime-default-tools.ts', defaultsImports + defaultsBody);
+fs.writeFileSync(
+  'src/engine/tool-runtime.ts',
+  `export { ToolRuntime, type ToolExecutionContext, type ToolResult } from './tool-runtime-core';
+export { createDefaultToolRuntime } from './tool-runtime-default-tools';
+`
+);
+console.log('split ok', lines.length);

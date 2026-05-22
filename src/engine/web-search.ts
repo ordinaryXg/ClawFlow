@@ -744,7 +744,7 @@ export async function runClawFlowWebSearch(
       details: nf.details ?? null,
       note: '如在公司/校园网，请优先设置 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量；ClawFlow 已支持代理与轻量重试。',
       clawflow_search_readme_zh:
-        '本应用 web_search：可在系统设置中选择搜索源。支持博查 Bocha、Brave Search API、自建 SearXNG（/search?format=json）、以及无密钥 DuckDuckGo HTML（易限流）。抓取具体站点请用 web_scrape 或内嵌浏览器。',
+        '本应用 web_search：可在系统设置中选择搜索源。支持博查 Bocha、Brave Search API、自建 SearXNG（/search?format=json）、以及无密钥 DuckDuckGo HTML（易限流）。抓取具体站点请用 web_scrape。',
     } as Record<string, unknown>;
   };
 

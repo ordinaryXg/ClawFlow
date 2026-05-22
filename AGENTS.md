@@ -53,16 +53,27 @@ src/
 1. 顶层 `import`：依赖的引擎、工作区、子代理、抓取、托盘、消息等模块。
 2. **`registerMessagingIPC()`**：在 `app.whenReady` 之前执行（注释说明原因）。
 3. **便签 / 壳紧凑布局**：`shellCompactByWindowId`、`broadcastStickyDetachedPaths`、`bumpMainShellWorkspaceIfSameAsSatelliteBinding`、`applyWorkspaceForFocusedWindow`。
-4. **尽早注册的 IPC**：`registerShellViewWindowIPC`、`registerWorkspaceImportExternalPathsIPC`、`registerWorkspaceStatAbsolutePathIPC`、`registerAppPathAndIconIPC`；待办/抓取见 `main/ipc/register-todo-scrape-ipc.ts`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
-5. **`registerWorkspaceIPC()`**（`main/ipc/workspace-ipc.ts`）：工作区、剪贴板、Hermes 技能、记忆 FTS 等 handler。
-6. **`registerWindowControlIpcOnce` / `buildBaseBrowserWindow` / `registerStickySatelliteIPC`**：窗口与卫星便签。
-7. **`app.whenReady()`**：读偏好、初始化工作区、注册引擎 IPC、Gateway、`createWindow()`、飞书长连等。
+4. **尽早注册的 IPC**（`main/ipc/`）：`registerShellViewWindowIPC`、`registerWorkspaceEarlyIPC`、`registerAppPathAndIconIPC`；待办/抓取见 `register-todo-scrape-ipc.ts`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
+5. **`registerWorkspaceIPC()`**（`workspace-ipc.ts`）：工作区、剪贴板、Hermes 技能、记忆 FTS 等 handler。
+6. **`registerWindowControlIpcOnce` / `buildBaseBrowserWindow` / `registerStickySatelliteIPC`**：窗口与卫星便签（卫星 IPC 在 `register-sticky-satellite-ipc.ts`）。
+7. **`app.whenReady()`**：`loadMainUiPrefsOnStartup`、`applyActiveWorkspace`（勿手写 `setActiveWorkspace` + `syncActiveWorkspaceRootToEngine`）、`registerClawFlowIPC`、`registerGatewayIPC`、`registerAppSettingsIPC`、`createWindow()`、飞书长连等。
 
 应用菜单与菜单语言：`src/main/application-menu.ts`（`setupApplicationMenu`、`getAppLanguage`、`setAppLanguageFromRenderer`）。
 
 活动工作区切换请用 `main/workspace/active-workspace-sync.ts`（`applyActiveWorkspace` / `syncActiveWorkspaceRootToEngine`），勿在多处手写 `setActiveWorkspaceRoot` + `syncClawFlowEngineWorkspaceRoot`。
 
-引擎 IPC 见 `engine/engine-ipc.ts`（`registerClawFlowIPC`）；`index.ts` 在 `whenReady` 内调用。后续可将仍留在 `index.ts` 的早期 workspace handler（import/stat 等）继续并入 `main/ipc/`。
+引擎 IPC 见 `engine/engine-ipc.ts`（`registerClawFlowIPC`）；`index.ts` 在 `whenReady` 内调用。
+
+### 聊天传输（渲染 → 引擎）
+
+| 路径 | 何时使用 | 实现 |
+|------|----------|------|
+| **主路径** | Electron 桌面端且存在 `engineGateway*` IPC | `store/modules/chat-gateway-client.ts` → Gateway WebSocket（`chat:send` / 流式 delta） |
+| **回退** | 无 WebSocket 或 Gateway IPC（如纯浏览器调试） | `engine:sendMessage`（`chatStore` 非流式 + 前端 reveal 动画） |
+
+新功能应只扩展 Gateway WS 协议；`engine:sendMessage` 保留作兼容，不新增并行行为。
+
+工具注册：`engine/tool-runtime-core.ts`（`ToolRuntime` 类）+ `tool-runtime-default-tools.ts`（`createDefaultToolRuntime`）。
 
 ## 渲染层
 
@@ -81,7 +92,8 @@ src/
 ```bash
 npm start          # electron-forge 开发模式
 npm run lint
-npm test
+npm test           # 依赖 better-sqlite3 的用例在 Node ABI 不匹配时会 skip（见 test-support/can-load-better-sqlite3.ts）
+npm run rebuild:native   # Jest 需与本地 Node 对齐 native 模块时
 ```
 
 ## 环境变量（节选）
