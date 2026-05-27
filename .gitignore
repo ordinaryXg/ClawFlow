@@ -88,6 +88,12 @@ typings/
 # Vite
 .vite/
 
+# vscode
+.vscode/
+
+# cursor
+.cursor/
+
 # Electron-Forge
 out/
 pack-output/
