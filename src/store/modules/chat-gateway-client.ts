@@ -1,6 +1,6 @@
 /**
  * 内置 Gateway WebSocket 客户端（渲染进程）。
- * 主路径聊天走 WS；`engine:sendMessage` 仅作非 Electron / 无 Gateway 时的回退（见 AGENTS.md）。
+ * 主路径聊天走 WS；`engine:sendMessage` 仅作非 Electron / 无 Gateway 时的回退（见根目录 README.md「聊天传输」）。
  */
 
 export type GatewayWsEvent =

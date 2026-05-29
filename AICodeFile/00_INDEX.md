@@ -8,7 +8,7 @@
 2. `代码架构.md` — 进程分层、目录、IPC、数据落盘、引擎与 Hermes
 3. `功能说明.md` — 能力清单（已落地 / 部分 / 未实现 + 证据速查）
 
-协作者速查另见仓库根目录 `AGENTS.md`（含 **聊天传输**：Gateway WS 主路径、`engine:sendMessage` 回退）。
+协作者速查另见仓库根目录 `README.md`（含 **聊天传输**：Gateway WS 主路径、`engine:sendMessage` 回退）。
 
 ## 文件地图
 

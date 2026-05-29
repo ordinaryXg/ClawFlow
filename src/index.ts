@@ -1,6 +1,6 @@
 /**
  * Electron 主进程入口（Webpack `main` entry）。
- * 职责与阅读顺序见仓库根目录 `AGENTS.md`；应用菜单与语言见 `src/main/application-menu.ts`。
+ * 职责与阅读顺序见仓库根目录 `README.md`；应用菜单与语言见 `src/main/application-menu.ts`。
  */
 import './main/win-console-utf8';
 import { app, BrowserWindow } from 'electron';
