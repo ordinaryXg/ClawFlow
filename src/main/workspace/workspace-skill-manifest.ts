@@ -13,7 +13,7 @@ import {
 } from '../../shared/workspace-skill-manifest';
 import { listWorkspaceHermesSkills } from './workspace-skills-read';
 import { readDisabledSkillRootsSync } from './workspace-skills-ui-state';
-import { workspaceSkillsDirAbs, workspaceToolDirAbs } from './workspace-agent-layout';
+import { workspaceSkillsDirAbs } from './workspace-agent-layout';
 import { resolvePathInsideWorkspace } from './workspace-explorer';
 
 function normRoot(rel: string): string {
@@ -24,10 +24,7 @@ function normRoot(rel: string): string {
 }
 
 function manifestPathCandidates(workspaceRoot: string): string[] {
-  return [
-    path.join(workspaceSkillsDirAbs(workspaceRoot), 'skillManifest.json'),
-    path.join(workspaceToolDirAbs(workspaceRoot), 'skillManifest.json'),
-  ];
+  return [path.join(workspaceSkillsDirAbs(workspaceRoot), 'skillManifest.json')];
 }
 
 function manifestWritePath(workspaceRoot: string): string {

@@ -26,7 +26,12 @@ export const WORKSPACE_CAPABILITY_TOOL_NAMES: Record<WorkspaceToolId, readonly s
   web_scrape: ['web_scrape'],
   git: ['workspace_git_status', 'workspace_git_diff', 'workspace_git_log'],
   shell: ['workspace_run_shell'],
-  todos: ['workspace_todo_list', 'workspace_todo_create', 'workspace_todo_update', 'workspace_todo_remove'],
+  scheduling: [
+    'workspace_schedule_list',
+    'workspace_schedule_create',
+    'workspace_schedule_update',
+    'workspace_schedule_remove',
+  ],
   skills: [
     'workspace_skill_view',
     'workspace_skill_create',

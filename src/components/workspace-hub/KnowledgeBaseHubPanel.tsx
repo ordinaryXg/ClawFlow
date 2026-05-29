@@ -185,7 +185,7 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
     if (kind === 'knowledge_ingest_md') return t('chat.workspaceHub.kbTagIngest');
     if (kind === 'conversation_summary') return t('chat.workspaceHub.kbTagChat');
     if (kind === 'knowledge_md' || kind === 'knowledge_txt') return t('chat.workspaceHub.kbTagKnowledge');
-    if (kind === 'hermes_memory' || kind === 'memory_md') return t('chat.workspaceHub.kbTagMemory');
+    if (kind === 'hermes_memory') return t('chat.workspaceHub.kbTagMemory');
     if (kind.startsWith('skill')) return t('chat.workspaceHub.kbTagSkill');
     return kind;
   };

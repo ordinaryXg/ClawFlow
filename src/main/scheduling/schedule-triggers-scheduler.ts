@@ -2,8 +2,8 @@ import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as workspaceService from '../workspace/workspace-service';
 import { broadcastToWorkspaceWindows } from '../broadcast/workspace-window-broadcast';
-import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from './todo-triggers-service';
-import type { TodoTriggerRecord } from '../../shared/todo-triggers';
+import { readScheduleTriggers, writeScheduleTriggers, ensureScheduleNextFire } from './schedule-triggers-service';
+import type { ScheduleTriggerRecord } from '../../shared/schedule-triggers';
 import { stickySatellitePathByWindowId } from '../sticky-satellite-windows';
 import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 
@@ -24,7 +24,7 @@ function clearTimersForWorkspace(workspaceRoot: string): void {
   }
 }
 
-function broadcastFire(workspaceRoot: string, t: TodoTriggerRecord): void {
+function broadcastFire(workspaceRoot: string, t: ScheduleTriggerRecord): void {
   const resolved = path.resolve(workspaceRoot);
   const payload = {
     workspaceRoot: resolved,
@@ -33,18 +33,18 @@ function broadcastFire(workspaceRoot: string, t: TodoTriggerRecord): void {
     text: t.action.text,
     submitToModel: t.action.submitToModel,
   };
-  broadcastToWorkspaceWindows(resolved, 'todo-trigger:fired', payload);
+  broadcastToWorkspaceWindows(resolved, 'schedule-trigger:fired', payload);
 }
 
 async function applyPostFireMutation(workspaceRoot: string, triggerId: string): Promise<void> {
-  const list = await readTodoTriggers(workspaceRoot);
+  const list = await readScheduleTriggers(workspaceRoot);
   const idx = list.findIndex((x) => x.id === triggerId);
   if (idx < 0) return;
   const t = list[idx];
   const now = Date.now();
   const fireSnapshot = String(t.action?.text ?? '');
   const fireSubmit = Boolean(t.action?.submitToModel);
-  let next: TodoTriggerRecord = {
+  let next: ScheduleTriggerRecord = {
     ...t,
     lastFiredAt: now,
     updatedAt: now,
@@ -78,7 +78,6 @@ async function applyPostFireMutation(workspaceRoot: string, triggerId: string): 
         };
       }
     } else {
-      // cron：由 ensureScheduleNextFire 计算下一次触发；consumeOnFire 为 true 时也可一次性消费
       next = ensureScheduleNextFire({ ...next, trigger: { ...t.trigger, nextFireAt: undefined } }, now);
       if (next.consumeOnFire) {
         next = {
@@ -92,32 +91,31 @@ async function applyPostFireMutation(workspaceRoot: string, triggerId: string): 
   }
 
   list[idx] = next;
-  await writeTodoTriggers(workspaceRoot, list);
+  await writeScheduleTriggers(workspaceRoot, list);
 }
 
 async function handleFire(workspaceRoot: string, triggerId: string): Promise<void> {
   timeoutByKey.delete(timerKey(workspaceRoot, triggerId));
-  const list = await readTodoTriggers(workspaceRoot);
+  const list = await readScheduleTriggers(workspaceRoot);
   const t = list.find((x) => x.id === triggerId);
   if (!t || !t.enabled || t.status !== 'pending' || t.trigger.kind !== 'schedule') {
-    rescheduleTodoTriggersForWorkspace(workspaceRoot);
+    rescheduleScheduleTriggersForWorkspace(workspaceRoot);
     return;
   }
-  /** 先落盘再广播，避免渲染进程 load 仍读到「触发前」快照并随后用旧列表 saveAll 覆盖回执字段 */
   await applyPostFireMutation(workspaceRoot, triggerId);
   broadcastFire(workspaceRoot, t);
   const repeat = t.trigger.kind === 'schedule' ? t.trigger.repeat : '';
   void appendWorkspaceChangeLog(workspaceRoot, {
-    kind: 'todo_triggered',
-    title: `待办触发：${(t.title || '未命名').slice(0, 80)}`,
+    kind: 'schedule_triggered',
+    title: `周期调度触发：${(t.title || '未命名').slice(0, 80)}`,
     userPreview: `触发器 ID：${t.id}\n计划：${repeat}\n\n送达正文：\n${String(t.action?.text ?? '').slice(0, 1200)}`,
     assistantExcerpt: `提交模型跟进：${t.action.submitToModel ? '是' : '否'}`,
     meta: { triggerId: t.id, title: t.title },
   }).catch(() => undefined);
-  rescheduleTodoTriggersForWorkspace(workspaceRoot);
+  rescheduleScheduleTriggersForWorkspace(workspaceRoot);
 }
 
-export function scheduleOneTrigger(workspaceRoot: string, t: TodoTriggerRecord): void {
+export function scheduleOneTrigger(workspaceRoot: string, t: ScheduleTriggerRecord): void {
   if (!t.enabled || t.status !== 'pending' || t.trigger.kind !== 'schedule') return;
   const prepared = ensureScheduleNextFire(t);
   const tr = prepared.trigger;
@@ -132,18 +130,18 @@ export function scheduleOneTrigger(workspaceRoot: string, t: TodoTriggerRecord):
   timeoutByKey.set(k, to);
 }
 
-export function rescheduleTodoTriggersForWorkspace(workspaceRoot: string): void {
+export function rescheduleScheduleTriggersForWorkspace(workspaceRoot: string): void {
   const root = path.resolve(workspaceRoot);
   clearTimersForWorkspace(root);
   void (async () => {
-    const raw = await readTodoTriggers(root);
+    const raw = await readScheduleTriggers(root);
     for (const t of raw) {
       scheduleOneTrigger(root, t);
     }
   })();
 }
 
-export function rescheduleAllTodoTriggers(): void {
+export function rescheduleAllScheduleTriggers(): void {
   for (const [k, to] of [...timeoutByKey.entries()]) {
     clearTimeout(to);
     timeoutByKey.delete(k);
@@ -158,6 +156,6 @@ export function rescheduleAllTodoTriggers(): void {
     roots.add(path.resolve(p));
   }
   for (const r of roots) {
-    rescheduleTodoTriggersForWorkspace(r);
+    rescheduleScheduleTriggersForWorkspace(r);
   }
 }

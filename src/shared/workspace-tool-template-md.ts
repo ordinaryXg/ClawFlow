@@ -7,7 +7,7 @@ import docsTemplate from './workspace-tool-docs/docs.md';
 import browserTemplate from './workspace-tool-docs/browser.md';
 import shellTemplate from './workspace-tool-docs/shell.md';
 import gitTemplate from './workspace-tool-docs/git.md';
-import todosTemplate from './workspace-tool-docs/todos.md';
+import schedulingTemplate from './workspace-tool-docs/scheduling.md';
 import skillsTemplate from './workspace-tool-docs/skills.md';
 import knowledgeBaseTemplate from './workspace-tool-docs/knowledge_base.md';
 import feishuTemplate from './workspace-tool-docs/feishu.md';
@@ -55,8 +55,8 @@ export function buildWorkspaceToolGitMd(): string {
   return renderToolDoc(gitTemplate);
 }
 
-export function buildWorkspaceToolTodosMd(): string {
-  return renderToolDoc(todosTemplate);
+export function buildWorkspaceToolSchedulingMd(): string {
+  return renderToolDoc(schedulingTemplate);
 }
 
 export function buildWorkspaceToolSkillsMd(): string {

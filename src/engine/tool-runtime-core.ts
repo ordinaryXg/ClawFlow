@@ -15,11 +15,7 @@ export function notifyWorkspaceTreeChanged(workspaceRoot: string): void {
 }
 
 export function isBlockedHermesMemoryDiskWrite(rel: string): boolean {
-  const n = String(rel ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
-  if (isHermesMemoryRel(n)) return true;
-  if (n === '.agent/.memory' || n.startsWith('.agent/.memory/')) return true;
-  if (n === '.agent/.hermes/notes' || n.startsWith('.agent/.hermes/notes/')) return true;
-  return false;
+  return isHermesMemoryRel(String(rel ?? '').replace(/\\/g, '/').replace(/^\/+/, ''));
 }
 
 export type ToolExecutionContext = {

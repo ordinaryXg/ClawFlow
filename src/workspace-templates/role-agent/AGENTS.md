@@ -44,15 +44,15 @@ ClawFlow 将 **Agent 角色文件** 放在工作区 `**.agent/.roleAgent/`**（�
 
 ## 工具与工作区能力
 
-由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；未开启的工具不会下发给模型。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md` / `feishu.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
+由 `**.agent/.tool/manifest.json`**（`version: 2`）控制各能力开关；未开启的工具不会下发给模型。总览与阅读顺序见同目录 `**TOOLS.md`**（本仓库为 `.agent/.roleAgent/TOOLS.md`）；各工具契约见 `.agent/.tool/` 下 `**docs.md` / `browser.md` / `git.md` / `shell.md` / `scheduling.md` / `skills.md` / `knowledge_base.md` / `feishu.md**`。严格遵守描述与参数，且仅使用本回合实际下发给你的工具。
 
 > **系统级子 Agent**（Skill Agent、认知分配、预期规划）由应用在后台调度，数据在应用缓存而非工作区 `.subagent/`；主 Agent **无需**也**无法**通过工具委派它们。
 
-### 待办与调度（`tools.todos`）
+### 周期调度（`tools.scheduling`）
 
 - **本质**：**无人格**的触发器与任务登记——到点写入会话、可重复；适合「**已经能说清的一条指令** + **时间/间隔**」。
 - **何时用**：提醒、周期检查、把重复动作钉在时间表上；或把已拆好的步骤做成可勾选的跟踪项。
-- **边界**：待办**不**替你澄清模糊需求、**不**承担大块推理与仓库级实施；复杂需求由主会话直接处理，待办只做**触发与跟踪**。
+- **边界**：周期调度**不**替你澄清模糊需求、**不**承担大块推理与仓库级实施；复杂需求由主会话直接处理，调度只做**触发与跟踪**。
 
 ### 其他能力（按需阅读对应 md）
 

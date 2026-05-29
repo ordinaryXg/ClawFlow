@@ -31,8 +31,8 @@ describe('lastRoundCountsTowardEvolution', () => {
     expect(lastRoundCountsTowardEvolution(msgs)).toBe(true);
   });
 
-  it('ignores user_todo channel', () => {
-    const msgs: StoredMessage[] = [u('t', 'user_todo'), a('a')];
+  it('ignores user_scheduling_auto channel', () => {
+    const msgs: StoredMessage[] = [u('t', 'user_scheduling_auto'), a('a')];
     expect(lastRoundCountsTowardEvolution(msgs)).toBe(false);
   });
 
@@ -57,8 +57,9 @@ describe('lastRoundCountsTowardEvolution', () => {
 });
 
 describe('isEvolutionCountedUserMessage', () => {
-  it('legacy user without channel counts', () => {
-    expect(isEvolutionCountedUserMessage(u('x'))).toBe(true);
+  it('requires explicit user channel', () => {
+    expect(isEvolutionCountedUserMessage(u('x'))).toBe(false);
+    expect(isEvolutionCountedUserMessage(u('x', 'user_manual'))).toBe(true);
   });
 });
 

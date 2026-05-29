@@ -8,10 +8,7 @@ describe('hermes-skill-index-hooks', () => {
     expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.skills')).toBe(true);
     expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.skills/foo/SKILL.md')).toBe(true);
     expect(isWorkspaceRelativeUnderHermesSkillTree('.agent\\.skills\\foo\\SKILL.md')).toBe(true);
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/skills')).toBe(true);
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/skills/foo/SKILL.md')).toBe(true);
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow/skills/foo/SKILL.md')).toBe(true);
-    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.clawflow/skills/foo/SKILL.md')).toBe(true);
+    expect(isWorkspaceRelativeUnderHermesSkillTree('.agent/.roleAgent/AGENTS.md')).toBe(false);
     expect(isWorkspaceRelativeUnderHermesSkillTree('.clawflow/other')).toBe(false);
   });
 
@@ -25,7 +22,7 @@ describe('hermes-skill-index-hooks', () => {
     ).toBe(true);
     expect(
       patchSummaryTouchesHermesSkillTree({
-        added: ['.agent/.clawflow/skills/b/SKILL.md'],
+        added: ['.agent/.skills/b/SKILL.md'],
         modified: [],
         deleted: [],
       })

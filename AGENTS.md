@@ -29,10 +29,10 @@ src/
     electron-workspace-context.ts
     sticky-satellite-windows.ts
     workspace/            # 注册表、`.agent` 引导、Git、技能；`active-workspace-sync.ts` 统一活动根
-    ipc/                  # workspace-ipc.ts、register-todo-scrape-ipc.ts 等
+    ipc/                  # workspace-ipc.ts、register-scheduling-scrape-ipc.ts 等
     broadcast/            # 按工作区向窗口广播（workspace-window-broadcast.ts）
     system-agents/        # 应用缓存内 Skill / 认知分配 / 预期规划
-    todo/                 # 待办触发器
+    scheduling/           # 周期调度触发器
     scrape/               # 网页抓取任务
     skill/                # Skill Agent；轮次 totalUserManualRounds 与进化触发见 skill-evolution-scheduler.ts
     shell/                # 托盘、主窗偏好、图标、桌面钉、主壳工作区记忆
@@ -53,7 +53,7 @@ src/
 1. 顶层 `import`：依赖的引擎、工作区、子代理、抓取、托盘、消息等模块。
 2. **`registerMessagingIPC()`**：在 `app.whenReady` 之前执行（注释说明原因）。
 3. **便签 / 壳紧凑布局**：`shellCompactByWindowId`、`broadcastStickyDetachedPaths`、`bumpMainShellWorkspaceIfSameAsSatelliteBinding`、`applyWorkspaceForFocusedWindow`。
-4. **尽早注册的 IPC**（`main/ipc/`）：`registerShellViewWindowIPC`、`registerWorkspaceEarlyIPC`、`registerAppPathAndIconIPC`；待办/抓取见 `register-todo-scrape-ipc.ts`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
+4. **尽早注册的 IPC**（`main/ipc/`）：`registerShellViewWindowIPC`、`registerWorkspaceEarlyIPC`、`registerAppPathAndIconIPC`；周期调度/抓取见 `register-scheduling-scrape-ipc.ts`（避免渲染进程 invoke 早于 `whenReady` 链尾部）。
 5. **`registerWorkspaceIPC()`**（`workspace-ipc.ts`）：工作区、剪贴板、Hermes 技能、记忆 FTS 等 handler。
 6. **`registerWindowControlIpcOnce` / `buildBaseBrowserWindow` / `registerStickySatelliteIPC`**：窗口与卫星便签（卫星 IPC 在 `register-sticky-satellite-ipc.ts`）。
 7. **`app.whenReady()`**：`loadMainUiPrefsOnStartup`、`applyActiveWorkspace`（勿手写 `setActiveWorkspace` + `syncActiveWorkspaceRootToEngine`）、`registerClawFlowIPC`、`registerGatewayIPC`、`registerAppSettingsIPC`、`createWindow()`、飞书长连等。
@@ -83,7 +83,7 @@ src/
 
 ## IPC 约定
 
-- Channel 多为 **`领域:动作`**（如 `workspace:listDir`、`todoTriggers:list`）。
+- Channel 多为 **`领域:动作`**（如 `workspace:listDir`、`scheduleTriggers:list`）。
 - 工作区相对路径类 API 通常先 `resolveWorkspaceRootForWebContents(event.sender)` 再操作磁盘。
 - **`.agent/`** 位于**工作区根目录**；**`.clawflow-launcher-stash/`** 在应用缓存 `workspaces/<sha256>/`（见 `workspace-blob-store.ts`）。应用启动时**不**自动创建或绑定工作区；用户从侧栏添加文件夹后才会 `setActive`。打开工作区时会迁移 stash、清理遗留 **`.subagent/`**（工作区委派已移除；系统子 Agent 在应用缓存）。
 

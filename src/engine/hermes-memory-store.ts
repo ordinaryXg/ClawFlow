@@ -22,13 +22,6 @@ export function normalizeHermesMemoryRel(rel: string): string {
     .trim()
     .replace(/\\/g, '/')
     .replace(/^\/+/, '');
-  if (n === '.agent/.memory' || n.startsWith('.agent/.memory/')) {
-    return `${HERMES_MEMORY_REL_PREFIX}${n.slice('.agent/.memory'.length)}`;
-  }
-  if (n === '.agent/.hermes/notes' || n.startsWith('.agent/.hermes/notes/')) {
-    const tail = n.slice('.agent/.hermes/notes'.length);
-    return tail ? `${HERMES_MEMORY_REL_PREFIX}${tail}` : HERMES_MEMORY_REL_PREFIX;
-  }
   if (n === HERMES_MEMORY_REL_PREFIX || n.startsWith(`${HERMES_MEMORY_REL_PREFIX}/`)) {
     return n;
   }
@@ -166,72 +159,6 @@ export function snapshotHermesMemoryDocuments(workspaceRoot: string): Record<str
     /* empty */
   }
   return out;
-}
-
-/** 一次性：将遗留 notes 目录下 `*.md` 导入 DB。 */
-export function importLegacyNotesDirToHermesMemorySync(workspaceRoot: string, notesDirOverride?: string): number {
-  const root = path.resolve(workspaceRoot);
-  const notesDir =
-    notesDirOverride?.trim() ||
-    [path.join(root, '.agent', '.hermes', 'notes-legacy-import'), path.join(root, '.agent', '.hermes', 'notes')]
-      .find((d) => {
-        try {
-          fs.accessSync(d);
-          return true;
-        } catch {
-          return false;
-        }
-      }) ||
-    '';
-  if (!notesDir) return 0;
-  let imported = 0;
-  const walk = (dir: string) => {
-    let names: string[];
-    try {
-      names = fs.readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const name of names) {
-      const abs = path.join(dir, name);
-      const st = fs.statSync(abs);
-      if (st.isDirectory()) {
-        walk(abs);
-        continue;
-      }
-      if (!name.toLowerCase().endsWith('.md')) continue;
-      const relFromNotes = path.relative(notesDir, abs).split(path.sep).join('/');
-      if (relFromNotes.startsWith('_chat-digest/')) {
-        const id = path.basename(relFromNotes, '.md');
-        const rel = `${HERMES_MEMORY_REL_PREFIX}/_chat-digest/${id}.md`;
-        const raw = fs.readFileSync(abs, 'utf8');
-        const parsed = parseWorkspaceMemoryMarkdown(raw);
-        upsertHermesMemoryDocument(root, {
-          relativePath: rel,
-          title: parsed.title,
-          abstract: parsed.abstract,
-          overview: parsed.overview,
-          body: parsed.body,
-        });
-        imported++;
-        continue;
-      }
-      if (name === 'README.md' || name === 'INDEX.md' || name === 'memory-note.example.md') continue;
-      const rel = `${HERMES_MEMORY_REL_PREFIX}/${relFromNotes}`;
-      const raw = fs.readFileSync(abs, 'utf8');
-      const parsed = parseWorkspaceMemoryMarkdown(raw);
-      const res = upsertHermesMemoryDocument(root, {
-        relativePath: rel,
-        title: parsed.title,
-        abstract: parsed.abstract,
-        overview: parsed.overview,
-        body: parsed.body,
-      });
-      if (res.ok) imported++;
-    }
-  };
-  walk(notesDir);
-  return imported;
 }
 
 export function seedHermesMemoryReadmeIfEmpty(workspaceRoot: string): void {

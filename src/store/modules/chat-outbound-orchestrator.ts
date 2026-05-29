@@ -5,7 +5,7 @@ export const DEFAULT_OUTBOUND_MERGE_WINDOW_MS = 3000;
 
 export type SendMessageOpts = {
   userChannel?: string;
-  todoFireReceipt?: { triggerId: string };
+  scheduleFireReceipt?: { triggerId: string };
 };
 
 export type PendingSendItem = {

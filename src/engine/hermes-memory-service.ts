@@ -12,8 +12,8 @@ import {
   type HermesMemorySyncResult,
 } from './hermes-memory-db';
 import {
+  HERMES_MEMORY_REL_PREFIX,
   WORKSPACE_HERMES_INDEX_REL,
-  WORKSPACE_HERMES_NOTES_REL,
   WORKSPACE_HERMES_REL,
   workspaceHermesIndexDirAbs,
 } from '../main/workspace/workspace-hermes-layout';
@@ -24,7 +24,7 @@ export function hermesPaths(workspaceRoot: string) {
   const root = String(workspaceRoot ?? '').trim();
   return {
     hermesRel: WORKSPACE_HERMES_REL,
-    memoryRel: WORKSPACE_HERMES_NOTES_REL,
+    memoryRel: HERMES_MEMORY_REL_PREFIX,
     indexRel: WORKSPACE_HERMES_INDEX_REL,
     indexDir: workspaceHermesIndexDirAbs(root),
     dbPath: getHermesMemoryDbPath(root),

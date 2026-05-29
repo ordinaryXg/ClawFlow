@@ -1,4 +1,4 @@
-.cf-todoPanel {
+.cf-schedulingPanel {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -7,20 +7,20 @@
   padding: 0 8px 8px;
 }
 
-.cf-todoPanel__empty {
+.cf-schedulingPanel__empty {
   padding: 12px;
   font-size: 12px;
   color: var(--muted);
 }
 
-.cf-todoPanel__toolbar {
+.cf-schedulingPanel__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   flex-shrink: 0;
 }
 
-.cf-todoPanel__split {
+.cf-schedulingPanel__split {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -28,7 +28,7 @@
   align-items: stretch;
 }
 
-.cf-todoPanel__listCol {
+.cf-schedulingPanel__listCol {
   width: 38%;
   min-width: 120px;
   max-width: 220px;
@@ -39,12 +39,12 @@
   padding-right: 8px;
 }
 
-.cf-todoPanel__gutter {
+.cf-schedulingPanel__gutter {
   width: 0;
   flex-shrink: 0;
 }
 
-.cf-todoPanel__list {
+.cf-schedulingPanel__list {
   flex: 1;
   min-height: 48px;
   overflow: auto;
@@ -53,17 +53,17 @@
   gap: 2px;
 }
 
-.cf-todoPanel__list--unified {
+.cf-schedulingPanel__list--unified {
   min-height: 120px;
 }
 
-.cf-todoPanel__listEmpty {
+.cf-schedulingPanel__listEmpty {
   padding: 10px 6px;
   font-size: 11px;
   line-height: 1.45;
 }
 
-.cf-todoPanel__row {
+.cf-schedulingPanel__row {
   display: flex;
   align-items: stretch;
   gap: 2px;
@@ -75,20 +75,20 @@
   font-size: 12px;
 }
 
-.cf-todoPanel__row:hover {
+.cf-schedulingPanel__row:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.cf-todoPanel__row--active {
+.cf-schedulingPanel__row--active {
   border-color: rgba(45, 179, 160, 0.5);
   background: rgba(45, 179, 160, 0.12);
 }
 
-.cf-todoPanel__row--off {
+.cf-schedulingPanel__row--off {
   opacity: 0.55;
 }
 
-.cf-todoPanel__rowSelect {
+.cf-schedulingPanel__rowSelect {
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -101,14 +101,14 @@
   font: inherit;
 }
 
-.cf-todoPanel__rowTitleLine {
+.cf-schedulingPanel__rowTitleLine {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.cf-todoPanel__rowTitle {
+.cf-schedulingPanel__rowTitle {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -116,7 +116,7 @@
   white-space: nowrap;
 }
 
-.cf-todoPanel__rowStatus {
+.cf-schedulingPanel__rowStatus {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -125,28 +125,28 @@
   color: var(--muted);
 }
 
-.cf-todoPanel__statusLabel {
+.cf-schedulingPanel__statusLabel {
   white-space: nowrap;
 }
 
-.cf-todoPanel__statusDot {
+.cf-schedulingPanel__statusDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.cf-todoPanel__statusDot--running {
+.cf-schedulingPanel__statusDot--running {
   background: rgba(63, 185, 80, 0.95);
   box-shadow: 0 0 0 1px rgba(30, 91, 69, 0.35);
 }
 
-.cf-todoPanel__statusDot--archived {
+.cf-schedulingPanel__statusDot--archived {
   background: rgba(248, 81, 73, 0.92);
   box-shadow: 0 0 0 1px rgba(120, 40, 40, 0.35);
 }
 
-.cf-todoPanel__rowDel {
+.cf-schedulingPanel__rowDel {
   flex-shrink: 0;
   width: 30px;
   min-width: 30px;
@@ -162,48 +162,48 @@
   font-size: 13px;
 }
 
-.cf-todoPanel__rowDel:hover {
+.cf-schedulingPanel__rowDel:hover {
   color: var(--text);
   background: rgba(200, 72, 72, 0.16);
 }
 
-.cf-todoPanel__rowDelSpacer {
+.cf-schedulingPanel__rowDelSpacer {
   flex-shrink: 0;
   width: 30px;
   min-width: 30px;
 }
 
-.cf-todoPanel__receipt {
+.cf-schedulingPanel__receipt {
   margin-top: 8px;
   padding: 10px 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.12);
 }
-:root[data-theme='light'] .cf-todoPanel__receipt {
+:root[data-theme='light'] .cf-schedulingPanel__receipt {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.cf-todoPanel__receiptHead {
+.cf-schedulingPanel__receiptHead {
   font-size: 11px;
   font-weight: 700;
   margin-bottom: 6px;
   color: var(--text);
 }
 
-.cf-todoPanel__receiptTime {
+.cf-schedulingPanel__receiptTime {
   margin-bottom: 8px;
   font-size: 11px;
 }
 
-.cf-todoPanel__receiptLabel {
+.cf-schedulingPanel__receiptLabel {
   margin-bottom: 4px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.cf-todoPanel__receiptBody {
+.cf-schedulingPanel__receiptBody {
   margin: 0;
   padding: 8px 10px;
   font-size: 11px;
@@ -218,17 +218,17 @@
   max-height: 200px;
   overflow: auto;
 }
-:root[data-theme='light'] .cf-todoPanel__receiptBody {
+:root[data-theme='light'] .cf-schedulingPanel__receiptBody {
   background: rgba(0, 0, 0, 0.045);
 }
 
-.cf-todoPanel__receiptNoAi {
+.cf-schedulingPanel__receiptNoAi {
   margin-top: 4px;
   font-size: 11px;
   line-height: 1.45;
 }
 
-.cf-todoPanel__editor {
+.cf-schedulingPanel__editor {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -239,11 +239,11 @@
   padding-left: 10px;
 }
 
-.cf-todoPanel__editor--readonly {
+.cf-schedulingPanel__editor--readonly {
   opacity: 0.55;
 }
 
-.cf-todoPanel__field {
+.cf-schedulingPanel__field {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -251,17 +251,17 @@
   color: var(--muted);
 }
 
-.cf-todoPanel__field--row {
+.cf-schedulingPanel__field--row {
   flex-direction: row;
   align-items: center;
   gap: 8px;
 }
 
-.cf-todoPanel__field input[type='text'],
-.cf-todoPanel__field input[type='number'],
-.cf-todoPanel__field input[type='datetime-local'],
-.cf-todoPanel__field select,
-.cf-todoPanel__field textarea {
+.cf-schedulingPanel__field input[type='text'],
+.cf-schedulingPanel__field input[type='number'],
+.cf-schedulingPanel__field input[type='datetime-local'],
+.cf-schedulingPanel__field select,
+.cf-schedulingPanel__field textarea {
   font-size: 12px;
   padding: 6px 8px;
   border-radius: 6px;
@@ -270,16 +270,16 @@
   color: var(--text);
 }
 
-.cf-todoPanel__field textarea {
+.cf-schedulingPanel__field textarea {
   resize: vertical;
   min-height: 88px;
 }
 
-.cf-todoPanel__meta {
+.cf-schedulingPanel__meta {
   margin-top: 4px;
 }
 
-.cf-todoPanel__draftBar {
+.cf-schedulingPanel__draftBar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

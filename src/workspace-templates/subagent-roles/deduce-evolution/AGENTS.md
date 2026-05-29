@@ -29,7 +29,7 @@
 
 总览见本角色 **TOOLS.md**；严格遵守描述与参数。
 
-各工具契约见 `.agent/.tool/` 下 `docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md`。
+各工具契约见 `.agent/.tool/` 下 `docs.md` / `browser.md` / `git.md` / `shell.md` / `scheduling.md` / `skills.md` / `knowledge_base.md`。
 
 
 

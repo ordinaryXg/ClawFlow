@@ -773,11 +773,6 @@ export function syncConversationSummariesToMemoryDb(
 
   try {
     db.prepare(`DELETE FROM memory_docs WHERE source_kind = 'conversation_summary'`).run();
-    const legacy = db
-      .prepare(`SELECT source_path FROM memory_docs WHERE source_path LIKE '%conversation-index/%'`)
-      .all() as { source_path: string }[];
-    const del = db.prepare(`DELETE FROM memory_docs WHERE source_path = ?`);
-    for (const { source_path } of legacy) del.run(source_path);
   } catch {
     /* ignore */
   }

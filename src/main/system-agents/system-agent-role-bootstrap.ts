@@ -37,15 +37,11 @@ const SYSTEM_ROLE_TEMPLATES: Record<SystemRoleTemplateId, RoleTemplateFile[]> = 
   ],
 };
 
-/** @deprecated 旧模板 id，读取时映射到 deduce-evolution */
-const LEGACY_DEDUCE_EVOLUTION_TEMPLATE_ID = 'skill-evolution';
-
 function isSystemRoleTemplateId(id: SubAgentRoleTemplateId): id is SystemRoleTemplateId {
   return id === 'deduce-evolution' || id === 'cognitive-allocation' || id === 'expectation-planning';
 }
 
 function resolveSystemRoleTemplateId(id: SubAgentRoleTemplateId): SystemRoleTemplateId | null {
-  if (id === LEGACY_DEDUCE_EVOLUTION_TEMPLATE_ID) return 'deduce-evolution';
   return isSystemRoleTemplateId(id) ? id : null;
 }
 
@@ -101,9 +97,4 @@ export async function buildSystemSubAgentRoleSystemContent(
   const resolved = resolveSystemRoleTemplateId(roleTemplateId);
   if (!resolved) return '';
   return readRoleMarkdownParts(resolved);
-}
-
-/** @deprecated 使用 buildSystemSubAgentRoleSystemContent('cognitive-allocation') */
-export async function buildCognitiveAllocationSystemPrompt(): Promise<string> {
-  return buildSystemSubAgentRoleSystemContent('cognitive-allocation');
 }

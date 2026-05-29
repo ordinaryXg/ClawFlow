@@ -8,7 +8,7 @@ import * as path from 'path';
 import { getActiveWorkspaceRoot } from './engine/active-workspace-root';
 import { registerClawFlowIPC } from './engine/engine-ipc';
 import { applyActiveWorkspace, clearActiveWorkspaceRootInMemory } from './main/workspace/active-workspace-sync';
-import { registerScrapeIPC, registerTodoTriggersIPC } from './main/ipc/register-todo-scrape-ipc';
+import { registerScrapeIPC, registerScheduleTriggersIPC } from './main/ipc/register-scheduling-scrape-ipc';
 import { registerWorkspaceIPC } from './main/ipc/workspace-ipc';
 import { registerShellViewWindowIPC } from './main/ipc/register-shell-window-ipc';
 import { registerWorkspaceEarlyIPC } from './main/ipc/register-workspace-early-ipc';
@@ -20,14 +20,10 @@ import { getGatewayDaemon, registerGatewayIPC } from './engine/gateway-daemon';
 import { sanitizeAppCachePrefsOnStartupSync } from './main/prefs/app-cache-prefs';
 import { attachShellExternalLinkPolicy } from './main/shell-external-link-policy';
 import * as workspaceService from './main/workspace/workspace-service';
-import {
-  migrateLegacyTriadForWorkspaceRootsSync,
-  mergeLegacyWorkspacesTreesIntoEffectiveSync,
-} from './main/workspace/workspace-blob-store';
 import { stickySatellitePathByWindowId } from './main/sticky-satellite-windows';
 import { getMainShellLastWorkspacePath, setMainShellLastWorkspacePath } from './main/shell/main-shell-workspace';
 import { registerSystemAgentsIPC } from './main/system-agents/system-agents-ipc';
-import { rescheduleAllTodoTriggers } from './main/todo/todo-triggers-scheduler';
+import { rescheduleAllScheduleTriggers } from './main/scheduling/schedule-triggers-scheduler';
 import { getMainUiPrefs } from './main/shell/main-ui-prefs';
 import { destroyAppTray } from './main/shell/app-tray';
 import { registerMessagingIPC } from './messaging/register-messaging-ipc';
@@ -55,7 +51,7 @@ function broadcastStickyDetachedPaths(): void {
     if (!w.isDestroyed()) w.webContents.send('sticky:detachedPaths', { paths });
   });
   try {
-    rescheduleAllTodoTriggers();
+    rescheduleAllScheduleTriggers();
   } catch {
     /* ignore */
   }
@@ -99,7 +95,7 @@ registerWorkspaceEarlyIPC();
 registerAppPathAndIconIPC();
 registerDesktopPinSessionRestoreOnQuit();
 
-registerTodoTriggersIPC();
+registerScheduleTriggersIPC();
 registerSystemAgentsIPC();
 registerScrapeIPC();
 
@@ -189,25 +185,8 @@ const createWindow = (): void => {
 app.whenReady().then(async () => {
   loadMainUiPrefsOnStartup();
   sanitizeAppCachePrefsOnStartupSync();
-  workspaceService.migrateLegacyWorkspaceRegistryIfEmptySync();
-  mergeLegacyWorkspacesTreesIntoEffectiveSync();
   const reg = workspaceService.loadRegistry();
-  const rootsForTriad = new Set<string>();
-  for (const p of reg.recentWorkspacePaths ?? []) {
-    const r = path.resolve(String(p ?? '').trim());
-    if (r) rootsForTriad.add(r);
-  }
-  if (reg.activeWorkspacePath) {
-    const r = path.resolve(String(reg.activeWorkspacePath).trim());
-    if (r) rootsForTriad.add(r);
-  }
-  migrateLegacyTriadForWorkspaceRootsSync([...rootsForTriad]);
-  // 如果刚执行了“取消置顶 active”的一次性迁移，这里需要写回磁盘
-  if (!reg.unpinActiveMigrated && reg.activeWorkspacePath) {
-    workspaceService.saveRegistry({ ...reg, unpinActiveMigrated: true });
-  }
   const activeRaw = reg.activeWorkspacePath?.trim() ? path.resolve(reg.activeWorkspacePath.trim()) : null;
-  workspaceService.removeLegacyExternalAgentStateDirsSync();
   if (activeRaw) {
     await workspaceService.ensureWorkspaceInitialized(activeRaw);
   }
@@ -227,9 +206,9 @@ app.whenReady().then(async () => {
 
   registerWorkspaceIPC();
   try {
-    rescheduleAllTodoTriggers();
+    rescheduleAllScheduleTriggers();
   } catch (e: unknown) {
-    console.warn('[todoTriggers] initial schedule failed:', e instanceof Error ? e.message : e);
+    console.warn('[scheduleTriggers] initial schedule failed:', e instanceof Error ? e.message : e);
   }
   const webSearchProvider = String(process.env.CLAWFLOW_WEB_SEARCH_PROVIDER ?? 'searxng').toLowerCase();
   registerClawFlowIPC({

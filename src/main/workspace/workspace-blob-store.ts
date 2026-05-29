@@ -3,7 +3,7 @@
  * - **`.clawflow-launcher-stash/`**（收纳内容不同步、不随仓库迁移）
  * - **`workspace-root.txt`**（从 stash 路径反查工作区根）
  *
- * **`.agent/`**、**`.subagent/`** 在工作区根目录下（便于 Git 忽略规则与仓库整体迁移）；若旧版曾写入 blob，启动时迁回工作区根。
+ * **`.agent/`** 在工作区根目录下（便于 Git 忽略规则与仓库整体迁移）。
  */
 
 import { createHash } from 'crypto';
@@ -23,9 +23,6 @@ export const LAUNCHER_STASH_DIR = '.clawflow-launcher-stash';
 export const WORKSPACE_ROOT_POINTER_FILE = 'workspace-root.txt';
 
 const WORKSPACES_SUBDIR = 'workspaces';
-
-const LEGACY_AGENT = '.agent';
-const LEGACY_SUBAGENT = '.subagent';
 
 function workspaceKeyForHash(workspaceRoot: string): string {
   const r = path.resolve(String(workspaceRoot ?? '').trim());
@@ -72,11 +69,9 @@ function tryMovePathSync(from: string, to: string): void {
 }
 
 /**
- * 1) 工作区根下的 **`.clawflow-launcher-stash`** → 迁入 blob（本机缓存；若 blob 侧已存在则跳过）。
- * 2) 旧版留在 blob 内的 **`.agent`** / **`.subagent`** → 迁回工作区根（若工作区根下尚不存在同名目录）。
- * 随后写入 `workspace-root.txt`。可重复调用。
+ * 工作区根下的 **`.clawflow-launcher-stash`** → 迁入 blob（本机缓存；若 blob 侧已存在则跳过），并写入 `workspace-root.txt`。
  */
-export function migrateWorkspaceTriadFromLegacyRootsSync(workspaceRoot: string): void {
+export function syncWorkspaceBlobLayoutSync(workspaceRoot: string): void {
   const root = path.resolve(String(workspaceRoot ?? '').trim());
   if (!root) return;
   const blob = workspaceBlobDirAbs(workspaceRoot);
@@ -88,16 +83,6 @@ export function migrateWorkspaceTriadFromLegacyRootsSync(workspaceRoot: string):
   }
 
   tryMovePathSync(path.join(root, LAUNCHER_STASH_DIR), path.join(blob, LAUNCHER_STASH_DIR));
-  tryMovePathSync(path.join(blob, LEGACY_AGENT), path.join(root, LEGACY_AGENT));
-  tryMovePathSync(path.join(blob, LEGACY_SUBAGENT), path.join(root, LEGACY_SUBAGENT));
-
-  try {
-    const { pruneLegacyWorkspaceSubagentArtifactsSync } = require('./workspace-legacy-subagent-cleanup');
-    pruneLegacyWorkspaceSubagentArtifactsSync(root);
-  } catch (e) {
-    console.warn('[workspace-blob-store] prune system subagent artifacts failed:', e);
-  }
-
   ensureWorkspaceBlobPointerSync(workspaceRoot);
 }
 
@@ -134,85 +119,6 @@ export function readWorkspaceRootFromBlobDir(blobDir: string): string | null {
     return path.resolve(line);
   } catch {
     return null;
-  }
-}
-
-function mergeWorkspacesDirContentsSync(fromDir: string, toDir: string): void {
-  if (!fs.existsSync(fromDir)) return;
-  fs.mkdirSync(toDir, { recursive: true });
-  let names: string[];
-  try {
-    names = fs.readdirSync(fromDir);
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    const fp = path.join(fromDir, name);
-    const tp = path.join(toDir, name);
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(fp);
-    } catch {
-      continue;
-    }
-    if (!st.isDirectory()) continue;
-    if (!fs.existsSync(tp)) {
-      try {
-        fs.renameSync(fp, tp);
-        continue;
-      } catch {
-        try {
-          fs.cpSync(fp, tp, { recursive: true });
-          fs.rmSync(fp, { recursive: true, force: true });
-        } catch (e) {
-          console.warn('[workspace-blob-store] merge blob hash dir failed:', fp, e);
-        }
-        continue;
-      }
-    }
-    try {
-      fs.cpSync(fp, tp, { recursive: true });
-      fs.rmSync(fp, { recursive: true, force: true });
-    } catch (e) {
-      console.warn('[workspace-blob-store] merge into existing blob failed:', fp, e);
-    }
-  }
-}
-
-/**
- * 启动时：把曾落在 userData 根、`userData/ClawFlow`、`%APPDATA%/ClawFlow|claw-flow` 下或 `cache/ClawFlow` 的 `workspaces/` 并入当前有效缓存根（例如 `userData/ClawFlowAppCache/workspaces`）。
- */
-export function mergeLegacyWorkspacesTreesIntoEffectiveSync(): void {
-  const eff = getEffectiveAppCacheRootSync();
-  const effWs = path.join(eff, WORKSPACES_SUBDIR);
-  const ud = path.normalize(app.getPath('userData'));
-  const bases = new Set<string>();
-  bases.add(ud);
-  bases.add(path.join(ud, 'ClawFlow'));
-  try {
-    const cache = (app as Electron.App & { getPath(n: 'cache'): string }).getPath('cache');
-    if (typeof cache === 'string' && cache.trim()) {
-      const c = path.normalize(cache.trim());
-      if (!pathsEqualCacheRoot(c, ud)) bases.add(path.join(c, 'ClawFlow'));
-    }
-  } catch {
-    /* ignore */
-  }
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const ap = path.normalize(process.env.APPDATA);
-    bases.add(path.join(ap, 'ClawFlow'));
-    bases.add(path.join(ap, 'claw-flow'));
-  }
-  try {
-    fs.mkdirSync(effWs, { recursive: true });
-  } catch {
-    /* ignore */
-  }
-  for (const base of bases) {
-    const fromWs = path.join(base, WORKSPACES_SUBDIR);
-    if (pathsEqualCacheRoot(path.normalize(fromWs), path.normalize(effWs))) continue;
-    if (!fs.existsSync(fromWs)) continue;
-    mergeWorkspacesDirContentsSync(fromWs, effWs);
   }
 }
 
@@ -327,20 +233,4 @@ export async function setAppCacheRootAndMigrate(
   }
 
   return { ok: true, effectiveRoot: getEffectiveAppCacheRootSync() };
-}
-
-/** 启动时：注册表内各工作区执行 stash 与 blob↔根目录的 `.agent` / `.subagent` 迁移（见 `migrateWorkspaceTriadFromLegacyRootsSync`）。 */
-export function migrateLegacyTriadForWorkspaceRootsSync(workspaceRoots: string[]): void {
-  const uniq = new Set<string>();
-  for (const w of workspaceRoots) {
-    const r = path.resolve(String(w ?? '').trim());
-    if (r) uniq.add(r);
-  }
-  for (const r of uniq) {
-    try {
-      migrateWorkspaceTriadFromLegacyRootsSync(r);
-    } catch (e) {
-      console.warn('[workspace-blob-store] migrateLegacyTriadForWorkspaceRootsSync failed:', r, e);
-    }
-  }
 }

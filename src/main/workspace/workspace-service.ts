@@ -18,20 +18,18 @@ import { installLarkCliSkillsPackage } from '../lark-cli/lark-cli-skills-bootstr
 import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
 import { ensureWorkspaceKnowledgeTemplates } from './workspace-knowledge-bootstrap';
 import {
-  migrateAgentManifestAndKnowledgePathsSync,
-  migrateLegacyWorkspaceAgentBundleSync,
+  ensureWorkspaceAgentLayoutSync,
   WORKSPACE_AGENT_DIR,
   workspaceAgentRootAbs,
   workspaceToolDirAbs,
 } from './workspace-agent-layout';
-import { launcherStashDirAbs, migrateWorkspaceTriadFromLegacyRootsSync, workspaceBlobDirAbs } from './workspace-blob-store';
+import { launcherStashDirAbs, syncWorkspaceBlobLayoutSync, workspaceBlobDirAbs } from './workspace-blob-store';
 import { refreshSystemSkillAgentForWorkspace } from '../skill/skill-agent-bootstrap';
 import {
   mergeToolSelection,
   WORKSPACE_TOOL_IDS,
   type WorkspaceToolId,
   type WorkspaceToolSelection,
-  type WorkspaceToolSelectionInput,
 } from '../../shared/workspace-tools';
 import {
   buildWorkspaceToolBrowserMd,
@@ -41,7 +39,7 @@ import {
   buildWorkspaceToolShellMd,
   buildWorkspaceToolKnowledgeBaseMd,
   buildWorkspaceToolSkillsMd,
-  buildWorkspaceToolTodosMd,
+  buildWorkspaceToolSchedulingMd,
 } from '../../shared/workspace-tool-template-md';
 
 const execFileAsync = promisify(execFile);
@@ -51,8 +49,8 @@ export type { WorkspaceToolId, WorkspaceToolSelection } from '../../shared/works
 /** 工作区内主会话与调度等元数据（位于 `.agent/` 下） */
 export const CLAWFLOW_DIR = '.agent/.clawflow';
 
-/** 待办等「勿随 `.agent` 重置丢失」的工作区根下数据目录（勿使用根目录 `.clawflow/`，会与历史迁移 `migrateLegacyWorkspaceAgentBundleSync` 冲突） */
-export const WORKSPACE_TODO_DATA_DIR = '.clawflow-data';
+/** 周期调度等「勿随 `.agent` 重置丢失」的工作区根下数据目录 */
+export const WORKSPACE_SCHEDULING_DATA_DIR = '.clawflow-data';
 
 /** @deprecated 工作区委派子 Agent 已移除；重置缓存时仍删除遗留 `.subagent/` */
 export const SUBAGENT_ROOT_DIR = '.subagent';
@@ -100,7 +98,7 @@ export async function removeWorkspaceManagedMetadataDirs(workspaceRoot: string):
     blob,
     path.join(root, '.clawflow-launcher-stash'),
     path.join(root, '.clawflow'),
-    path.join(root, WORKSPACE_TODO_DATA_DIR),
+    path.join(root, WORKSPACE_SCHEDULING_DATA_DIR),
     path.join(root, '.subclawflow'),
     path.join(root, '.submemory'),
     path.join(root, '.roleAgent'),
@@ -167,7 +165,7 @@ export async function ensureWorkspaceToolBundle(
       '- 总览入口：请阅读工作区内 `.agent/.roleAgent/TOOLS.md`',
       '- 能力开关：`manifest.json`',
       '- 工作区技能名册见 `.agent/.skills/skillManifest.json`（名称 / 简介 / 关键字；`tools.skills` 开启时注入主对话）',
-      '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `todos.md` / `skills.md` / `knowledge_base.md` / `feishu.md`',
+      '- 契约说明：`docs.md` / `browser.md` / `git.md` / `shell.md` / `scheduling.md` / `skills.md` / `knowledge_base.md` / `feishu.md`',
       '',
     ].join('\n');
     await fs.promises.writeFile(path.join(dir, 'README.md'), readme, 'utf-8');
@@ -179,7 +177,7 @@ export async function ensureWorkspaceToolBundle(
   const browserBody = buildWorkspaceToolBrowserMd();
   const gitBody = buildWorkspaceToolGitMd();
   const shellBody = buildWorkspaceToolShellMd();
-  const todosBody = buildWorkspaceToolTodosMd();
+  const schedulingBody = buildWorkspaceToolSchedulingMd();
   const skillsBody = buildWorkspaceToolSkillsMd();
   const kbBody = buildWorkspaceToolKnowledgeBaseMd();
   const feishuBody = buildWorkspaceToolFeishuMd();
@@ -188,44 +186,16 @@ export async function ensureWorkspaceToolBundle(
   await writeIfMissing('browser.md', browserBody.endsWith('\n') ? browserBody : `${browserBody}\n`);
   await writeIfMissing('git.md', gitBody.endsWith('\n') ? gitBody : `${gitBody}\n`);
   await writeIfMissing('shell.md', shellBody.endsWith('\n') ? shellBody : `${shellBody}\n`);
-  await writeIfMissing('todos.md', todosBody.endsWith('\n') ? todosBody : `${todosBody}\n`);
+  await writeIfMissing('scheduling.md', schedulingBody.endsWith('\n') ? schedulingBody : `${schedulingBody}\n`);
   await writeIfMissing('skills.md', skillsBody.endsWith('\n') ? skillsBody : `${skillsBody}\n`);
   await writeIfMissing('knowledge_base.md', kbBody.endsWith('\n') ? kbBody : `${kbBody}\n`);
   await writeIfMissing('feishu.md', feishuBody.endsWith('\n') ? feishuBody : `${feishuBody}\n`);
 }
 
-const LEGACY_MANIFEST_TOOL_KEYS = new Set<string>([
-  ...WORKSPACE_TOOL_IDS,
-  'browser', // v1 总开关
-  'subagents', // 已移除工作区委派子 Agent
-]);
+const MANIFEST_TOOL_KEYS = new Set<string>([...WORKSPACE_TOOL_IDS]);
 
-/** 将 manifest 补全为当前 WORKSPACE_TOOL_IDS 全集（例如新增 feishu 后迁移旧工作区）。 */
-async function migrateWorkspaceToolManifestIfNeeded(workspaceRoot: string): Promise<boolean> {
-  const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
-  let raw: Record<string, unknown> | null = null;
-  try {
-    const buf = await fs.promises.readFile(fp, 'utf-8');
-    const parsed = JSON.parse(buf) as { tools?: unknown; version?: unknown };
-    if (parsed?.tools && typeof parsed.tools === 'object') {
-      raw = parsed.tools as Record<string, unknown>;
-    }
-  } catch {
-    return false;
-  }
-  if (!raw) return false;
-  const missing = WORKSPACE_TOOL_IDS.some((id) => typeof raw![id] !== 'boolean');
-  if (!missing) return false;
-  const merged = mergeToolSelection(raw as WorkspaceToolSelectionInput);
-  const manifest = { version: 2 as const, tools: merged, updatedAt: Date.now() };
-  await fs.promises.mkdir(path.dirname(fp), { recursive: true });
-  await fs.promises.writeFile(fp, JSON.stringify(manifest, null, 2), 'utf-8');
-  return true;
-}
-
-/** 读取 `.agent/.tool/manifest.json` 中的 tools；缺失则返回默认全开；兼容 v1 `browser` */
+/** 读取 `.agent/.tool/manifest.json` 中的 tools；缺失则返回默认全开 */
 export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<Record<WorkspaceToolId, boolean>> {
-  await migrateWorkspaceToolManifestIfNeeded(workspaceRoot).catch(() => undefined);
   const fp = path.join(toolBundleDir(workspaceRoot), 'manifest.json');
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
@@ -233,11 +203,11 @@ export async function readWorkspaceToolManifest(workspaceRoot: string): Promise<
     if (parsed && typeof parsed === 'object' && parsed.tools && typeof parsed.tools === 'object') {
       const raw = parsed.tools as Record<string, unknown>;
       for (const k of Object.keys(raw)) {
-        if (!LEGACY_MANIFEST_TOOL_KEYS.has(k)) {
+        if (!MANIFEST_TOOL_KEYS.has(k)) {
           console.warn(`[workspace-service] manifest.json: ignoring unknown tools key "${k}"`);
         }
       }
-      return mergeToolSelection(raw as WorkspaceToolSelectionInput);
+      return mergeToolSelection(raw as WorkspaceToolSelection);
     }
   } catch {
     /* no manifest */
@@ -266,8 +236,6 @@ export interface WorkspaceMeta {
 export interface WorkspaceRegistry {
   activeWorkspacePath: string | null;
   recentWorkspacePaths: string[];
-  /** 兼容迁移标记：旧版本会把 active 置顶到 recent[0] */
-  unpinActiveMigrated?: boolean;
   /**
    * 内置「默认工作区」根目录的绝对路径覆盖；未设置时使用 userData/WorkSpace。
    * 用于在系统设置中指定默认工作区落盘位置。
@@ -334,14 +302,9 @@ export function conversationsStorePath(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'conversations.json');
 }
 
-/** 待办触发器列表（每工作区一份，落在工作区根 `.clawflow-data/`，不随「重置工作区缓存」删除 `.agent` 而丢失） */
-export function todoTriggersStorePath(workspaceRoot: string): string {
-  return path.join(path.resolve(workspaceRoot), WORKSPACE_TODO_DATA_DIR, 'todo-triggers.v1.json');
-}
-
-/** 旧版路径（`.agent/.clawflow/`）；`readTodoTriggers` 会在新路径无文件时自动迁移 */
-export function legacyTodoTriggersStorePath(workspaceRoot: string): string {
-  return path.join(clawflowDir(workspaceRoot), 'todo-triggers.v1.json');
+/** 周期调度触发器列表（每工作区一份，落在工作区根 `.clawflow-data/`，不随「重置工作区缓存」删除 `.agent` 而丢失） */
+export function scheduleTriggersStorePath(workspaceRoot: string): string {
+  return path.join(path.resolve(workspaceRoot), WORKSPACE_SCHEDULING_DATA_DIR, 'schedule-triggers.v1.json');
 }
 
 /** 应用级共享目录（`userData/.clawflow/`）：模型鉴权 `auth-profiles.v*.json` 等，不随工作区切换变化 */
@@ -358,37 +321,13 @@ export function registeredWorkspaceRootCandidates(reg?: WorkspaceRegistry): stri
   return Array.from(new Set(candidates.map((x) => path.resolve(String(x).trim())).filter(Boolean)));
 }
 
-/**
- * 删除磁盘上仍存在的旧版子目录名 `openclaw`（历史布局残留），位于工作区或用户数据 `.clawflow/` 下。
- */
-export function removeLegacyExternalAgentStateDirsSync(): void {
-  const targets = new Set<string>();
-  targets.add(path.resolve(path.join(globalClawflowRoot(), 'openclaw')));
-  for (const ws of registeredWorkspaceRootCandidates()) {
-    targets.add(path.resolve(path.join(clawflowDir(ws), 'openclaw')));
-    targets.add(path.resolve(path.join(ws, '.clawflow', 'openclaw')));
-  }
-  for (const dir of targets) {
-    if (!fs.existsSync(dir)) continue;
-    try {
-      fs.rmSync(dir, { recursive: true, force: true });
-    } catch (e) {
-      console.warn('[workspace-service] remove legacy external-agent dir failed:', dir, e);
-    }
-  }
-}
-
-export function legacyConversationsPath(): string {
-  return path.join(app.getPath('userData'), 'cf.conversations.v1.json');
-}
-
 export function loadRegistry(): WorkspaceRegistry {
   const p = getRegistryPath();
   try {
     const raw = fs.readFileSync(p, 'utf-8');
     return parseWorkspaceRegistryJson(raw, p);
   } catch {
-    return { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
+    return { activeWorkspacePath: null, recentWorkspacePaths: [] };
   }
 }
 
@@ -401,12 +340,7 @@ function parseWorkspaceRegistryJson(raw: string, _sourcePathForLog?: string): Wo
   const rawList: unknown[] = Array.isArray(j?.recentWorkspacePaths) ? j.recentWorkspacePaths : [];
   const recentRaw = rawList.filter((x: unknown): x is string => typeof x === 'string' && Boolean(x.trim()));
   const recent = recentRaw.map((x) => path.resolve(x.trim()));
-  let uniq = Array.from(new Set(recent)) as string[];
-  const migratedFlag = Boolean(j?.unpinActiveMigrated);
-
-  if (!migratedFlag && active && uniq.length > 1 && path.resolve(uniq[0]) === path.resolve(active)) {
-    uniq = [...uniq.slice(1), uniq[0]];
-  }
+  const uniq = Array.from(new Set(recent)) as string[];
 
   const ovRaw = j?.defaultWorkspaceRootOverride;
   const defaultWorkspaceRootOverride =
@@ -415,84 +349,8 @@ function parseWorkspaceRegistryJson(raw: string, _sourcePathForLog?: string): Wo
   return {
     activeWorkspacePath: active,
     recentWorkspacePaths: uniq,
-    unpinActiveMigrated: migratedFlag,
     defaultWorkspaceRootOverride,
   };
-}
-
-function registryHasPaths(reg: WorkspaceRegistry): boolean {
-  return (
-    (reg.recentWorkspacePaths?.length ?? 0) > 0 ||
-    (reg.activeWorkspacePath != null && String(reg.activeWorkspacePath).trim() !== '')
-  );
-}
-
-function mergeWorkspaceRegistries(a: WorkspaceRegistry, b: WorkspaceRegistry): WorkspaceRegistry {
-  const key = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
-  const seen = new Set<string>();
-  const recent: string[] = [];
-  const add = (p: string) => {
-    const k = key(p);
-    if (seen.has(k)) return;
-    seen.add(k);
-    recent.push(path.resolve(p));
-  };
-  for (const p of a.recentWorkspacePaths ?? []) add(p);
-  for (const p of b.recentWorkspacePaths ?? []) add(p);
-  const activeRaw = a.activeWorkspacePath ?? b.activeWorkspacePath;
-  const active = activeRaw && String(activeRaw).trim() ? path.resolve(String(activeRaw).trim()) : null;
-  if (active) add(active);
-  const uniq = recent.slice(-12);
-  return {
-    activeWorkspacePath: active,
-    recentWorkspacePaths: uniq,
-    unpinActiveMigrated: a.unpinActiveMigrated ?? b.unpinActiveMigrated ?? true,
-    ...(a.defaultWorkspaceRootOverride != null
-      ? { defaultWorkspaceRootOverride: a.defaultWorkspaceRootOverride }
-      : b.defaultWorkspaceRootOverride != null
-        ? { defaultWorkspaceRootOverride: b.defaultWorkspaceRootOverride }
-        : {}),
-  };
-}
-
-/**
- * 若当前 `cf.workspace.v1.json` 为空（例如应用名从 ClawFlow 变为 claw-flow 后 userData 目录变了），
- * 尝试从 `%APPDATA%\ClawFlow` / `%APPDATA%\claw-flow` 读取同名注册表并合并写回当前 userData。
- */
-export function migrateLegacyWorkspaceRegistryIfEmptySync(): void {
-  const curPath = getRegistryPath();
-  let cur: WorkspaceRegistry;
-  try {
-    const raw = fs.readFileSync(curPath, 'utf-8');
-    cur = parseWorkspaceRegistryJson(raw, curPath);
-  } catch {
-    cur = { activeWorkspacePath: null, recentWorkspacePaths: [], unpinActiveMigrated: true };
-  }
-  if (registryHasPaths(cur)) return;
-
-  const altPaths: string[] = [];
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const ap = process.env.APPDATA;
-    altPaths.push(path.join(ap, 'ClawFlow', REGISTRY_FILENAME));
-    altPaths.push(path.join(ap, 'claw-flow', REGISTRY_FILENAME));
-  }
-
-  let merged: WorkspaceRegistry | null = null;
-  for (const alt of altPaths) {
-    if (path.normalize(alt) === path.normalize(curPath)) continue;
-    if (!fs.existsSync(alt)) continue;
-    try {
-      const raw = fs.readFileSync(alt, 'utf-8');
-      const r = parseWorkspaceRegistryJson(raw, alt);
-      if (!registryHasPaths(r)) continue;
-      merged = merged == null ? mergeWorkspaceRegistries(cur, r) : mergeWorkspaceRegistries(merged, r);
-    } catch {
-      /* ignore */
-    }
-  }
-  if (merged != null && registryHasPaths(merged)) {
-    saveRegistry(merged);
-  }
 }
 
 export function saveRegistry(reg: WorkspaceRegistry): void {
@@ -502,7 +360,6 @@ export function saveRegistry(reg: WorkspaceRegistry): void {
     {
       activeWorkspacePath: reg.activeWorkspacePath,
       recentWorkspacePaths: reg.recentWorkspacePaths.slice(0, 12),
-      unpinActiveMigrated: reg.unpinActiveMigrated ?? true,
       ...(reg.defaultWorkspaceRootOverride != null && String(reg.defaultWorkspaceRootOverride).trim()
         ? { defaultWorkspaceRootOverride: path.resolve(String(reg.defaultWorkspaceRootOverride).trim()) }
         : {}),
@@ -524,25 +381,6 @@ function bumpRecent(reg: WorkspaceRegistry, workspacePath: string): WorkspaceReg
     activeWorkspacePath: abs,
     recentWorkspacePaths: nextRecent,
   };
-}
-
-/** 一次性：旧版 userData 全局 conversations → 当前 workspace 的 conversations.json */
-export function migrateLegacyConversationsOnce(workspaceRoot: string): void {
-  const target = conversationsStorePath(workspaceRoot);
-  if (fs.existsSync(target)) return;
-  const legacy = legacyConversationsPath();
-  if (!fs.existsSync(legacy)) return;
-  try {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(legacy, target);
-    try {
-      fs.renameSync(legacy, legacy + '.migrated');
-    } catch {
-      // ignore
-    }
-  } catch (e) {
-    console.warn('[workspace-service] migrateLegacyConversationsOnce failed:', e);
-  }
 }
 
 /** 工作区根下已有 `.agent/` 时视为既有布局，跳过模板补写。 */
@@ -614,31 +452,24 @@ export async function readGitOriginRemoteBestEffort(workspaceRoot: string): Prom
 /**
  * 创建工作区根下 **`.agent/.clawflow/`** 与 `workspace.json`；在 **`.agent/.roleAgent/`** 按需生成角色模板。
  * 若工作区根下已有 `.agent/`，则视为既有工作区：跳过历史迁移与模板补写，仅更新元数据与工具清单。
- * 打开时会迁移 stash，并清理遗留 **`.subagent/`** 与工作区委派名册（系统子 Agent 在应用缓存）。
+ * 打开时会同步 stash 到 blob，并清理遗留 **`.subagent/`** 与工作区委派名册（系统子 Agent 在应用缓存）。
  */
 export async function ensureWorkspaceInitialized(
   workspaceRoot: string,
   opts?: { tools?: WorkspaceToolSelection; gitRemoteUrl?: string | null }
 ): Promise<WorkspaceMeta> {
   const root = path.resolve(workspaceRoot);
-  /** 须在 blob 可能迁回 `.agent/` 之前采样，否则「新建工作区」会被误判为既有布局并跳过 skill-creator */
-  const hadAgentBeforeTriadMigrate = await workspaceHasExistingAgentAndSubagent(root);
-  migrateWorkspaceTriadFromLegacyRootsSync(root);
-  migrateAgentManifestAndKnowledgePathsSync(root);
-  const preserveExistingLayout = await workspaceHasExistingAgentAndSubagent(root);
-  if (!preserveExistingLayout) {
-    migrateLegacyWorkspaceAgentBundleSync(root);
-  }
+  const hadAgent = await workspaceHasExistingAgentAndSubagent(root);
+  syncWorkspaceBlobLayoutSync(root);
+  ensureWorkspaceAgentLayoutSync(root);
   const { pruneLegacyWorkspaceSubagentArtifactsSync } = await import('./workspace-legacy-subagent-cleanup');
   pruneLegacyWorkspaceSubagentArtifactsSync(root);
   const cf = clawflowDir(root);
   const metaPath = workspaceMetaPath(root);
 
   await fs.promises.mkdir(cf, { recursive: true });
-  migrateLegacyConversationsOnce(root);
 
   await ensureWorkspaceToolBundle(root, opts?.tools !== undefined ? opts.tools : null);
-  await migrateWorkspaceToolManifestIfNeeded(root).catch(() => undefined);
 
   // 缺失则补写（wx，不覆盖）；勿因已有 `.agent/` 而跳过 `.roleAgent` 模板
   try {
@@ -662,7 +493,7 @@ export async function ensureWorkspaceInitialized(
   }
 
   // 用户侧「新建工作区」：工作区根在打开前尚无 `.agent/`（blob 迁回不算）；安装 skill-creator v2 整包。既有工作区不补写。
-  if (!hadAgentBeforeTriadMigrate) {
+  if (!hadAgent) {
     try {
       await installWorkspaceSkillCreatorPackage(root);
     } catch (e: unknown) {
@@ -729,7 +560,6 @@ export async function ensureWorkspaceInitialized(
 export function setActiveWorkspace(workspacePath: string): WorkspaceRegistry {
   const reg = loadRegistry();
   const next = bumpRecent(reg, workspacePath);
-  next.unpinActiveMigrated = true;
   saveRegistry(next);
   return next;
 }
@@ -858,7 +688,6 @@ export function detachWorkspaceFromRegistry(workspacePath: string): { newActiveP
     ...reg,
     activeWorkspacePath: newActive,
     recentWorkspacePaths: uniq,
-    unpinActiveMigrated: true,
   });
 
   return { newActivePath: newActive };

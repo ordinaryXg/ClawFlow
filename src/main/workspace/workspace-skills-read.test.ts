@@ -65,16 +65,4 @@ describe('workspace-skills-read', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.content).toContain('Alpha');
   });
-
-  it('accepts legacy .clawflow/skills path for read after normalize', () => {
-    const r = readWorkspaceSkillTextFile(dir, '.clawflow/skills/alpha/SKILL.md');
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.content).toContain('Alpha');
-  });
-
-  it('accepts legacy .agent/skills path for read after normalize', () => {
-    const r = readWorkspaceSkillTextFile(dir, '.agent/skills/alpha/SKILL.md');
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.content).toContain('Alpha');
-  });
 });

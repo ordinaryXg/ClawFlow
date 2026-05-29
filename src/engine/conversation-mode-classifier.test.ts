@@ -1,7 +1,7 @@
 import type { ProviderRouter } from './provider-router';
 import type { ModelProvider } from './providers/provider';
 import { runCognitiveAllocationClassification } from '../main/system-agents/cognitive-allocation-agent';
-import { buildCognitiveAllocationSystemPrompt } from '../main/system-agents/system-agent-role-bootstrap';
+import { buildSystemSubAgentRoleSystemContent } from '../main/system-agents/system-agent-role-bootstrap';
 
 function mockRouter(provider: ModelProvider | null, providerId = 'deepseek'): ProviderRouter {
   return {
@@ -10,9 +10,9 @@ function mockRouter(provider: ModelProvider | null, providerId = 'deepseek'): Pr
   } as unknown as ProviderRouter;
 }
 
-describe('buildCognitiveAllocationSystemPrompt', () => {
+describe('buildSystemSubAgentRoleSystemContent (cognitive-allocation)', () => {
   it('includes classifier methodology from agent role bundle', async () => {
-    const prompt = await buildCognitiveAllocationSystemPrompt();
+    const prompt = await buildSystemSubAgentRoleSystemContent('cognitive-allocation');
     expect(prompt).toContain('认知分配');
     expect(prompt).toContain('输出契约');
     expect(prompt).toContain('M1');

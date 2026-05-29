@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-/** 左侧工作区「工作中心」展开的子视图：会话 / 待办 / 技能 / 知识库 */
-export type WorkspaceHubBranch = 'sessions' | 'todos' | 'skills' | 'kb';
+/** 左侧工作区「工作中心」展开的子视图：会话 / 周期调度 / 技能 / 知识库 */
+export type WorkspaceHubBranch = 'sessions' | 'scheduling' | 'skills' | 'kb';
 
 const LS_KEY = 'clawflow.workspaceHubByPath';
 
@@ -13,10 +13,8 @@ function loadMap(): Record<string, WorkspaceHubBranch> {
     if (!o || typeof o !== 'object') return {};
     const out: Record<string, WorkspaceHubBranch> = {};
     for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-      if (v === 'sessions' || v === 'todos' || v === 'skills' || v === 'kb') {
+      if (v === 'sessions' || v === 'scheduling' || v === 'skills' || v === 'kb') {
         out[k] = v;
-      } else if (v === 'subagents') {
-        out[k] = 'sessions';
       }
     }
     return out;

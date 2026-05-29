@@ -16,12 +16,12 @@
 
 | 文件                  | 路径                               | 作用                                                                                                                                                     |
 | ------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `manifest.json`     | `.agent/.tool/manifest.json`     | 创建/设置工作区时的勾选会写回此文件。`tools.docs`、`tools.git`、`tools.shell`、`tools.web_search`、`tools.web_scrape`、`tools.todos`、`tools.skills`、`tools.knowledge_base` 等。 |
+| `manifest.json`     | `.agent/.tool/manifest.json`     | 创建/设置工作区时的勾选会写回此文件。`tools.docs`、`tools.git`、`tools.shell`、`tools.web_search`、`tools.web_scrape`、`tools.scheduling`、`tools.skills`、`tools.knowledge_base` 等。 |
 | `docs.md`           | `.agent/.tool/docs.md`           | 文档类工具清单（与 `tools.docs` 对应）。                                                                                                                            |
 | `browser.md`        | `.agent/.tool/browser.md`        | 网络搜索 / 爬取（与 `web_search`、`web_scrape` 对应）。                                                                                                             |
 | `git.md`            | `.agent/.tool/git.md`            | Git 类工具说明（与 `tools.git` 对应）。                                                                                                                           |
 | `shell.md`          | `.agent/.tool/shell.md`          | 工作区内命令行执行（与 `tools.shell` 对应）。                                                                                                                         |
-| `todos.md`          | `.agent/.tool/todos.md`          | 待办与**定时/周期调度**（与 `tools.todos` 对应）：无人格、结构化触发。                                                                                                          |
+| `scheduling.md`          | `.agent/.tool/scheduling.md`          | **周期调度**（与 `tools.scheduling` 对应）：无人格、结构化定时触发。                                                                                                          |
 | `skills.md`         | `.agent/.tool/skills.md`         | Hermes 能力（与 `tools.skills` 对应）。                                                                                                                 |
 | `knowledge_base.md` | `.agent/.tool/knowledge_base.md` | 知识库检索（与 `tools.knowledge_base` 对应）。                                                                                                                    |
 

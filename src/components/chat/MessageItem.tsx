@@ -52,7 +52,7 @@ const MessageItem: FC<Props> = ({ message }) => {
     case 'user_feishu':
       stripIcon = <CommentOutlined className="cf-msgItem__chIcon" aria-hidden />;
       break;
-    case 'user_todo_auto':
+    case 'user_scheduling_auto':
       stripIcon = <ScheduleOutlined className="cf-msgItem__chIcon" aria-hidden />;
       break;
     case 'user_tool_delegate':

@@ -3,15 +3,7 @@
 export interface IElectronAPI {
   /** 应用版本 */
   getAppVersion: () => Promise<string>;
-  /** @deprecated 请用 getAppVersion */
-  getVersion: () => Promise<string>;
   engineGatewayStatus: () => Promise<{ status: string; port: number; uptimeMs?: number }>;
-  /** @deprecated 请用 engineGatewayStatus */
-  getGatewayStatus: () => Promise<string>;
-  /** @deprecated 请用 engineGatewayStart */
-  startGateway: () => Promise<void>;
-  /** @deprecated 请用 engineGatewayStop */
-  stopGateway: () => Promise<void>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
@@ -503,13 +495,13 @@ export interface IElectronAPI {
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
   onEvolutionRunsUpdated: (cb: () => void) => () => void;
-  todoTriggersList: () => Promise<{ triggers: unknown[] }>;
-  todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  todoTriggersSetAiReceipt: (params: {
+  scheduleTriggersList: () => Promise<{ triggers: unknown[] }>;
+  scheduleTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  scheduleTriggersSetAiReceipt: (params: {
     triggerId: string;
     receiptText: string;
   }) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  onTodoTriggerFired: (
+  onScheduleTriggerFired: (
     cb: (payload: {
       workspaceRoot: string;
       triggerId: string;
@@ -518,7 +510,7 @@ export interface IElectronAPI {
       submitToModel: boolean;
     }) => void
   ) => () => void;
-  onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  onScheduleTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   onWorkspaceFilesUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;

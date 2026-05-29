@@ -9,16 +9,7 @@ export function isWorkspaceRelativeUnderHermesSkillTree(rel: string): boolean {
   const n = String(rel ?? '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '');
-  return (
-    n === '.agent/.skills' ||
-    n.startsWith('.agent/.skills/') ||
-    n === '.agent/skills' ||
-    n.startsWith('.agent/skills/') ||
-    n === '.agent/.clawflow/skills' ||
-    n.startsWith('.agent/.clawflow/skills/') ||
-    n === '.clawflow/skills' ||
-    n.startsWith('.clawflow/skills/')
-  );
+  return n === '.agent/.skills' || n.startsWith('.agent/.skills/');
 }
 
 export function isWorkspaceRelativeUnderMainMemoryTree(rel: string): boolean {
@@ -29,12 +20,7 @@ export function isWorkspaceRelativeUnderKnowledgeTree(rel: string): boolean {
   const n = String(rel ?? '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '');
-  return (
-    n === '.agent/.knowledge' ||
-    n.startsWith('.agent/.knowledge/') ||
-    n === '.agent/knowledge' ||
-    n.startsWith('.agent/knowledge/')
-  );
+  return n === '.agent/.knowledge' || n.startsWith('.agent/.knowledge/');
 }
 
 export function isWorkspaceRelativeUnderKnowledgeIngestTree(rel: string): boolean {
@@ -89,17 +75,7 @@ export function patchSummaryTouchesHermesIndexedText(summary: PatchPathsSummary)
   return false;
 }
 
-/** @deprecated 使用 patchSummaryTouchesHermesSkillTree */
-export function patchSummaryTouchesHermesSkillTreeOnly(summary: PatchPathsSummary): boolean {
-  return patchSummaryTouchesHermesSkillTree(summary);
-}
-
 /** Hermes notes / 技能等 Markdown 变更后：增量更新 memory_docs + FTS */
 export function refreshHermesMemoryIndexBestEffort(workspaceRoot: string): void {
   refreshHermesMemoryIndex(workspaceRoot);
-}
-
-/** @deprecated 别名 */
-export function refreshHermesSkillMemoryIndexBestEffort(workspaceRoot: string): void {
-  refreshHermesMemoryIndexBestEffort(workspaceRoot);
 }

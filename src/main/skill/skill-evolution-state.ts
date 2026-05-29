@@ -5,12 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { clawflowDir } from '../workspace/workspace-service';
-import {
-  EVOLUTION_STATE_FILE,
-  evolutionStateStorePath,
-  workspaceEvolutionRootAbs,
-} from '../workspace/workspace-evolution-layout';
+import { evolutionStateStorePath, workspaceEvolutionRootAbs } from '../workspace/workspace-evolution-layout';
 import { INTELLIGENCE_XP_PER_SUCCESSFUL_EVOLUTION } from '../../shared/intelligence-profile';
 
 const FILE_VERSION = 1 as const;
@@ -24,9 +19,6 @@ export type SkillEvolutionPersistedState = {
   /** 上次成功进化完成时的 totalUserManualRounds（用于摘录「自上次进化后」对话） */
   lastEvolutionTotalRounds?: number;
   lastEvolutionAtMs?: number;
-  /** 遗留字段：旧版每 N 轮计数 */
-  userTurnsSinceAudit?: number;
-  lastAuditAt?: number;
 };
 
 function statePath(workspaceRoot: string): string {
@@ -66,12 +58,8 @@ async function readStateFile(fp: string): Promise<SkillEvolutionPersistedState |
 }
 
 export async function readSkillEvolutionState(workspaceRoot: string): Promise<SkillEvolutionPersistedState> {
-  const root = path.resolve(workspaceRoot);
-  const primary = await readStateFile(statePath(root));
-  if (primary) return primary;
-  const legacy = path.join(clawflowDir(root), EVOLUTION_STATE_FILE);
-  const fromLegacy = await readStateFile(legacy);
-  return fromLegacy ?? normalizeState(null);
+  const primary = await readStateFile(statePath(path.resolve(workspaceRoot)));
+  return primary ?? normalizeState(null);
 }
 
 export async function writeSkillEvolutionState(workspaceRoot: string, next: SkillEvolutionPersistedState): Promise<void> {
@@ -96,21 +84,5 @@ export async function applySuccessfulEvolutionRewards(workspaceRoot: string, sna
     intelligenceXp: cur.intelligenceXp + INTELLIGENCE_XP_PER_SUCCESSFUL_EVOLUTION,
     lastEvolutionTotalRounds: snapshotTotalRounds,
     lastEvolutionAtMs: Date.now(),
-  });
-}
-
-/** @deprecated 保留兼容，勿在新逻辑使用 */
-export async function incrementMainTurnsSinceSkillAudit(workspaceRoot: string): Promise<number> {
-  const cur = await readSkillEvolutionState(workspaceRoot);
-  const legacy = Math.max(0, Math.floor(cur.userTurnsSinceAudit ?? 0)) + 1;
-  return legacy;
-}
-
-/** @deprecated */
-export async function resetSkillAuditTurnCounter(workspaceRoot: string): Promise<void> {
-  const cur = await readSkillEvolutionState(workspaceRoot);
-  await writeSkillEvolutionState(workspaceRoot, {
-    ...cur,
-    lastAuditAt: Date.now(),
   });
 }

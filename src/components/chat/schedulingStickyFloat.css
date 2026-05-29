@@ -1,4 +1,4 @@
-.cf-todoFloat {
+.cf-schedulingFloat {
   position: absolute;
   top: 0;
   left: 0;
@@ -14,7 +14,7 @@
   );
 }
 
-.cf-todoFloat__inner {
+.cf-schedulingFloat__inner {
   pointer-events: auto;
   display: flex;
   flex-wrap: wrap;
@@ -23,7 +23,7 @@
   overflow: hidden;
 }
 
-.cf-todoFloat__chip {
+.cf-schedulingFloat__chip {
   font-size: 11px;
   line-height: 1.2;
   padding: 4px 8px;

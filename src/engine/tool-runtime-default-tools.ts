@@ -11,11 +11,11 @@ import { createHash, randomUUID } from 'crypto';
 import { applyUpdateHunk, formatSummary, parsePatchText, type ApplyPatchSummary } from './apply-patch';
 import type { WorkspaceToolId } from '../shared/workspace-tools';
 import { runWebScrapeForTool } from '../main/scrape/scrape-runner';
-import { readTodoTriggers, writeTodoTriggers, ensureScheduleNextFire } from '../main/todo/todo-triggers-service';
-import { rescheduleTodoTriggersForWorkspace } from '../main/todo/todo-triggers-scheduler';
-import { broadcastTodoTriggersUpdated } from '../main/todo/todo-triggers-broadcast';
+import { readScheduleTriggers, writeScheduleTriggers, ensureScheduleNextFire } from '../main/scheduling/schedule-triggers-service';
+import { rescheduleScheduleTriggersForWorkspace } from '../main/scheduling/schedule-triggers-scheduler';
+import { broadcastScheduleTriggersUpdated } from '../main/scheduling/schedule-triggers-broadcast';
 import { broadcastWorkspaceFilesUpdated } from '../main/workspace/workspace-files-broadcast';
-import { defaultTodoTrigger, type TodoTriggerRecord } from '../shared/todo-triggers';
+import { defaultScheduleTrigger, type ScheduleTriggerRecord } from '../shared/schedule-triggers';
 import {
   EXCEL_PREVIEW_EXTENSIONS,
   PDF_PREVIEW_EXTENSIONS,
@@ -63,6 +63,8 @@ import {
   readOpMeta,
   confirmRequiredMessage,
 } from './tool-runtime-core';
+
+const execFileAsync = promisify(execFile);
 
 /** 注册的 \`function.name\` 须与 \`shared/workspace-tool-manifest-bridge.ts\` 中映射同步。 */
 export function createDefaultToolRuntime(): ToolRuntime {
@@ -1102,13 +1104,14 @@ export function createDefaultToolRuntime(): ToolRuntime {
     }
   );
 
-  // --- 工作区待办（持久化 + 调度 + 广播）---
+  // --- 工作区周期调度（持久化 + 调度 + 广播）---
   rt.register(
     {
       type: 'function',
       function: {
-        name: 'workspace_todo_list',
-        description: 'List scheduled todo triggers for this workspace (persistent under workspace `.clawflow-data/`)',
+        name: 'workspace_schedule_list',
+        description:
+          'List periodic schedule triggers for this workspace (persistent under workspace `.clawflow-data/`)',
         strict: true,
         parameters: {
           type: 'object',
@@ -1119,7 +1122,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       },
     },
     async (_args, ctx) => {
-      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const list = await readScheduleTriggers(ctx.workspaceRoot);
       const summary = list.map((t) => ({
         id: t.id,
         title: t.title,
@@ -1137,15 +1140,15 @@ export function createDefaultToolRuntime(): ToolRuntime {
     {
       type: 'function',
       function: {
-        name: 'workspace_todo_create',
+        name: 'workspace_schedule_create',
         description:
-          'Create a scheduled todo in this workspace. repeat=once|interval|cron; for interval set intervalMinutes>0; for cron set cron.',
+          'Create a periodic schedule in this workspace. repeat=once|interval|cron; for interval set intervalMinutes>0; for cron set cron.',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'Short title' },
-            actionText: { type: 'string', description: 'Body text injected when the todo fires' },
+            actionText: { type: 'string', description: 'Body text injected when the schedule fires' },
             submitToModel: { type: 'boolean', description: 'Whether firing should submit to the model' },
             repeat: { type: 'string', description: 'once | interval | cron', enum: ['once', 'interval', 'cron'] },
             intervalMinutes: { type: 'number', description: 'For repeat=interval, minutes between fires (ignored for once)' },
@@ -1169,7 +1172,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
       const cron = typeof args?.cron === 'string' ? args.cron.trim() : '';
       const cronTz = typeof args?.cronTz === 'string' ? args.cronTz.trim() : '';
 
-      let t = defaultTodoTrigger({ title: title || undefined });
+      let t = defaultScheduleTrigger({ title: title || undefined });
       t = {
         ...t,
         title: title || t.title,
@@ -1202,11 +1205,11 @@ export function createDefaultToolRuntime(): ToolRuntime {
         };
       }
       t = ensureScheduleNextFire(t);
-      const list = [...(await readTodoTriggers(ctx.workspaceRoot)), t];
-      await writeTodoTriggers(ctx.workspaceRoot, list);
-      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
-      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
-      return `OK created todo id=${t.id}`;
+      const list = [...(await readScheduleTriggers(ctx.workspaceRoot)), t];
+      await writeScheduleTriggers(ctx.workspaceRoot, list);
+      rescheduleScheduleTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastScheduleTriggersUpdated(ctx.workspaceRoot);
+      return `OK created schedule id=${t.id}`;
     }
   );
 
@@ -1214,13 +1217,13 @@ export function createDefaultToolRuntime(): ToolRuntime {
     {
       type: 'function',
       function: {
-        name: 'workspace_todo_update',
-        description: 'Update an existing todo by id (title, enabled, status, action, schedule fields)',
+        name: 'workspace_schedule_update',
+        description: 'Update an existing periodic schedule by id (title, enabled, status, action, schedule fields)',
         strict: true,
         parameters: {
           type: 'object',
           properties: {
-            id: { type: 'string', description: 'Todo id' },
+            id: { type: 'string', description: 'Schedule id' },
             title: { type: 'string', description: 'New title (optional)' },
             enabled: { type: 'boolean', description: 'Enable/disable' },
             status: { type: 'string', enum: ['pending', 'done'], description: 'Mark pending or done' },
@@ -1239,10 +1242,10 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async (args, ctx) => {
       const id = String(args?.id ?? '').trim();
       if (!id) return 'ERROR: missing id';
-      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const list = await readScheduleTriggers(ctx.workspaceRoot);
       const idx = list.findIndex((x) => x.id === id);
       if (idx < 0) return `ERROR: not found: ${id}`;
-      let t: TodoTriggerRecord = { ...list[idx] };
+      let t: ScheduleTriggerRecord = { ...list[idx] };
       const now = Date.now();
       if (typeof args.title === 'string' && args.title.trim()) t = { ...t, title: args.title.trim(), updatedAt: now };
       if (typeof args.enabled === 'boolean') t = { ...t, enabled: args.enabled, updatedAt: now };
@@ -1312,10 +1315,10 @@ export function createDefaultToolRuntime(): ToolRuntime {
       t = ensureScheduleNextFire(t);
       const next = [...list];
       next[idx] = t;
-      await writeTodoTriggers(ctx.workspaceRoot, next);
-      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
-      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
-      return `OK updated todo ${id}`;
+      await writeScheduleTriggers(ctx.workspaceRoot, next);
+      rescheduleScheduleTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastScheduleTriggersUpdated(ctx.workspaceRoot);
+      return `OK updated schedule ${id}`;
     }
   );
 
@@ -1323,12 +1326,12 @@ export function createDefaultToolRuntime(): ToolRuntime {
     {
       type: 'function',
       function: {
-        name: 'workspace_todo_remove',
-        description: 'Remove a todo trigger by id from this workspace',
+        name: 'workspace_schedule_remove',
+        description: 'Remove a periodic schedule trigger by id from this workspace',
         strict: true,
         parameters: {
           type: 'object',
-          properties: { id: { type: 'string', description: 'Todo id' } },
+          properties: { id: { type: 'string', description: 'Schedule id' } },
           required: ['id'],
           additionalProperties: false,
         },
@@ -1337,19 +1340,19 @@ export function createDefaultToolRuntime(): ToolRuntime {
     async (args, ctx) => {
       const id = String(args?.id ?? '').trim();
       if (!id) return 'ERROR: missing id';
-      const list = await readTodoTriggers(ctx.workspaceRoot);
+      const list = await readScheduleTriggers(ctx.workspaceRoot);
       const next = list.filter((x) => x.id !== id);
       if (next.length === list.length) return `ERROR: not found: ${id}`;
-      await writeTodoTriggers(ctx.workspaceRoot, next);
-      rescheduleTodoTriggersForWorkspace(ctx.workspaceRoot);
-      broadcastTodoTriggersUpdated(ctx.workspaceRoot);
-      return `OK removed todo ${id}`;
+      await writeScheduleTriggers(ctx.workspaceRoot, next);
+      rescheduleScheduleTriggersForWorkspace(ctx.workspaceRoot);
+      broadcastScheduleTriggersUpdated(ctx.workspaceRoot);
+      return `OK removed schedule ${id}`;
     }
   );
 
   const formatHermesHitsMarkdown = (hits: HermesMemorySearchHit[]) => {
     const kindLabel = (k: string) => {
-      if (k === 'hermes_memory' || k === 'memory_md') return 'memory';
+      if (k === 'hermes_memory') return 'memory';
       if (k === 'knowledge_md' || k === 'knowledge_txt' || k === 'knowledge_ingest_md') return 'knowledge';
       if (k === 'conversation_summary') return 'chat';
       if (k.startsWith('skill')) return 'skill';
@@ -1358,7 +1361,7 @@ export function createDefaultToolRuntime(): ToolRuntime {
     return hits
       .map((h) => {
         const head =
-          (h.source_kind === 'hermes_memory' || h.source_kind === 'memory_md' || h.source_kind === 'knowledge_md') &&
+          (h.source_kind === 'hermes_memory' || h.source_kind === 'knowledge_md') &&
           h.abstract
             ? `**L0:** ${h.abstract}\n`
             : '';

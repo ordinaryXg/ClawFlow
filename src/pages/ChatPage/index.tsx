@@ -10,8 +10,8 @@ import ChatInput from '../../components/chat/ChatInput';
 import ChatApiKeyBar from '../../components/chat/ChatApiKeyBar';
 import StreamingMessage from '../../components/chat/StreamingMessage';
 import ToolApprovalBar from '../../components/chat/ToolApprovalBar';
-import TodoTriggersStickyFloat from '../../components/chat/TodoTriggersStickyFloat';
-import TodoTriggersPanel from '../../components/chat/TodoTriggersPanel';
+import SchedulingStickyFloat from '../../components/chat/SchedulingStickyFloat';
+import SchedulingPanel from '../../components/chat/SchedulingPanel';
 import SkillsHubPanel from '../../components/workspace-hub/SkillsHubPanel';
 import KnowledgeBaseHubPanel from '../../components/workspace-hub/KnowledgeBaseHubPanel';
 import { useWorkspaceHubStore } from '../../store/modules/workspaceHubStore';
@@ -248,7 +248,7 @@ const ChatPage: FC = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, streamingActivity, streamingThinking]);
 
-  /** 从待办等视图切回会话时，强制对齐到对话末尾（双帧与短延迟覆盖布局未成时刻） */
+  /** 从周期调度等视图切回会话时，强制对齐到对话末尾（双帧与短延迟覆盖布局未成时刻） */
   useEffect(() => {
     if (hubBranch !== 'sessions') return;
     stickToBottomRef.current = true;
@@ -444,10 +444,10 @@ const ChatPage: FC = () => {
 
   if (hubBranch !== 'sessions') {
     let hubBody: React.ReactNode = null;
-    if (hubBranch === 'todos') {
+    if (hubBranch === 'scheduling') {
       hubBody = (
-        <div className="cf-hubTodosWrap">
-          <TodoTriggersPanel workspacePath={activeWorkspacePath} />
+        <div className="cf-hubSchedulingWrap">
+          <SchedulingPanel workspacePath={activeWorkspacePath} />
         </div>
       );
     } else if (hubBranch === 'skills') hubBody = <SkillsHubPanel workspacePath={activeWorkspacePath} />;
@@ -544,7 +544,7 @@ const ChatPage: FC = () => {
       )}
 
       <div ref={assignMessagesScrollRef} className="cf-chatCenter__messages">
-        {isAlternateShell ? <TodoTriggersStickyFloat /> : null}
+        {isAlternateShell ? <SchedulingStickyFloat /> : null}
         {messages.length === 0 && streamingActivity === null && !toolApprovalForActive ? (
           <div className="cf-chatCenter__empty">
             <div className="cf-card" style={{ maxWidth: 520 }}>

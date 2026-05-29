@@ -8,8 +8,6 @@ export type SubAgentRoleTemplateId =
   | 'data'
   | 'assistant'
   | 'deduce-evolution'
-  /** @deprecated 旧名册/缓存中的模板 id，读取时映射为 deduce-evolution */
-  | 'skill-evolution'
   | 'cognitive-allocation'
   | 'expectation-planning';
 

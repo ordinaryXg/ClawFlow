@@ -30,7 +30,7 @@ export function classifyEvolutionOutcomeMarkdown(text: string): {
   const sample = text.slice(0, 24_000);
   const keys = new Set<EvolutionAspectKey>();
   if (
-    /[\\/]\.agent[\\/]\.hermes[\\/]\.memory|[\\/]\.agent[\\/]\.memory|记忆库|记忆瘦身|hermes_memory/i.test(
+    /[\\/]\.agent[\\/]\.hermes[\\/]\.memory|记忆库|记忆瘦身|hermes_memory/i.test(
       sample
     )
   ) {
@@ -55,7 +55,7 @@ const EVOLUTION_COUNTED_USER_CHANNELS = new Set<string>(['user_manual', 'user_fe
 export function isEvolutionCountedUserMessage(m: StoredMessage): boolean {
   if (m.role !== 'user') return false;
   const ch = m.channel;
-  if (!ch) return true;
+  if (!ch) return false;
   return EVOLUTION_COUNTED_USER_CHANNELS.has(ch);
 }
 

@@ -21,6 +21,3 @@ export function computeSkillEvolutionSpacing(totalUserManualRounds: number): num
   if (t < 100000) return 1000;
   return 10000;
 }
-
-/** @deprecated 已由 computeSkillEvolutionSpacing + totalUserManualRounds 取模触发替代 */
-export const SKILL_EVOLUTION_INTERVAL_MAIN_TURNS = 10;

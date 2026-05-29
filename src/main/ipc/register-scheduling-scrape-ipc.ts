@@ -1,22 +1,22 @@
 /**
- * 待办 / 抓取 IPC：须在 app.whenReady 之前注册，避免渲染进程过早 invoke。
+ * 周期调度 / 抓取 IPC：须在 app.whenReady 之前注册，避免渲染进程过早 invoke。
  */
 import { ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as workspaceExplorer from '../workspace/workspace-explorer';
 import { readScrapeJobs } from '../scrape/scrape-service';
-import { readTodoTriggers, writeTodoTriggers } from '../todo/todo-triggers-service';
-import { broadcastTodoTriggersUpdated } from '../todo/todo-triggers-broadcast';
-import { rescheduleTodoTriggersForWorkspace } from '../todo/todo-triggers-scheduler';
+import { readScheduleTriggers, writeScheduleTriggers } from '../scheduling/schedule-triggers-service';
+import { broadcastScheduleTriggersUpdated } from '../scheduling/schedule-triggers-broadcast';
+import { rescheduleScheduleTriggersForWorkspace } from '../scheduling/schedule-triggers-scheduler';
 import * as workspaceChangeLog from '../workspace/workspace-change-log';
 import {
   requireWorkspaceRootForWebContents,
   resolveWorkspaceRootForWebContents,
 } from '../electron-workspace-context';
-import type { TodoTriggerRecord } from '../../shared/todo-triggers';
+import type { ScheduleTriggerRecord } from '../../shared/schedule-triggers';
 
-export function registerTodoTriggersIPC(): void {
-  for (const ch of ['todoTriggers:list', 'todoTriggers:saveAll', 'todoTriggers:setAiReceipt'] as const) {
+export function registerScheduleTriggersIPC(): void {
+  for (const ch of ['scheduleTriggers:list', 'scheduleTriggers:saveAll', 'scheduleTriggers:setAiReceipt'] as const) {
     try {
       ipcMain.removeHandler(ch);
     } catch {
@@ -24,26 +24,26 @@ export function registerTodoTriggersIPC(): void {
     }
   }
 
-  ipcMain.handle('todoTriggers:list', async (event) => {
+  ipcMain.handle('scheduleTriggers:list', async (event) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     if (!root) return { triggers: [] };
-    const triggers = await readTodoTriggers(root);
+    const triggers = await readScheduleTriggers(root);
     return { triggers };
   });
 
-  ipcMain.handle('todoTriggers:saveAll', async (event, triggers: unknown) => {
+  ipcMain.handle('scheduleTriggers:saveAll', async (event, triggers: unknown) => {
     const root = requireWorkspaceRootForWebContents(event.sender);
     if (!Array.isArray(triggers)) return { ok: false as const, error: 'invalid_payload' };
-    const incoming = triggers as TodoTriggerRecord[];
-    const disk = await readTodoTriggers(root);
+    const incoming = triggers as ScheduleTriggerRecord[];
+    const disk = await readScheduleTriggers(root);
     const diskById = new Map(disk.map((x) => [x.id, x]));
     const merged = incoming.map((inc) => {
       const ex = diskById.get(inc.id);
       return ex?.status === 'done' ? ex : inc;
     });
-    await writeTodoTriggers(root, merged);
-    rescheduleTodoTriggersForWorkspace(root);
-    broadcastTodoTriggersUpdated(root);
+    await writeScheduleTriggers(root, merged);
+    rescheduleScheduleTriggersForWorkspace(root);
+    broadcastScheduleTriggersUpdated(root);
     const diskIds = new Set(disk.map((x) => x.id));
     for (const t of merged) {
       if (!diskIds.has(t.id)) {
@@ -51,8 +51,8 @@ export function registerTodoTriggersIPC(): void {
         const rep = trig.kind === 'schedule' ? trig.repeat : '';
         void workspaceChangeLog
           .appendWorkspaceChangeLog(root, {
-            kind: 'todo_added',
-            title: `待办新增：${(t.title || '未命名').slice(0, 80)}`,
+            kind: 'schedule_added',
+            title: `周期调度新增：${(t.title || '未命名').slice(0, 80)}`,
             userPreview: `ID：${t.id}\n标题：${t.title}\n计划：${rep}${
               rep === 'interval' && trig.kind === 'schedule' ? ` / 间隔 ${trig.intervalMinutes ?? '?'} 分钟` : ''
             }${rep === 'cron' && trig.kind === 'schedule' ? ` / cron：${trig.cron ?? ''}` : ''}`,
@@ -65,7 +65,7 @@ export function registerTodoTriggersIPC(): void {
     return { ok: true as const };
   });
 
-  ipcMain.handle('todoTriggers:setAiReceipt', async (event, payload: unknown) => {
+  ipcMain.handle('scheduleTriggers:setAiReceipt', async (event, payload: unknown) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     if (!root) return { ok: false as const, error: 'no_workspace' };
     if (!payload || typeof payload !== 'object') return { ok: false as const, error: 'invalid_payload' };
@@ -73,13 +73,13 @@ export function registerTodoTriggersIPC(): void {
     const triggerId = typeof o.triggerId === 'string' ? o.triggerId.trim() : '';
     const receiptText = typeof o.receiptText === 'string' ? o.receiptText : '';
     if (!triggerId) return { ok: false as const, error: 'missing_trigger' };
-    const list = await readTodoTriggers(root);
+    const list = await readScheduleTriggers(root);
     const idx = list.findIndex((x) => x.id === triggerId);
     if (idx < 0) return { ok: false as const, error: 'not_found' };
     const now = Date.now();
     list[idx] = { ...list[idx], lastFireAiReceipt: receiptText, updatedAt: now };
-    await writeTodoTriggers(root, list);
-    broadcastTodoTriggersUpdated(root);
+    await writeScheduleTriggers(root, list);
+    broadcastScheduleTriggersUpdated(root);
     return { ok: true as const };
   });
 }

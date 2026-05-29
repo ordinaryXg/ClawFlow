@@ -4,15 +4,7 @@ import type { WorkspaceToolId, WorkspaceToolSelection } from './shared/workspace
 // 暴露给渲染进程的 API 类型声明
 export interface IElectronAPI {
   getAppVersion: () => Promise<string>;
-  /** @deprecated 请用 getAppVersion */
-  getVersion: () => Promise<string>;
   engineGatewayStatus: () => Promise<{ status: string; port: number }>;
-  /** @deprecated 请用 engineGatewayStatus */
-  getGatewayStatus: () => Promise<string>;
-  /** @deprecated 请用 engineGatewayStart */
-  startGateway: () => Promise<void>;
-  /** @deprecated 请用 engineGatewayStop */
-  stopGateway: () => Promise<void>;
   setAppLanguage: (lang: 'zh' | 'en') => Promise<{ success: boolean }>;
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
@@ -536,13 +528,13 @@ export interface IElectronAPI {
   onWorkspaceChanged: (cb: (payload: { path: string }) => void) => () => void;
   onWorkspaceChangelogUpdated: (cb: () => void) => () => void;
   onEvolutionRunsUpdated: (cb: () => void) => () => void;
-  todoTriggersList: () => Promise<{ triggers: unknown[] }>;
-  todoTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  todoTriggersSetAiReceipt: (params: {
+  scheduleTriggersList: () => Promise<{ triggers: unknown[] }>;
+  scheduleTriggersSaveAll: (triggers: unknown[]) => Promise<{ ok: true } | { ok: false; error?: string }>;
+  scheduleTriggersSetAiReceipt: (params: {
     triggerId: string;
     receiptText: string;
   }) => Promise<{ ok: true } | { ok: false; error?: string }>;
-  onTodoTriggerFired: (
+  onScheduleTriggerFired: (
     cb: (payload: {
       workspaceRoot: string;
       triggerId: string;
@@ -551,7 +543,7 @@ export interface IElectronAPI {
       submitToModel: boolean;
     }) => void
   ) => () => void;
-  onTodoTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
+  onScheduleTriggersUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   onWorkspaceFilesUpdated: (cb: (payload: { workspaceRoot: string }) => void) => () => void;
   engineResolveToolApproval: (params: { approvalId: string; approved: boolean }) => Promise<{ ok: boolean }>;
   scrapeListJobs: () => Promise<{ jobs: unknown[] }>;
@@ -562,18 +554,7 @@ export interface IElectronAPI {
 // 通过 contextBridge 安全地暴露 API
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
-  /** @deprecated 请用 getAppVersion */
-  getVersion: () => ipcRenderer.invoke('app:getVersion'),
   engineGatewayStatus: () => ipcRenderer.invoke('engineGateway:status'),
-  /** @deprecated 请用 engineGatewayStatus */
-  getGatewayStatus: async () => {
-    const r = (await ipcRenderer.invoke('engineGateway:status')) as { status?: string } | null;
-    return String(r?.status ?? 'unknown');
-  },
-  /** @deprecated 请用 engineGatewayStart */
-  startGateway: () => ipcRenderer.invoke('engineGateway:start', {}),
-  /** @deprecated 请用 engineGatewayStop */
-  stopGateway: () => ipcRenderer.invoke('engineGateway:stop'),
   setAppLanguage: (lang: 'zh' | 'en') => ipcRenderer.invoke('app:setLanguage', lang),
   // 新引擎（Phase 0：stub）
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) =>
@@ -870,11 +851,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('workspace:evolutionRunsUpdated', handler);
     return () => ipcRenderer.removeListener('workspace:evolutionRunsUpdated', handler);
   },
-  todoTriggersList: () => ipcRenderer.invoke('todoTriggers:list'),
-  todoTriggersSaveAll: (triggers: unknown[]) => ipcRenderer.invoke('todoTriggers:saveAll', triggers),
-  todoTriggersSetAiReceipt: (params: { triggerId: string; receiptText: string }) =>
-    ipcRenderer.invoke('todoTriggers:setAiReceipt', params),
-  onTodoTriggerFired: (cb) => {
+  scheduleTriggersList: () => ipcRenderer.invoke('scheduleTriggers:list'),
+  scheduleTriggersSaveAll: (triggers: unknown[]) => ipcRenderer.invoke('scheduleTriggers:saveAll', triggers),
+  scheduleTriggersSetAiReceipt: (params: { triggerId: string; receiptText: string }) =>
+    ipcRenderer.invoke('scheduleTriggers:setAiReceipt', params),
+  onScheduleTriggerFired: (cb) => {
     const handler = (_event: unknown, payload: unknown) => {
       if (!payload || typeof payload !== 'object') return;
       const p = payload as Record<string, unknown>;
@@ -887,17 +868,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         submitToModel: Boolean(p.submitToModel),
       });
     };
-    ipcRenderer.on('todo-trigger:fired', handler);
-    return () => ipcRenderer.removeListener('todo-trigger:fired', handler);
+    ipcRenderer.on('schedule-trigger:fired', handler);
+    return () => ipcRenderer.removeListener('schedule-trigger:fired', handler);
   },
-  onTodoTriggersUpdated: (cb) => {
+  onScheduleTriggersUpdated: (cb) => {
     const handler = (_event: unknown, payload: unknown) => {
       if (!payload || typeof payload !== 'object') return;
       const p = payload as Record<string, unknown>;
       if (typeof p.workspaceRoot === 'string') cb({ workspaceRoot: p.workspaceRoot });
     };
-    ipcRenderer.on('todo-triggers:updated', handler);
-    return () => ipcRenderer.removeListener('todo-triggers:updated', handler);
+    ipcRenderer.on('schedule-triggers:updated', handler);
+    return () => ipcRenderer.removeListener('schedule-triggers:updated', handler);
   },
   onWorkspaceFilesUpdated: (cb) => {
     const handler = (_event: unknown, payload: unknown) => {

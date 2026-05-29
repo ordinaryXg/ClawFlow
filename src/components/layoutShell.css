@@ -1159,8 +1159,8 @@
 .cf-changeLog__kind--file_change{background:rgba(234,179,8,.38);color:rgba(20,15,5,.95);}
 :root[data-theme="light"] .cf-changeLog__kind--file_change{color:rgba(70,50,5,.95);}
 .cf-changeLog__kind--evolution{background:rgba(34,197,94,.38);}
-.cf-changeLog__kind--todo_added{background:rgba(168,85,247,.38);}
-.cf-changeLog__kind--todo_triggered{background:rgba(236,72,153,.38);}
+.cf-changeLog__kind--schedule_added{background:rgba(168,85,247,.38);}
+.cf-changeLog__kind--schedule_triggered{background:rgba(236,72,153,.38);}
 .cf-changeLog__kind--agent_dispatch{background:rgba(14,165,233,.38);}
 .cf-changeLog__kind--skill_enabled{background:rgba(52,211,153,.38);}
 .cf-changeLog__kind--skill_disabled{background:rgba(248,113,113,.38);}

@@ -11,7 +11,7 @@ import IntelligenceProfileButton from '../IntelligenceProfileButton';
 import WorkspaceNewToolsModal from '../workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from '../workspace/WorkspaceCreateModal';
 import StickyFileStrip from './StickyFileStrip';
-import TodoTriggersPanel from '../chat/TodoTriggersPanel';
+import SchedulingPanel from '../chat/SchedulingPanel';
 import KnowledgeBaseHubPanel from '../workspace-hub/KnowledgeBaseHubPanel';
 import type { WorkspaceToolSelection } from '../../shared/workspace-tools';
 import './stickyNoteShell.css';
@@ -22,12 +22,12 @@ const STICKY_TEAR_MIME = 'application/x-clawflow-sticky-tear';
 const STICKY_MERGE_MIME = 'application/x-clawflow-sticky-merge';
 
 const STICKY_CENTER_TAB_KEY = 'clawflow.stickyMainCenterTab.v1';
-type StickyCenterTab = 'chat' | 'todos' | 'kb';
+type StickyCenterTab = 'chat' | 'scheduling' | 'kb';
 
 function readStickyCenterTab(): StickyCenterTab {
   try {
     const v = localStorage.getItem(STICKY_CENTER_TAB_KEY);
-    if (v === 'chat' || v === 'todos' || v === 'kb') return v;
+    if (v === 'chat' || v === 'scheduling' || v === 'kb') return v;
   } catch {
     /* ignore */
   }
@@ -605,11 +605,11 @@ const StickyNoteShell: FC = () => {
               <button
                 type="button"
                 role="tab"
-                aria-selected={centerTab === 'todos'}
-                className={`cf-stickyMain__centerTab${centerTab === 'todos' ? ' cf-stickyMain__centerTab--active' : ''}`}
-                onClick={() => pickCenterTab('todos')}
+                aria-selected={centerTab === 'scheduling'}
+                className={`cf-stickyMain__centerTab${centerTab === 'scheduling' ? ' cf-stickyMain__centerTab--active' : ''}`}
+                onClick={() => pickCenterTab('scheduling')}
               >
-                {t('sticky.centerTabTodos')}
+                {t('sticky.centerTabScheduling')}
               </button>
               <button
                 type="button"
@@ -624,9 +624,9 @@ const StickyNoteShell: FC = () => {
             <div className="cf-stickyMain__centerBody">
               {centerTab === 'chat' ? (
                 <Outlet />
-              ) : centerTab === 'todos' ? (
-                <div className="cf-stickyTodosEmbed">
-                  <TodoTriggersPanel workspacePath={activeWorkspacePath} />
+              ) : centerTab === 'scheduling' ? (
+                <div className="cf-stickySchedulingEmbed">
+                  <SchedulingPanel workspacePath={activeWorkspacePath} />
                 </div>
               ) : (
                 <div className="cf-stickyKbEmbed">

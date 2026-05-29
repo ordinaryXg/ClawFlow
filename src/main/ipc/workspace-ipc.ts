@@ -21,7 +21,7 @@ import {
   syncActiveWorkspaceRootToEngine,
 } from '../workspace/active-workspace-sync';
 import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
-import { rescheduleAllTodoTriggers } from '../todo/todo-triggers-scheduler';
+import { rescheduleAllScheduleTriggers } from '../scheduling/schedule-triggers-scheduler';
 import { evictClawFlowSessionStore } from '../../engine/clawflow-engine';
 import { rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes-memory-db';
 import { listKnowledgeManifestEntries, rebuildKnowledgeManifest } from '../workspace/workspace-knowledge-manifest';
@@ -180,7 +180,7 @@ export function registerWorkspaceIPC(): void {
       console.warn('[workspace] ensureWorkspaceInitialized failed:', msg);
     }
     try {
-      rescheduleAllTodoTriggers();
+      rescheduleAllScheduleTriggers();
     } catch {
       /* ignore */
     }

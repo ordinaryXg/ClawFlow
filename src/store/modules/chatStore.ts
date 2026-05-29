@@ -38,7 +38,7 @@ import {
 } from '../../utils/stream-activity-sanitize';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import { useSettingsStore } from './settingsStore';
-import { useTodoTriggerStore } from './todoTriggerStore';
+import { useScheduleTriggerStore } from './scheduleTriggerStore';
 import { dedupeUiToolMessages } from '../../engine/dedupe-tool-messages';
 import { normalizeWorkspacePathForCompare as normWorkspacePath } from '../../shared/workspace-path-compare';
 import {
@@ -66,7 +66,7 @@ export type ToolApprovalPendingState = {
 export type MessageChannel =
   | 'user_manual'
   | 'user_feishu'
-  | 'user_todo_auto'
+  | 'user_scheduling_auto'
   | 'user_tool_delegate'
   | 'user_workflow'
   | 'user_system'
@@ -77,7 +77,7 @@ export type MessageChannel =
 const MESSAGE_CHANNELS: readonly MessageChannel[] = [
   'user_manual',
   'user_feishu',
-  'user_todo_auto',
+  'user_scheduling_auto',
   'user_tool_delegate',
   'user_workflow',
   'user_system',
@@ -227,7 +227,7 @@ export interface ChatState {
   sendMessage: (
     content: string,
     modelId?: string | null,
-    opts?: { userChannel?: MessageChannel; todoFireReceipt?: { triggerId: string } }
+    opts?: { userChannel?: MessageChannel; scheduleFireReceipt?: { triggerId: string } }
   ) => Promise<void>;
   createConversation: () => Promise<void>;
   switchConversation: (id: string) => void;
@@ -236,8 +236,8 @@ export interface ChatState {
   setError: (error: string | null) => void;
   removePendingSend: (id: string) => void;
   respondToolApproval: (approved: boolean) => void;
-  /** 待办触发器：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
-  applyTodoTrigger: (payload: {
+  /** 周期调度：向当前会话写入用户消息，可选走与手动发送相同的模型请求 */
+  applyScheduleTrigger: (payload: {
     workspaceRoot: string;
     text: string;
     submitToModel: boolean;
@@ -577,14 +577,14 @@ export const useChatStore = create<ChatState>()((set, get) => {
   sendMessage: async (
     content: string,
     modelId?: string | null,
-    opts?: { userChannel?: MessageChannel; todoFireReceipt?: { triggerId: string } }
+    opts?: { userChannel?: MessageChannel; scheduleFireReceipt?: { triggerId: string } }
   ) => {
     const executeOutboundTurn = async (turn: OutboundTurn) => {
       const sessionId = turn.conversationId;
       const generation = turn.generation;
       const mergedContent = getMergedOutboundText(turn);
       const effectiveModelIdParam = turn.modelId;
-      const todoReceiptTriggerId = turn.opts?.todoFireReceipt?.triggerId?.trim() ?? null;
+      const scheduleReceiptTriggerId = turn.opts?.scheduleFireReceipt?.triggerId?.trim() ?? null;
       const abortSignal = turn.abortController.signal;
 
       const flushPendingAfterTurn = async () => {
@@ -656,13 +656,13 @@ export const useChatStore = create<ChatState>()((set, get) => {
             })
           );
 
-          if (todoReceiptTriggerId) {
-            void window.electronAPI?.todoTriggersSetAiReceipt?.({
-              triggerId: todoReceiptTriggerId,
+          if (scheduleReceiptTriggerId) {
+            void window.electronAPI?.scheduleTriggersSetAiReceipt?.({
+              triggerId: scheduleReceiptTriggerId,
               receiptText: String(fullText ?? ''),
             }).then((res) => {
               if (res && typeof res === 'object' && 'ok' in res && res.ok) {
-                void useTodoTriggerStore.getState().load();
+                void useScheduleTriggerStore.getState().load();
               }
             });
           }
@@ -970,7 +970,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       opts: opts
         ? {
             ...(opts.userChannel ? { userChannel: opts.userChannel } : {}),
-            ...(opts.todoFireReceipt ? { todoFireReceipt: opts.todoFireReceipt } : {}),
+            ...(opts.scheduleFireReceipt ? { scheduleFireReceipt: opts.scheduleFireReceipt } : {}),
           }
         : undefined,
     });
@@ -1065,7 +1065,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
     set({ error });
   },
 
-  applyTodoTrigger: async (payload: {
+  applyScheduleTrigger: async (payload: {
     workspaceRoot: string;
     text: string;
     submitToModel: boolean;
@@ -1084,8 +1084,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
     if (payload.submitToModel) {
       const tid = String(payload.triggerId ?? '').trim();
       await get().sendMessage(rawText, null, {
-        userChannel: 'user_todo_auto',
-        ...(tid ? { todoFireReceipt: { triggerId: tid } } : {}),
+        userChannel: 'user_scheduling_auto',
+        ...(tid ? { scheduleFireReceipt: { triggerId: tid } } : {}),
       });
       return;
     }
@@ -1102,7 +1102,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       role: 'user',
       content: rawText,
       timestamp: Date.now(),
-      channel: 'user_todo_auto',
+      channel: 'user_scheduling_auto',
     };
     set((state) => {
       const updatedConversations = state.conversations.map((conv) => {

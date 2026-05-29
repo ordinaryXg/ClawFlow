@@ -1,5 +1,5 @@
 /**
- * 工作空间变更记录：对话轮次、文件操作、进化 Agent、待办、子 Agent 调度、技能开关等。
+ * 工作空间变更记录：对话轮次、文件操作、进化 Agent、周期调度、子 Agent 调度、技能开关等。
  * 存于 `.agent/.clawflow/change-history.json`。
  */
 
@@ -14,8 +14,8 @@ export type WorkspaceChangeLogKind =
   | 'conversation_round'
   | 'file_change'
   | 'evolution'
-  | 'todo_added'
-  | 'todo_triggered'
+  | 'schedule_added'
+  | 'schedule_triggered'
   | 'agent_dispatch'
   | 'skill_enabled'
   | 'skill_disabled'
@@ -25,8 +25,8 @@ const KIND_SET = new Set<string>([
   'conversation_round',
   'file_change',
   'evolution',
-  'todo_added',
-  'todo_triggered',
+  'schedule_added',
+  'schedule_triggered',
   'agent_dispatch',
   'skill_enabled',
   'skill_disabled',
@@ -128,10 +128,10 @@ function defaultTitleForKind(kind: WorkspaceChangeLogKind, userPreview: string, 
       return (u || a || '文件变更').slice(0, 120);
     case 'evolution':
       return (u || '进化 Agent').slice(0, 120);
-    case 'todo_added':
-      return (u || '待办新增').slice(0, 120);
-    case 'todo_triggered':
-      return (u || '待办触发').slice(0, 120);
+    case 'schedule_added':
+      return (u || '周期调度新增').slice(0, 120);
+    case 'schedule_triggered':
+      return (u || '周期调度触发').slice(0, 120);
     case 'agent_dispatch':
       return (u || 'Agent 调度').slice(0, 120);
     case 'skill_enabled':

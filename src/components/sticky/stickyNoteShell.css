@@ -397,7 +397,7 @@
   flex-direction: column;
 }
 
-.cf-stickyTodosEmbed {
+.cf-stickySchedulingEmbed {
   flex: 1;
   min-height: 0;
   overflow: auto;

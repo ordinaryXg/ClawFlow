@@ -7,7 +7,7 @@ export type WorkspaceToolId =
   | 'shell'
   | 'web_search'
   | 'web_scrape'
-  | 'todos'
+  | 'scheduling'
   | 'skills'
   | 'knowledge_base'
   | 'feishu';
@@ -18,7 +18,7 @@ export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
   'shell',
   'web_search',
   'web_scrape',
-  'todos',
+  'scheduling',
   'skills',
   'knowledge_base',
   'feishu',
@@ -26,16 +26,13 @@ export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = [
 
 export type WorkspaceToolSelection = Partial<Record<WorkspaceToolId, boolean>>;
 
-/** 读盘时可能仍含 v1 的 `browser` 总开关 */
-export type WorkspaceToolSelectionInput = WorkspaceToolSelection & { browser?: boolean };
-
 export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> = {
   docs: true,
   git: true,
   shell: true,
   web_search: true,
   web_scrape: true,
-  todos: true,
+  scheduling: true,
   /** 新建工作区 / 未在 manifest 中显式写入时默认开启工作区技能 */
   skills: true,
   /** 知识库与记忆 FTS 检索（workspace_memory_search / workspace_knowledge_query 等） */
@@ -44,19 +41,10 @@ export const DEFAULT_WORKSPACE_TOOL_SELECTION: Record<WorkspaceToolId, boolean> 
   feishu: true,
 };
 
-/**
- * 合并默认与勾选；支持 v1 manifest 的 `browser`：在未见分项开关时，`browser` 同时作用于 web_search / web_scrape。
- */
-export function mergeToolSelection(sel?: WorkspaceToolSelectionInput): Record<WorkspaceToolId, boolean> {
+/** 合并默认与 manifest 勾选 */
+export function mergeToolSelection(sel?: WorkspaceToolSelection): Record<WorkspaceToolId, boolean> {
   const out: Record<WorkspaceToolId, boolean> = { ...DEFAULT_WORKSPACE_TOOL_SELECTION };
   if (!sel || typeof sel !== 'object') return out;
-
-  const hasGranularBrowser = typeof sel.web_search === 'boolean' || typeof sel.web_scrape === 'boolean';
-
-  if (!hasGranularBrowser && typeof sel.browser === 'boolean') {
-    out.web_search = sel.browser;
-    out.web_scrape = sel.browser;
-  }
 
   for (const id of WORKSPACE_TOOL_IDS) {
     if (typeof sel[id] === 'boolean') out[id] = sel[id];

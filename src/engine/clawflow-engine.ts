@@ -816,7 +816,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
           const n = String(toolName ?? '').trim();
           if (n === 'web_search') return { kind: 'tool.network.search', title: '网络搜索' };
           if (n === 'web_scrape') return { kind: 'tool.network.scrape', title: '网页爬取' };
-          if (n.startsWith('workspace_todo_')) return { kind: 'tool.todo.receipt', title: '待办/回执' };
+          if (n.startsWith('workspace_schedule_')) return { kind: 'tool.scheduling.receipt', title: '周期调度/回执' };
           if (n.startsWith('workspace_git_')) return { kind: 'tool.exec.git', title: '命令行：git' };
           if (n === 'workspace_rg_search') return { kind: 'tool.exec.rg', title: '命令行：rg' };
           if (n === 'workspace_run_tsc_no_emit') return { kind: 'tool.exec.tsc', title: '命令行：tsc' };

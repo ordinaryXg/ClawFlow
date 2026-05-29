@@ -2,12 +2,12 @@ import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
-  defaultTodoTrigger,
-  type TodoTriggerRecord,
-  type TodoTriggerRepeat,
-} from '../../shared/todo-triggers';
-import { useTodoTriggerStore } from '../../store/modules/todoTriggerStore';
-import './todoTriggersPanel.css';
+  defaultScheduleTrigger,
+  type ScheduleTriggerRecord,
+  type ScheduleTriggerRepeat,
+} from '../../shared/schedule-triggers';
+import { useScheduleTriggerStore } from '../../store/modules/scheduleTriggerStore';
+import './schedulingPanel.css';
 
 type Props = { workspacePath: string | null };
 
@@ -22,26 +22,26 @@ function fromLocalDatetimeValue(s: string): number {
   return Number.isFinite(t) ? t : Date.now();
 }
 
-function validateTriggersForSave(list: TodoTriggerRecord[], tErr: (k: string) => string): string | null {
+function validateTriggersForSave(list: ScheduleTriggerRecord[], tErr: (k: string) => string): string | null {
   for (const tr of list) {
     if (tr.trigger.kind === 'schedule' && tr.trigger.repeat === 'interval') {
       const m = tr.trigger.intervalMinutes ?? 0;
-      if (m < 1) return tErr('todoTriggers.intervalInvalid');
+      if (m < 1) return tErr('scheduling.intervalInvalid');
     }
     if (tr.trigger.kind === 'schedule' && tr.trigger.repeat === 'cron') {
       const c = String(tr.trigger.cron ?? '').trim();
-      if (!c) return tErr('todoTriggers.cronInvalid');
+      if (!c) return tErr('scheduling.cronInvalid');
     }
   }
   return null;
 }
 
-const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
+const SchedulingPanel: FC<Props> = ({ workspacePath }) => {
   const { t } = useTranslation();
-  const storeTriggers = useTodoTriggerStore((s) => s.triggers);
-  const load = useTodoTriggerStore((s) => s.load);
+  const storeTriggers = useScheduleTriggerStore((s) => s.triggers);
+  const load = useScheduleTriggerStore((s) => s.load);
 
-  const [triggers, setTriggers] = useState<TodoTriggerRecord[]>([]);
+  const [triggers, setTriggers] = useState<ScheduleTriggerRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -118,7 +118,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   };
 
   const persistTriggers = useCallback(
-    async (next: TodoTriggerRecord[], opts?: { toastSuccess?: boolean }): Promise<boolean> => {
+    async (next: ScheduleTriggerRecord[], opts?: { toastSuccess?: boolean }): Promise<boolean> => {
       if (!workspacePath?.trim()) return false;
       const errMsg = validateTriggersForSave(next, t);
       if (errMsg) {
@@ -127,18 +127,18 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
       }
       setSaving(true);
       try {
-        const res = await window.electronAPI?.todoTriggersSaveAll?.(next);
+        const res = await window.electronAPI?.scheduleTriggersSaveAll?.(next);
         if (res && 'ok' in res && res.ok) {
           await load();
           if (opts?.toastSuccess) {
             (window as unknown as { __cf_toast?: { success: (a: string) => void } }).__cf_toast?.success(
-              t('todoTriggers.saved')
+              t('scheduling.saved')
             );
           }
           return true;
         }
         (window as unknown as { __cf_toast?: { error: (a: string) => void } }).__cf_toast?.error(
-          t('todoTriggers.saveFailed')
+          t('scheduling.saveFailed')
         );
         return false;
       } finally {
@@ -172,7 +172,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   }, []);
 
   const scheduleDebouncedPersist = useCallback(
-    (next: TodoTriggerRecord[]) => {
+    (next: ScheduleTriggerRecord[]) => {
       if (creatingIdRef.current) return;
       clearPersistTimer();
       persistTimerRef.current = window.setTimeout(() => {
@@ -184,7 +184,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   );
 
   const patchSelected = useCallback(
-    (patch: Partial<TodoTriggerRecord>) => {
+    (patch: Partial<ScheduleTriggerRecord>) => {
       if (!selectedId) return;
       setTriggers((prev) => {
         const next = prev.map((x) => (x.id === selectedId ? { ...x, ...patch, updatedAt: Date.now() } : x));
@@ -196,12 +196,12 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   );
 
   const patchTrigger = useCallback(
-    (partial: Partial<TodoTriggerRecord['trigger']>) => {
+    (partial: Partial<ScheduleTriggerRecord['trigger']>) => {
       if (!selectedId) return;
       setTriggers((prev) => {
         const next = prev.map((x) =>
           x.id === selectedId
-            ? { ...x, trigger: { ...x.trigger, ...partial } as TodoTriggerRecord['trigger'], updatedAt: Date.now() }
+            ? { ...x, trigger: { ...x.trigger, ...partial } as ScheduleTriggerRecord['trigger'], updatedAt: Date.now() }
             : x
         );
         if (creatingIdRef.current !== selectedId) scheduleDebouncedPersist(next);
@@ -212,7 +212,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   );
 
   const patchAction = useCallback(
-    (partial: Partial<TodoTriggerRecord['action']>) => {
+    (partial: Partial<ScheduleTriggerRecord['action']>) => {
       if (!selectedId) return;
       setTriggers((prev) => {
         const next = prev.map((x) =>
@@ -227,7 +227,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
 
   const onAdd = () => {
     if (creatingId) return;
-    const n = defaultTodoTrigger({ title: t('todoTriggers.newTitle') });
+    const n = defaultScheduleTrigger({ title: t('scheduling.newTitle') });
     setTriggers((prev) => [n, ...prev]);
     setSelectedId(n.id);
     setCreatingId(n.id);
@@ -255,7 +255,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   };
 
   const deleteTriggerById = async (id: string) => {
-    if (!window.confirm(t('todoTriggers.confirmDeleteIrreversible'))) return;
+    if (!window.confirm(t('scheduling.confirmDeleteIrreversible'))) return;
     clearPersistTimer();
     const next = triggers.filter((x) => x.id !== id);
     setTriggers(next);
@@ -269,7 +269,7 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   };
 
   if (!workspacePath?.trim()) {
-    return <div className="cf-todoPanel__empty">{t('chat.rightTabs.noWorkspaceForTree')}</div>;
+    return <div className="cf-schedulingPanel__empty">{t('chat.rightTabs.noWorkspaceForTree')}</div>;
   }
 
   const nextFireStr =
@@ -278,52 +278,52 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
       : toLocalDatetimeValue(Date.now() + 60_000);
 
   return (
-    <div className="cf-todoPanel">
-      <div className="cf-todoPanel__toolbar">
+    <div className="cf-schedulingPanel">
+      <div className="cf-schedulingPanel__toolbar">
         <button type="button" className="cf-btn cf-btnGhost cf-btnSmall" onClick={onAdd} disabled={creatingId != null}>
-          <PlusOutlined /> {t('todoTriggers.add')}
+          <PlusOutlined /> {t('scheduling.add')}
         </button>
       </div>
-      <div className="cf-todoPanel__split">
-        <div className="cf-todoPanel__listCol">
-          <div className="cf-todoPanel__list cf-todoPanel__list--unified" role="list">
+      <div className="cf-schedulingPanel__split">
+        <div className="cf-schedulingPanel__listCol">
+          <div className="cf-schedulingPanel__list cf-schedulingPanel__list--unified" role="list">
             {sortedRows.length === 0 ? (
-              <div className="cf-todoPanel__listEmpty cf-sub">{t('todoTriggers.listEmpty')}</div>
+              <div className="cf-schedulingPanel__listEmpty cf-sub">{t('scheduling.listEmpty')}</div>
             ) : (
               sortedRows.map((x) => {
                 const running = x.status === 'pending';
                 return (
                   <div
                     key={x.id}
-                    className={`cf-todoPanel__row${x.id === selectedId ? ' cf-todoPanel__row--active' : ''}${
-                      !x.enabled && running ? ' cf-todoPanel__row--off' : ''
+                    className={`cf-schedulingPanel__row${x.id === selectedId ? ' cf-schedulingPanel__row--active' : ''}${
+                      !x.enabled && running ? ' cf-schedulingPanel__row--off' : ''
                     }`}
                     role="listitem"
                   >
                     <button
                       type="button"
-                      className="cf-todoPanel__rowSelect"
+                      className="cf-schedulingPanel__rowSelect"
                       onClick={() => setSelectedId(x.id)}
                     >
-                      <span className="cf-todoPanel__rowTitleLine">
-                        <span className="cf-todoPanel__rowTitle">{x.title}</span>
-                        <span className="cf-todoPanel__rowStatus">
+                      <span className="cf-schedulingPanel__rowTitleLine">
+                        <span className="cf-schedulingPanel__rowTitle">{x.title}</span>
+                        <span className="cf-schedulingPanel__rowStatus">
                           <span
                             className={
-                              running ? 'cf-todoPanel__statusDot cf-todoPanel__statusDot--running' : 'cf-todoPanel__statusDot cf-todoPanel__statusDot--archived'
+                              running ? 'cf-schedulingPanel__statusDot cf-schedulingPanel__statusDot--running' : 'cf-schedulingPanel__statusDot cf-schedulingPanel__statusDot--archived'
                             }
                             aria-hidden
                           />
-                          <span className="cf-todoPanel__statusLabel">
-                            {running ? t('todoTriggers.statusRunning') : t('todoTriggers.statusArchived')}
+                          <span className="cf-schedulingPanel__statusLabel">
+                            {running ? t('scheduling.statusRunning') : t('scheduling.statusArchived')}
                           </span>
                         </span>
                       </span>
                     </button>
                     <button
                       type="button"
-                      className="cf-todoPanel__rowDel"
-                      aria-label={t('todoTriggers.deleteRowAria')}
+                      className="cf-schedulingPanel__rowDel"
+                      aria-label={t('scheduling.deleteRowAria')}
                       title={t('common.delete')}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -338,14 +338,14 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
             )}
           </div>
         </div>
-        <div className="cf-todoPanel__gutter" aria-hidden />
-        <div className={`cf-todoPanel__editor${readOnly ? ' cf-todoPanel__editor--readonly' : ''}`}>
+        <div className="cf-schedulingPanel__gutter" aria-hidden />
+        <div className={`cf-schedulingPanel__editor${readOnly ? ' cf-schedulingPanel__editor--readonly' : ''}`}>
           {!selected ? (
-            <div className="cf-sub">{t('todoTriggers.selectHint')}</div>
+            <div className="cf-sub">{t('scheduling.selectHint')}</div>
           ) : (
             <>
-              <label className="cf-todoPanel__field">
-                <span>{t('todoTriggers.fieldTitle')}</span>
+              <label className="cf-schedulingPanel__field">
+                <span>{t('scheduling.fieldTitle')}</span>
                 <input
                   type="text"
                   value={selected.title}
@@ -353,24 +353,24 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                   onChange={(e) => patchSelected({ title: e.target.value })}
                 />
               </label>
-              <label className="cf-todoPanel__field cf-todoPanel__field--row">
+              <label className="cf-schedulingPanel__field cf-schedulingPanel__field--row">
                 <input
                   type="checkbox"
                   checked={selected.enabled}
                   disabled={readOnly}
                   onChange={(e) => patchSelected({ enabled: e.target.checked })}
                 />
-                <span>{t('todoTriggers.fieldEnabled')}</span>
+                <span>{t('scheduling.fieldEnabled')}</span>
               </label>
               {selected.trigger.kind === 'schedule' ? (
                 <>
-                  <label className="cf-todoPanel__field">
-                    <span>{t('todoTriggers.fieldRepeat')}</span>
+                  <label className="cf-schedulingPanel__field">
+                    <span>{t('scheduling.fieldRepeat')}</span>
                     <select
                       value={selected.trigger.repeat}
                       disabled={readOnly}
                       onChange={(e) => {
-                        const repeat = e.target.value as TodoTriggerRepeat;
+                        const repeat = e.target.value as ScheduleTriggerRepeat;
                         patchTrigger({
                           repeat,
                           intervalMinutes: repeat === 'interval' ? selected.trigger.intervalMinutes ?? 60 : undefined,
@@ -379,13 +379,13 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                         });
                       }}
                     >
-                      <option value="once">{t('todoTriggers.repeatOnce')}</option>
-                      <option value="interval">{t('todoTriggers.repeatInterval')}</option>
-                      <option value="cron">{t('todoTriggers.repeatCron')}</option>
+                      <option value="once">{t('scheduling.repeatOnce')}</option>
+                      <option value="interval">{t('scheduling.repeatInterval')}</option>
+                      <option value="cron">{t('scheduling.repeatCron')}</option>
                     </select>
                   </label>
-                  <label className="cf-todoPanel__field">
-                    <span>{t('todoTriggers.fieldNextFire')}</span>
+                  <label className="cf-schedulingPanel__field">
+                    <span>{t('scheduling.fieldNextFire')}</span>
                     <input
                       type="datetime-local"
                       value={nextFireStr}
@@ -394,8 +394,8 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                     />
                   </label>
                   {selected.trigger.repeat === 'interval' ? (
-                    <label className="cf-todoPanel__field">
-                      <span>{t('todoTriggers.fieldIntervalMinutes')}</span>
+                    <label className="cf-schedulingPanel__field">
+                      <span>{t('scheduling.fieldIntervalMinutes')}</span>
                       <input
                         type="number"
                         min={1}
@@ -410,26 +410,26 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                   ) : null}
                   {selected.trigger.repeat === 'cron' ? (
                     <>
-                      <label className="cf-todoPanel__field">
-                        <span>{t('todoTriggers.fieldCron')}</span>
+                      <label className="cf-schedulingPanel__field">
+                        <span>{t('scheduling.fieldCron')}</span>
                         <input
                           type="text"
                           value={String((selected.trigger as any).cron ?? '')}
                           disabled={readOnly}
-                          placeholder={t('todoTriggers.cronPh')}
+                          placeholder={t('scheduling.cronPh')}
                           onChange={(e) => patchTrigger({ cron: e.target.value } as any)}
                         />
                         <div className="cf-sub" style={{ marginTop: 6 }}>
-                          {t('todoTriggers.cronHint')}
+                          {t('scheduling.cronHint')}
                         </div>
                       </label>
-                      <label className="cf-todoPanel__field">
-                        <span>{t('todoTriggers.fieldCronTz')}</span>
+                      <label className="cf-schedulingPanel__field">
+                        <span>{t('scheduling.fieldCronTz')}</span>
                         <input
                           type="text"
                           value={String((selected.trigger as any).cronTz ?? '')}
                           disabled={readOnly}
-                          placeholder={t('todoTriggers.cronTzPh')}
+                          placeholder={t('scheduling.cronTzPh')}
                           onChange={(e) => patchTrigger({ cronTz: e.target.value || undefined } as any)}
                         />
                       </label>
@@ -437,8 +437,8 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                   ) : null}
                 </>
               ) : null}
-              <label className="cf-todoPanel__field">
-                <span>{t('todoTriggers.fieldPayload')}</span>
+              <label className="cf-schedulingPanel__field">
+                <span>{t('scheduling.fieldPayload')}</span>
                 <textarea
                   rows={5}
                   value={selected.action.text}
@@ -446,57 +446,57 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
                   onChange={(e) => patchAction({ text: e.target.value })}
                 />
               </label>
-              <label className="cf-todoPanel__field cf-todoPanel__field--row">
+              <label className="cf-schedulingPanel__field cf-schedulingPanel__field--row">
                 <input
                   type="checkbox"
                   checked={selected.action.submitToModel}
                   disabled={readOnly}
                   onChange={(e) => patchAction({ submitToModel: e.target.checked })}
                 />
-                <span>{t('todoTriggers.fieldSubmitToModel')}</span>
+                <span>{t('scheduling.fieldSubmitToModel')}</span>
               </label>
               {selected.trigger.repeat === 'interval' ? (
-                <label className="cf-todoPanel__field cf-todoPanel__field--row">
+                <label className="cf-schedulingPanel__field cf-schedulingPanel__field--row">
                   <input
                     type="checkbox"
                     checked={Boolean(selected.consumeOnFire)}
                     disabled={readOnly}
                     onChange={(e) => patchSelected({ consumeOnFire: e.target.checked })}
                   />
-                  <span>{t('todoTriggers.fieldConsumeOnFire')}</span>
+                  <span>{t('scheduling.fieldConsumeOnFire')}</span>
                 </label>
               ) : null}
               {!readOnly && selected.lastFiredAt ? (
-                <div className="cf-sub cf-todoPanel__meta">
-                  {t('todoTriggers.lastFired', { time: new Date(selected.lastFiredAt).toLocaleString() })}
+                <div className="cf-sub cf-schedulingPanel__meta">
+                  {t('scheduling.lastFired', { time: new Date(selected.lastFiredAt).toLocaleString() })}
                 </div>
               ) : null}
               {readOnly ? (
-                <div className="cf-todoPanel__receipt">
-                  <div className="cf-todoPanel__receiptHead">{t('todoTriggers.fireReceiptTitle')}</div>
+                <div className="cf-schedulingPanel__receipt">
+                  <div className="cf-schedulingPanel__receiptHead">{t('scheduling.fireReceiptTitle')}</div>
                   {selected.lastFiredAt != null ? (
-                    <div className="cf-todoPanel__receiptTime cf-sub">
-                      {t('todoTriggers.fireReceiptTime', {
+                    <div className="cf-schedulingPanel__receiptTime cf-sub">
+                      {t('scheduling.fireReceiptTime', {
                         time: new Date(selected.lastFiredAt).toLocaleString(),
                       })}
                     </div>
                   ) : null}
                   {showArchivedAiReceipt ? (
                     <>
-                      <div className="cf-todoPanel__receiptLabel cf-sub">
-                        {t('todoTriggers.fireReceiptAiReply')}
+                      <div className="cf-schedulingPanel__receiptLabel cf-sub">
+                        {t('scheduling.fireReceiptAiReply')}
                       </div>
-                      <pre className="cf-todoPanel__receiptBody">
-                        {String(selected.lastFireAiReceipt ?? '').trim() || t('todoTriggers.fireReceiptAiEmpty')}
+                      <pre className="cf-schedulingPanel__receiptBody">
+                        {String(selected.lastFireAiReceipt ?? '').trim() || t('scheduling.fireReceiptAiEmpty')}
                       </pre>
                     </>
                   ) : (
-                    <div className="cf-todoPanel__receiptNoAi cf-sub">{t('todoTriggers.fireReceiptNoModel')}</div>
+                    <div className="cf-schedulingPanel__receiptNoAi cf-sub">{t('scheduling.fireReceiptNoModel')}</div>
                   )}
                 </div>
               ) : null}
               {isDraft ? (
-                <div className="cf-todoPanel__draftBar">
+                <div className="cf-schedulingPanel__draftBar">
                   <button
                     type="button"
                     className="cf-btn cf-btnPrimary cf-btnSmall"
@@ -523,4 +523,4 @@ const TodoTriggersPanel: FC<Props> = ({ workspacePath }) => {
   );
 };
 
-export default TodoTriggersPanel;
+export default SchedulingPanel;

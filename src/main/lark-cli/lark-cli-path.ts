@@ -60,11 +60,6 @@ export function getDevBundledLarkCliBinaryPath(): string | null {
   return null;
 }
 
-/** @deprecated use getPackagedLarkCliBinaryPath */
-export function getBundledLarkCliBinaryPath(): string | null {
-  return getPackagedLarkCliBinaryPath() ?? getDevBundledLarkCliBinaryPath();
-}
-
 export function getInstalledLarkCliBinaryPath(): string {
   return path.join(getLarkCliBinDir(), BIN_NAME);
 }

@@ -10,7 +10,7 @@
 | `browser.md` | `.agent/.tool/browser.md` | `tools.web_search` / `tools.web_scrape` |
 | `shell.md` | `.agent/.tool/shell.md` | `tools.shell` |
 | `git.md` | `.agent/.tool/git.md` | `tools.git` |
-| `todos.md` | `.agent/.tool/todos.md` | `tools.todos` |
+| `scheduling.md` | `.agent/.tool/scheduling.md` | `tools.scheduling` |
 | `skills.md` | `.agent/.tool/skills.md` | `tools.skills` |
 | `knowledge_base.md` | `.agent/.tool/knowledge_base.md` | `tools.knowledge_base` |
 | `feishu.md` | `.agent/.tool/feishu.md` | `tools.feishu` |

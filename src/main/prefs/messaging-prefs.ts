@@ -1,6 +1,6 @@
 /**
  * 通讯集成偏好（userData）。
- * 飞书支持多机器人：feishuBots[]；旧版单块 feishu 在读取时内存迁移，保存时写入 feishuBots 并清除 feishu。
+ * 飞书支持多机器人：feishuBots[]。
  */
 
 import * as fs from 'fs';
@@ -27,26 +27,10 @@ export type FeishuBotConfig = {
   bridgeSenderLabel?: string;
 };
 
-/** 旧版单应用块（仅用于迁移读取） */
-export type LegacyFeishuPrefs = {
-  appId?: string;
-  appSecret?: string;
-  defaultReceiveId?: string;
-  receiveIdType?: FeishuReceiveIdType;
-  bridgeEnabled?: boolean;
-  bridgeWorkspacePath?: string;
-  bridgeConversationId?: string;
-  bridgeSenderLabel?: string;
-};
-
 export type MessagingPrefsStored = {
   messagingVersion?: 2;
   feishuBots?: FeishuBotConfig[];
-  /** @deprecated 由 feishuBots 替代；存在时 getNormalizedFeishuBots 会合并为一条 */
-  feishu?: LegacyFeishuPrefs;
 };
-
-export const LEGACY_FEISHU_BOT_ID = 'feishu-legacy';
 
 const FILENAME = 'cf.messaging-prefs.json';
 
@@ -79,14 +63,6 @@ function coerceBot(raw: unknown): FeishuBotConfig | null {
   return out;
 }
 
-function legacyToBot(leg: LegacyFeishuPrefs): FeishuBotConfig {
-  return coerceBot({
-    id: LEGACY_FEISHU_BOT_ID,
-    name: '飞书机器人',
-    ...leg,
-  }) as FeishuBotConfig;
-}
-
 /** 新建向导用的一条空配置（由调用方写入名称） */
 export function newFeishuBotTemplate(name: string): FeishuBotConfig {
   return {
@@ -97,18 +73,11 @@ export function newFeishuBotTemplate(name: string): FeishuBotConfig {
   };
 }
 
-/**
- * 归一化机器人列表：优先 feishuBots；否则从 legacy feishu 迁一条；再否则返回一条可编辑空模板。
- * 不修改磁盘（仅内存视图）。
- */
+/** 归一化机器人列表；不修改磁盘（仅内存视图）。 */
 export function getNormalizedFeishuBots(prefs: MessagingPrefsStored | null): FeishuBotConfig[] {
   if (prefs?.feishuBots && Array.isArray(prefs.feishuBots)) {
     const out = prefs.feishuBots.map(coerceBot).filter((x): x is FeishuBotConfig => Boolean(x));
     if (out.length > 0) return out;
-  }
-  const leg = prefs?.feishu;
-  if (leg && typeof leg === 'object' && Object.keys(leg).length > 0) {
-    return [legacyToBot(leg)];
   }
   return [newFeishuBotTemplate('机器人 1')];
 }

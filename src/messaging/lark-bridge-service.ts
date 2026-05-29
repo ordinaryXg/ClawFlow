@@ -266,8 +266,3 @@ export function restartLarkBridgeFromPrefs(): void {
     }
   })();
 }
-
-/** @deprecated alias */
-export const stopFeishuEventServer = stopLarkBridge;
-/** @deprecated alias */
-export const restartFeishuEventServerFromPrefs = restartLarkBridgeFromPrefs;

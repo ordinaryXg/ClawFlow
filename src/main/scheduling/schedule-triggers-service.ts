@@ -2,13 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import {
-  TODO_TRIGGERS_FILE_VERSION,
-  type TodoTriggerRecord,
-  type TodoTriggersFile,
-} from '../../shared/todo-triggers';
+  SCHEDULE_TRIGGERS_FILE_VERSION,
+  type ScheduleTriggerRecord,
+  type ScheduleTriggersFile,
+} from '../../shared/schedule-triggers';
 import * as workspaceService from '../workspace/workspace-service';
 
-function isRecord(x: unknown): x is TodoTriggerRecord {
+function isRecord(x: unknown): x is ScheduleTriggerRecord {
   if (!x || typeof x !== 'object') return false;
   const o = x as Record<string, unknown>;
   if (typeof o.id !== 'string' || typeof o.title !== 'string' || typeof o.enabled !== 'boolean') return false;
@@ -24,21 +24,12 @@ function isRecord(x: unknown): x is TodoTriggerRecord {
   return true;
 }
 
-async function fileExists(fp: string): Promise<boolean> {
-  try {
-    await fs.promises.access(fp);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readTriggersFromFile(fp: string): Promise<TodoTriggerRecord[]> {
+async function readTriggersFromFile(fp: string): Promise<ScheduleTriggerRecord[]> {
   try {
     const buf = await fs.promises.readFile(fp, 'utf-8');
     const parsed = JSON.parse(buf) as unknown;
     if (parsed && typeof parsed === 'object') {
-      const triggers = (parsed as TodoTriggersFile).triggers;
+      const triggers = (parsed as ScheduleTriggersFile).triggers;
       if (Array.isArray(triggers)) {
         return triggers.filter(isRecord);
       }
@@ -49,34 +40,24 @@ async function readTriggersFromFile(fp: string): Promise<TodoTriggerRecord[]> {
   return [];
 }
 
-export async function readTodoTriggers(workspaceRoot: string): Promise<TodoTriggerRecord[]> {
-  const root = path.resolve(workspaceRoot);
-  const newFp = workspaceService.todoTriggersStorePath(root);
-  const legacyFp = workspaceService.legacyTodoTriggersStorePath(root);
-
-  const newExists = await fileExists(newFp);
-  const fromNew = newExists ? await readTriggersFromFile(newFp) : [];
-  if (fromNew.length > 0) return fromNew;
-  if (newExists) return [];
-
-  const fromLegacy = await readTriggersFromFile(legacyFp);
-  if (fromLegacy.length === 0) return [];
-
-  await writeTodoTriggers(root, fromLegacy);
-  await fs.promises.unlink(legacyFp).catch(() => undefined);
-  return fromLegacy;
+export async function readScheduleTriggers(workspaceRoot: string): Promise<ScheduleTriggerRecord[]> {
+  const fp = workspaceService.scheduleTriggersStorePath(path.resolve(workspaceRoot));
+  return readTriggersFromFile(fp);
 }
 
-export async function writeTodoTriggers(workspaceRoot: string, triggers: TodoTriggerRecord[]): Promise<void> {
+export async function writeScheduleTriggers(
+  workspaceRoot: string,
+  triggers: ScheduleTriggerRecord[]
+): Promise<void> {
   const root = path.resolve(workspaceRoot);
-  const body: TodoTriggersFile = { version: TODO_TRIGGERS_FILE_VERSION, triggers };
-  const fp = workspaceService.todoTriggersStorePath(root);
+  const body: ScheduleTriggersFile = { version: SCHEDULE_TRIGGERS_FILE_VERSION, triggers };
+  const fp = workspaceService.scheduleTriggersStorePath(root);
   await fs.promises.mkdir(path.dirname(fp), { recursive: true });
   await fs.promises.writeFile(fp, JSON.stringify(body, null, 2), 'utf-8');
 }
 
 /** 确保 pending + enabled 的 schedule 有合理的 nextFireAt */
-export function ensureScheduleNextFire(t: TodoTriggerRecord, now = Date.now()): TodoTriggerRecord {
+export function ensureScheduleNextFire(t: ScheduleTriggerRecord, now = Date.now()): ScheduleTriggerRecord {
   if (t.status === 'done' || !t.enabled || t.trigger.kind !== 'schedule') return t;
   const tr = t.trigger;
   let next = tr.nextFireAt;

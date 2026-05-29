@@ -5,8 +5,8 @@ export type ChangeLogKind =
   | 'conversation_round'
   | 'file_change'
   | 'evolution'
-  | 'todo_added'
-  | 'todo_triggered'
+  | 'schedule_added'
+  | 'schedule_triggered'
   | 'agent_dispatch'
   | 'skill_enabled'
   | 'skill_disabled'
@@ -16,8 +16,8 @@ const KINDS = new Set<string>([
   'conversation_round',
   'file_change',
   'evolution',
-  'todo_added',
-  'todo_triggered',
+  'schedule_added',
+  'schedule_triggered',
   'agent_dispatch',
   'skill_enabled',
   'skill_disabled',

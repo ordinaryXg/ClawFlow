@@ -17,35 +17,16 @@ export type AuthProfile = {
   updatedAt: number;
 };
 
-type AuthProfileV1 = {
-  provider: string;
-  profileId: string;
-  label?: string;
-  token: string;
-  createdAt: number;
-  updatedAt: number;
-};
-
-type AuthStorePayloadV1 = {
-  version: 1;
-  profiles: Record<string, AuthProfileV1>;
-};
-
 export type AuthStorePayloadV2 = {
   version: 2;
   profiles: Record<string, AuthProfile>;
   activeProfileIdByProvider?: Record<string, string>;
 };
 
-const STORE_FILE_V1 = 'auth-profiles.v1.json';
 const STORE_FILE_V2 = 'auth-profiles.v2.json';
 
 function storePath(): string {
   return path.join(globalClawflowRoot(), STORE_FILE_V2);
-}
-
-function storePathV1(): string {
-  return path.join(globalClawflowRoot(), STORE_FILE_V1);
 }
 
 function encryptToBase64(plain: string): string {
@@ -87,25 +68,6 @@ async function readPayloadV2(): Promise<AuthStorePayloadV2 | null> {
   return null;
 }
 
-async function readPayloadV1(): Promise<AuthStorePayloadV1 | null> {
-  try {
-    const raw = await fs.promises.readFile(storePathV1(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      parsed.version === 1 &&
-      parsed.profiles &&
-      typeof parsed.profiles === 'object'
-    ) {
-      return parsed as AuthStorePayloadV1;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
 async function writePayloadV2(payload: AuthStorePayloadV2): Promise<void> {
   await fs.promises.mkdir(path.dirname(storePath()), { recursive: true });
   await fs.promises.writeFile(storePath(), JSON.stringify(payload, null, 2), 'utf-8');
@@ -114,37 +76,9 @@ async function writePayloadV2(payload: AuthStorePayloadV2): Promise<void> {
 async function ensurePayloadV2(): Promise<AuthStorePayloadV2> {
   const v2 = await readPayloadV2();
   if (v2) return v2;
-
-  const v1 = await readPayloadV1();
-  const migrated: AuthStorePayloadV2 = { version: 2, profiles: {}, activeProfileIdByProvider: {} };
-  if (v1?.profiles) {
-    for (const [profileId, p] of Object.entries(v1.profiles)) {
-      if (!p) continue;
-      const provider = String(p.provider ?? '').trim();
-      const pid = String(p.profileId ?? profileId).trim();
-      const token = String(p.token ?? '').trim();
-      if (!provider || !pid || !token) continue;
-      try {
-        migrated.profiles[pid] = {
-          provider,
-          profileId: pid,
-          ...(p.label ? { label: String(p.label) } : {}),
-          tokenCiphertext: encryptToBase64(token),
-          encryption: 'electron.safeStorage',
-          createdAt: typeof p.createdAt === 'number' ? p.createdAt : Date.now(),
-          updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : Date.now(),
-        };
-        // best-effort: keep old default as active
-        if (!migrated.activeProfileIdByProvider?.[provider] && pid === `${provider}:manual`) {
-          migrated.activeProfileIdByProvider![provider] = pid;
-        }
-      } catch {
-        // ignore a single profile migration failure
-      }
-    }
-  }
-  await writePayloadV2(migrated);
-  return migrated;
+  const empty: AuthStorePayloadV2 = { version: 2, profiles: {}, activeProfileIdByProvider: {} };
+  await writePayloadV2(empty);
+  return empty;
 }
 
 export async function upsertAuthProfile(params: {

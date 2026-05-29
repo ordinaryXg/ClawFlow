@@ -5,7 +5,7 @@ import { useGatewayStore } from '../store/modules/gatewayStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useChatStore } from '../store/modules/chatStore';
 import { normalizeWorkspacePathForCompare } from '../shared/workspace-path-compare';
-import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
+import { useScheduleTriggerStore } from '../store/modules/scheduleTriggerStore';
 import { startShellColumnDrag, usePersistedShellWidth } from '../hooks/usePersistedShellWidth';
 import ErrorBoundary from './common/ErrorBoundary';
 import ToastHost from './common/ToastHost';
@@ -86,7 +86,7 @@ const Layout: FC = () => {
     const off = window.electronAPI?.onWorkspaceChanged?.(() => {
       void refreshWorkspace();
       void fetchConversations();
-      void useTodoTriggerStore.getState().load();
+      void useScheduleTriggerStore.getState().load();
     });
     return () => off?.();
   }, [refreshWorkspace, fetchConversations]);
@@ -137,14 +137,14 @@ const Layout: FC = () => {
   }, [fetchConversations, t]);
 
   useEffect(() => {
-    const off = window.electronAPI?.onTodoTriggerFired?.((p) => {
-      void useChatStore.getState().applyTodoTrigger({
+    const off = window.electronAPI?.onScheduleTriggerFired?.((p) => {
+      void useChatStore.getState().applyScheduleTrigger({
         workspaceRoot: p.workspaceRoot,
         text: p.text,
         submitToModel: Boolean(p.submitToModel),
         triggerId: typeof p.triggerId === 'string' ? p.triggerId : undefined,
       });
-      void useTodoTriggerStore.getState().load();
+      void useScheduleTriggerStore.getState().load();
     });
     return () => off?.();
   }, []);

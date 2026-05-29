@@ -14,13 +14,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { useChatStore } from '../store/modules/chatStore';
 import { useWorkspaceStore } from '../store/modules/workspaceStore';
 import { useWorkspaceHubStore, type WorkspaceHubBranch } from '../store/modules/workspaceHubStore';
-import { useTodoTriggerStore } from '../store/modules/todoTriggerStore';
+import { useScheduleTriggerStore } from '../store/modules/scheduleTriggerStore';
 import { useWorkspaceSkillsStore } from '../store/modules/workspaceSkillsStore';
 import { workspaceFolderLabel, workspacePathsLikelyEqual } from '../utils/workspace-path';
 import WorkspaceNewToolsModal from './workspace/WorkspaceNewToolsModal';
 import WorkspaceCreateModal from './workspace/WorkspaceCreateModal';
 import type { WorkspaceToolSelection } from '../shared/workspace-tools';
-import { countTodoTriggersForWorkspaceHub } from '../shared/todo-triggers';
+import { countScheduleTriggersForWorkspaceHub } from '../shared/schedule-triggers';
 import { skillsForHermesDiscoveryUi } from '../shared/workspace-skills-discovery-filter';
 import { normalizeWorkspacePathForCompare } from '../shared/workspace-path-compare';
 
@@ -74,10 +74,10 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     void fetchConversations();
   }, [fetchConversations, activeWorkspacePath]);
 
-  const loadTodoTriggers = useTodoTriggerStore((s) => s.load);
+  const loadScheduleTriggers = useScheduleTriggerStore((s) => s.load);
   useEffect(() => {
-    void loadTodoTriggers();
-  }, [loadTodoTriggers, activeWorkspacePath]);
+    void loadScheduleTriggers();
+  }, [loadScheduleTriggers, activeWorkspacePath]);
 
   const loadWorkspaceSkills = useWorkspaceSkillsStore((s) => s.load);
   useEffect(() => {
@@ -85,13 +85,13 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   }, [loadWorkspaceSkills, activeWorkspacePath]);
 
   useEffect(() => {
-    const off1 = window.electronAPI?.onTodoTriggersUpdated?.((p) => {
-      if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadTodoTriggers();
+    const off1 = window.electronAPI?.onScheduleTriggersUpdated?.((p) => {
+      if (activeWorkspacePath && workspacePathsLikelyEqual(p.workspaceRoot, activeWorkspacePath)) void loadScheduleTriggers();
     });
     return () => {
       off1?.();
     };
-  }, [activeWorkspacePath, loadTodoTriggers]);
+  }, [activeWorkspacePath, loadScheduleTriggers]);
 
   useEffect(() => {
     setWsHubExpanded(true);
@@ -115,10 +115,10 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   /** 侧栏「会话」摘要：当前主会话消息数 */
   const sessionsHubMsgCount = useMemo(() => sortedConversations[0]?.messages.length ?? 0, [sortedConversations]);
 
-  const todoTriggersList = useTodoTriggerStore((s) => s.triggers);
-  const todosHubCount = useMemo(
-    () => countTodoTriggersForWorkspaceHub(todoTriggersList),
-    [todoTriggersList]
+  const scheduleTriggersList = useScheduleTriggerStore((s) => s.triggers);
+  const schedulingHubCount = useMemo(
+    () => countScheduleTriggersForWorkspaceHub(scheduleTriggersList),
+    [scheduleTriggersList]
   );
   const skillsListRaw = useWorkspaceSkillsStore((s) => s.list);
   const skillsHubCount = useMemo(() => skillsForHermesDiscoveryUi(skillsListRaw).length, [skillsListRaw]);
@@ -519,7 +519,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                             <li className="cf-sideTree__hubLi" role="none">
                               <div
                                 className={
-                                  branchForActiveWs === 'todos'
+                                  branchForActiveWs === 'scheduling'
                                     ? 'cf-sideTree__hubRow cf-sideTree__hubRow--active'
                                     : 'cf-sideTree__hubRow'
                                 }
@@ -527,15 +527,15 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
                                 <button
                                   type="button"
                                   className="cf-sideTree__hubMain cf-sideTree__hubMain--inlineCount"
-                                  onClick={() => selectHubBranch(p, 'todos')}
-                                  title={t('chat.workspaceHub.hubCountTodos', { count: todosHubCount })}
+                                  onClick={() => selectHubBranch(p, 'scheduling')}
+                                  title={t('chat.workspaceHub.hubCountScheduling', { count: schedulingHubCount })}
                                 >
                                   <span className="cf-sideTree__typeIcon cf-sideTree__typeIcon--hub" aria-hidden />
                                   <span className="cf-sideTree__hubMainLabel">
-                                    {t('chat.workspaceHub.branchTodos')}
+                                    {t('chat.workspaceHub.branchScheduling')}
                                   </span>
                                   <span className="cf-sideTree__hubTrailingCount cf-sub">
-                                    {t('chat.workspaceHub.hubCountTodos', { count: todosHubCount })}
+                                    {t('chat.workspaceHub.hubCountScheduling', { count: schedulingHubCount })}
                                   </span>
                                 </button>
                                 <span className="cf-sideTree__hubChevSpacer" aria-hidden />
