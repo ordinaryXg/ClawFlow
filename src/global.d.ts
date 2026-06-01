@@ -8,6 +8,9 @@ export interface IElectronAPI {
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
+  engineGetMemoryDiagnostics: () => Promise<
+    { ok: true; report: Record<string, unknown> } | { ok: false; error: string }
+  >;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;

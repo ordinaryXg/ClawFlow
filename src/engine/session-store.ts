@@ -90,7 +90,20 @@ export type StoredConversation = {
 type StorePayload = { conversations: StoredConversation[] };
 
 export class SessionStore {
+  /** 进程内缓存：工具循环内多次 append 避免重复 JSON.parse 整份会话文件 */
+  private memoryCache: StoredConversation[] | null = null;
+
   constructor(private readonly workspaceRoot: string) {}
+
+  /** 丢弃内存缓存（测试或需强制重读磁盘时） */
+  invalidateMemoryCache(): void {
+    this.memoryCache = null;
+  }
+
+  /** 进程内是否已加载 conversations 缓存 */
+  hasMemoryCache(): boolean {
+    return this.memoryCache !== null;
+  }
 
   /** 落盘路径对应的工作区根（解析后绝对路径） */
   resolvedWorkspaceRoot(): string {
@@ -102,6 +115,8 @@ export class SessionStore {
   }
 
   async readAll(): Promise<StoredConversation[]> {
+    if (this.memoryCache) return this.memoryCache;
+
     let buf: string;
     try {
       buf = await fs.promises.readFile(this.storePath, 'utf-8');
@@ -125,7 +140,8 @@ export class SessionStore {
     if (!Array.isArray(arr)) {
       throw new Error(`[SessionStore] conversations 文件结构无效（应为数组或 { conversations: [] }）: ${this.storePath}`);
     }
-    return (arr as StoredConversation[]).filter((c) => c && typeof c.id === 'string');
+    this.memoryCache = (arr as StoredConversation[]).filter((c) => c && typeof c.id === 'string');
+    return this.memoryCache;
   }
 
   /**
@@ -169,6 +185,7 @@ export class SessionStore {
   }
 
   async writeAll(conversations: StoredConversation[]): Promise<void> {
+    this.memoryCache = conversations;
     const payload: StorePayload = { conversations };
     const data = JSON.stringify(payload, null, 2);
     const target = this.storePath;

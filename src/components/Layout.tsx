@@ -85,7 +85,7 @@ const Layout: FC = () => {
   useEffect(() => {
     const off = window.electronAPI?.onWorkspaceChanged?.(() => {
       void refreshWorkspace();
-      void fetchConversations();
+      void fetchConversations({ immediate: true });
       void useScheduleTriggerStore.getState().load();
     });
     return () => off?.();

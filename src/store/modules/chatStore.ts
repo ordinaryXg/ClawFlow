@@ -217,7 +217,7 @@ export interface ChatState {
   conversationFetchWorkspaceKey: string | null;
 
   // Actions
-  fetchConversations: () => Promise<void>;
+  fetchConversations: (opts?: { immediate?: boolean }) => Promise<void>;
   /** 进化卡片增量更新（不全量 fetch） */
   applyEvolutionChatUpdate: (payload: {
     conversationId: string;
@@ -373,11 +373,38 @@ function clearStreamingState(): Pick<ChatState, 'streamingActivity' | 'streaming
 const TOOL_CONV_SYNC_MIN_MS = 300;
 let lastToolConvSyncTs = 0;
 
-function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations: () => Promise<void> }): void {
+const FETCH_CONVERSATIONS_DEBOUNCE_MS = 600;
+let fetchConversationsTimer: ReturnType<typeof setTimeout> | null = null;
+let fetchConversationsInflight: Promise<void> | null = null;
+
+function scheduleFetchConversations(
+  getState: () => { fetchConversations: (opts?: { immediate?: boolean }) => Promise<void> },
+  opts?: { immediate?: boolean }
+): void {
+  if (opts?.immediate) {
+    if (fetchConversationsTimer) {
+      clearTimeout(fetchConversationsTimer);
+      fetchConversationsTimer = null;
+    }
+    void getState()
+      .fetchConversations({ immediate: true })
+      .catch(() => undefined);
+    return;
+  }
+  if (fetchConversationsTimer) clearTimeout(fetchConversationsTimer);
+  fetchConversationsTimer = setTimeout(() => {
+    fetchConversationsTimer = null;
+    void getState()
+      .fetchConversations({ immediate: true })
+      .catch(() => undefined);
+  }, FETCH_CONVERSATIONS_DEBOUNCE_MS);
+}
+
+function scheduleSyncConversationsAfterTool(getState: () => { fetchConversations: (opts?: { immediate?: boolean }) => Promise<void> }): void {
   const now = Date.now();
   if (now - lastToolConvSyncTs < TOOL_CONV_SYNC_MIN_MS) return;
   lastToolConvSyncTs = now;
-  void getState().fetchConversations().catch(() => undefined);
+  scheduleFetchConversations(getState);
 }
 
 function syncPendingSendQueueToStore(
@@ -491,86 +518,98 @@ export const useChatStore = create<ChatState>()((set, get) => {
     set({ conversations, messages });
   },
 
-  fetchConversations: async () => {
-    cancelAssistantReveal();
-    let activeWs = '';
-    try {
-      const a = await window.electronAPI?.workspaceGetActive?.();
-      activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
-    } catch {
-      activeWs = '';
+  fetchConversations: async (opts?: { immediate?: boolean }) => {
+    if (!opts?.immediate) {
+      scheduleFetchConversations(get, { immediate: false });
+      return;
     }
+    if (fetchConversationsInflight) return fetchConversationsInflight;
 
-    const prevFetchWs = get().conversationFetchWorkspaceKey ?? '';
-    const workspaceSwitched =
-      Boolean(activeWs && prevFetchWs) &&
-      normWorkspacePath(activeWs) !== normWorkspacePath(prevFetchWs);
-    if (workspaceSwitched) {
-      set({
-        messages: [],
-        ...clearStreamingState(),
-        activeModeClassification: null,
-        isExpectationPlanning: false,
-        expectationPlanStream: null,
-        activeExpectationPlanDisplay: null,
-        expectationPlanAnchorMessageId: null,
-      });
-    }
-
-    try {
-      const res = await window.electronAPI?.engineGetConversations?.();
-      const rawList = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : null;
-      // 响应异常时勿清空本地列表（否则像「历史被抹掉」）；仅明确拉取到空数组时才覆盖为空。
-      if (rawList == null) {
-        // eslint-disable-next-line no-console
-        console.warn('[chat] fetchConversations: 未收到有效 conversations 数组，保留当前界面状态', res);
-        set({ error: '对话列表响应异常，未更新界面。请重试或检查主进程日志。' });
-        return;
+    fetchConversationsInflight = (async () => {
+      cancelAssistantReveal();
+      let activeWs = '';
+      try {
+        const a = await window.electronAPI?.workspaceGetActive?.();
+        activeWs = normWorkspacePath(typeof a?.path === 'string' ? a.path : '');
+      } catch {
+        activeWs = '';
       }
 
-      const fromRes = rawList.map(normalizeConversation).filter(Boolean) as Conversation[];
-      const current = get().conversations;
+      const prevFetchWs = get().conversationFetchWorkspaceKey ?? '';
+      const workspaceSwitched =
+        Boolean(activeWs && prevFetchWs) &&
+        normWorkspacePath(activeWs) !== normWorkspacePath(prevFetchWs);
+      if (workspaceSwitched) {
+        set({
+          messages: [],
+          ...clearStreamingState(),
+          activeModeClassification: null,
+          isExpectationPlanning: false,
+          expectationPlanStream: null,
+          activeExpectationPlanDisplay: null,
+          expectationPlanAnchorMessageId: null,
+        });
+      }
 
-      // 合并：服务端列表 + 同一工作区下尚未出现在本次拉取中的乐观新建会话
-      const mergedMap = new Map<string, Conversation>();
-      for (const c of fromRes) mergedMap.set(c.id, c);
-      for (const c of current) {
-        if (mergedMap.has(c.id)) continue;
-        if (optimisticConversationWorkspace.get(c.id) === activeWs) {
-          mergedMap.set(c.id, c);
+      try {
+        const res = await window.electronAPI?.engineGetConversations?.();
+        const rawList = Array.isArray(res) ? res : Array.isArray(res?.conversations) ? res.conversations : null;
+        if (rawList == null) {
+          // eslint-disable-next-line no-console
+          console.warn('[chat] fetchConversations: 未收到有效 conversations 数组，保留当前界面状态', res);
+          set({ error: '对话列表响应异常，未更新界面。请重试或检查主进程日志。' });
+          return;
         }
-      }
-      const merged = Array.from(mergedMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 
-      for (const c of fromRes) {
-        optimisticConversationWorkspace.delete(c.id);
-      }
+        const fromRes = rawList.map(normalizeConversation).filter(Boolean) as Conversation[];
+        const current = get().conversations;
 
-      const prev = get().activeConversationId;
-      const stillValid = Boolean(prev && merged.some((c) => c.id === prev));
-      const activeId = stillValid ? prev : (merged[0]?.id ?? null);
-      const active = activeId ? merged.find((c) => c.id === activeId) : null;
-      const prevMessages = get().messages;
-      const canMergeLocalMessages =
-        !workspaceSwitched && stillValid && activeId === prev && prevMessages.length > 0;
-      const nextMessages =
-        activeId && active
-          ? canMergeLocalMessages
-            ? mergeServerMessagesWithLocal(prevMessages, active.messages)
-            : active.messages
-          : (active?.messages ?? []);
-      const conversationsWithMerged = merged.map((c) =>
-        c.id === activeId ? { ...c, messages: nextMessages } : c
-      );
-      set({
-        conversations: conversationsWithMerged,
-        activeConversationId: activeId,
-        messages: nextMessages,
-        conversationFetchWorkspaceKey: activeWs || null,
-        error: null,
-      });
-    } catch (e: any) {
-      set({ error: e?.message || '获取对话历史失败' });
+        const mergedMap = new Map<string, Conversation>();
+        for (const c of fromRes) mergedMap.set(c.id, c);
+        for (const c of current) {
+          if (mergedMap.has(c.id)) continue;
+          if (optimisticConversationWorkspace.get(c.id) === activeWs) {
+            mergedMap.set(c.id, c);
+          }
+        }
+        const merged = Array.from(mergedMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+
+        for (const c of fromRes) {
+          optimisticConversationWorkspace.delete(c.id);
+        }
+
+        const prev = get().activeConversationId;
+        const stillValid = Boolean(prev && merged.some((c) => c.id === prev));
+        const activeId = stillValid ? prev : (merged[0]?.id ?? null);
+        const active = activeId ? merged.find((c) => c.id === activeId) : null;
+        const prevMessages = get().messages;
+        const canMergeLocalMessages =
+          !workspaceSwitched && stillValid && activeId === prev && prevMessages.length > 0;
+        const nextMessages =
+          activeId && active
+            ? canMergeLocalMessages
+              ? mergeServerMessagesWithLocal(prevMessages, active.messages)
+              : active.messages
+            : (active?.messages ?? []);
+        const conversationsWithMerged = merged.map((c) =>
+          c.id === activeId ? { ...c, messages: nextMessages } : c
+        );
+        set({
+          conversations: conversationsWithMerged,
+          activeConversationId: activeId,
+          messages: nextMessages,
+          conversationFetchWorkspaceKey: activeWs || null,
+          error: null,
+        });
+      } catch (e: any) {
+        set({ error: e?.message || '获取对话历史失败' });
+      }
+    })();
+
+    try {
+      await fetchConversationsInflight;
+    } finally {
+      fetchConversationsInflight = null;
     }
   },
 
@@ -600,6 +639,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
       try {
         const t0 = performance.now();
+        const engineOwnsPersist = shouldUseGatewayChatTransport();
 
         const finalizeReply = async (
           fullText: string,
@@ -633,20 +673,25 @@ export const useChatStore = create<ChatState>()((set, get) => {
                 return { ...c, messages: [...c.messages, msg], updatedAt: nowTs };
               });
               const active = state.activeConversationId === sessionId;
+              const activeMsgs = active ? state.messages : [];
+              const lastActive = activeMsgs[activeMsgs.length - 1];
+              const dupActive = lastActive?.role === 'assistant' && String(lastActive.content ?? '') === assistantText;
               return {
                 conversations: nextConvs,
-                messages: active ? [...state.messages, msg] : state.messages,
+                messages: active && !dupActive ? [...state.messages, msg] : state.messages,
               };
             });
-            try {
-              const conv = get().conversations.find((c) => c.id === sessionId);
-              if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
-            } catch {
-              /* best-effort */
+            if (!engineOwnsPersist) {
+              try {
+                const conv = get().conversations.find((c) => c.id === sessionId);
+                if (conv) await window.electronAPI?.engineUpsertConversation?.(conversationForEngineUpsert(conv));
+              } catch {
+                /* best-effort */
+              }
             }
           }
 
-          await get().fetchConversations();
+          await get().fetchConversations({ immediate: true });
 
           void Promise.resolve(
             window.electronAPI?.workspaceAppendChangeLog?.({
@@ -765,7 +810,6 @@ export const useChatStore = create<ChatState>()((set, get) => {
               streamingThinking: demuxer.getThinkingDisplay() || null,
             });
             if (/\[tool:(start|done|fail)\]/.test(chunk)) {
-              window.dispatchEvent(new CustomEvent('cf-workspace-files-updated'));
               scheduleSyncConversationsAfterTool(get);
             }
           };
@@ -912,7 +956,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
     let conversationId = activeConversationId;
     if (!conversationId) {
-      await get().fetchConversations();
+      await get().fetchConversations({ immediate: true });
       conversationId = get().activeConversationId;
     }
 
@@ -991,7 +1035,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
   createConversation: async () => {
     cancelAssistantReveal();
-    await get().fetchConversations();
+    await get().fetchConversations({ immediate: true });
   },
 
   switchConversation: (id: string) => {
@@ -1092,7 +1136,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
     cancelAssistantReveal();
     let conversationId = get().activeConversationId;
     if (!conversationId) {
-      await get().fetchConversations();
+      await get().fetchConversations({ immediate: true });
       conversationId = get().activeConversationId;
     }
     if (!conversationId) return;

@@ -417,7 +417,7 @@ const SettingsPage: FC = () => {
     setToolModal({ open: false, path: null, mode: 'create', gitRemoteUrl: undefined });
     if (!p) return;
     await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
-    await fetchConversations();
+    await fetchConversations({ immediate: true });
     (window as any).__cf_toast?.success?.(t('settings.workspacePickOkTitle'), t('settings.workspacePickOkBody'));
   };
 

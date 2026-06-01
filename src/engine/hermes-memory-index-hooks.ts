@@ -2,7 +2,7 @@
  * Hermes：工作区文本（技能 + Hermes notes）变更后触发 FTS 增量同步。
  */
 
-import { refreshHermesMemoryIndex } from './hermes-memory-service';
+import { scheduleHermesMemoryIndexRefresh } from './persist-notify-coalescer';
 import { isHermesMemoryRel } from './hermes-memory-store';
 
 export function isWorkspaceRelativeUnderHermesSkillTree(rel: string): boolean {
@@ -75,7 +75,9 @@ export function patchSummaryTouchesHermesIndexedText(summary: PatchPathsSummary)
   return false;
 }
 
-/** Hermes notes / 技能等 Markdown 变更后：增量更新 memory_docs + FTS */
+/** Hermes notes / 技能等 Markdown 变更后：增量更新 memory_docs + FTS（合并高频触发） */
 export function refreshHermesMemoryIndexBestEffort(workspaceRoot: string): void {
-  refreshHermesMemoryIndex(workspaceRoot);
+  scheduleHermesMemoryIndexRefresh(workspaceRoot);
 }
+
+export { flushHermesMemoryIndexRefresh } from './persist-notify-coalescer';

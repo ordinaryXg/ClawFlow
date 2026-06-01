@@ -264,7 +264,7 @@ const StickyNoteShell: FC = () => {
       if (!path) return;
       const res = await window.electronAPI?.stickyMergeSatellite?.({ workspacePath: path });
       if (res && 'ok' in res && res.ok && res.closed) {
-        await fetchConversations();
+        await fetchConversations({ immediate: true });
         await useWorkspaceStore.getState().refresh();
       }
     },
@@ -388,7 +388,7 @@ const StickyNoteShell: FC = () => {
     if (!p) return;
     if (mode === 'create') {
       await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
-      await fetchConversations();
+      await fetchConversations({ immediate: true });
       navigate('/chat');
       pushToast('success', t('sticky.workspaceDropAddOk'));
       return;
@@ -448,7 +448,7 @@ const StickyNoteShell: FC = () => {
 
   const onPickWorkspace = async (folderPath: string) => {
     await setWorkspace(folderPath);
-    await fetchConversations();
+    await fetchConversations({ immediate: true });
     navigate('/chat');
   };
 

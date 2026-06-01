@@ -152,6 +152,16 @@ export function registerClawFlowIPC(config?: ClawFlowEngineConfig): void {
       return { conversations: [], error: msg };
     }
   });
+  ipcMain.handle('engine:getMemoryDiagnostics', async (event) => {
+    const root = workspaceRootOrUndefined(resolveWorkspaceRootForWebContents(event.sender));
+    try {
+      return { ok: true as const, report: getGlobalClawFlowEngine().collectMemoryDiagnostics(root) };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[engine:getMemoryDiagnostics]', msg);
+      return { ok: false as const, error: msg };
+    }
+  });
   ipcMain.handle(
     'engine:estimateNextRequestContext',
     async (

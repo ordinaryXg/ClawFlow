@@ -222,7 +222,7 @@ const ChatPage: FC = () => {
   );
 
   useEffect(() => {
-    void fetchConversations();
+    void fetchConversations({ immediate: true });
   }, [fetchConversations, activeWorkspacePath]);
 
   // 自动下拉：只有当用户在底部附近时才跟随输出，避免用户上翻阅读时被强制拉回。
@@ -245,6 +245,13 @@ const ChatPage: FC = () => {
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
+    const streaming = Boolean(streamingActivity?.trim() || streamingThinking?.trim());
+    const el = scrollRef.current;
+    // 流式输出时用 instant 滚动，避免 smooth 动画叠加导致渲染进程 CPU 持续偏高
+    if (streaming && el) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, streamingActivity, streamingThinking]);
 

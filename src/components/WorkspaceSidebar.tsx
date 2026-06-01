@@ -71,7 +71,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
   }>({ open: false, path: null, mode: 'create' });
 
   useEffect(() => {
-    void fetchConversations();
+    void fetchConversations({ immediate: true });
   }, [fetchConversations, activeWorkspacePath]);
 
   const loadScheduleTriggers = useScheduleTriggerStore((s) => s.load);
@@ -238,7 +238,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
       if (res && typeof res === 'object' && 'ok' in res && res.ok === true) {
         toast?.success?.(t('workspace.resetCacheOkTitle'), t('workspace.resetCacheOkBody'));
         await refreshWorkspace();
-        await fetchConversations();
+        await fetchConversations({ immediate: true });
         navigate('/chat');
         return;
       }
@@ -256,7 +256,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
     if (!p) return;
     if (mode === 'create') {
       await commitNewWorkspace(p, tools, gitRemoteUrl?.trim() ? { gitRemoteUrl: gitRemoteUrl.trim() } : undefined);
-      await fetchConversations();
+      await fetchConversations({ immediate: true });
       navigate('/chat');
       return;
     }
@@ -290,7 +290,7 @@ const WorkspaceSidebar: FC<Props> = ({ sidebarWidthPx, trailingBorder }) => {
       t('chat.removedWorkspaceTitle'),
       res.deletedFromDisk ? t('chat.removedWorkspaceDeletedDisk') : t('chat.removedWorkspaceKeptDisk')
     );
-    void fetchConversations();
+    void fetchConversations({ immediate: true });
   };
 
   return (

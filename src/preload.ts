@@ -9,6 +9,9 @@ export interface IElectronAPI {
   // 内置引擎
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) => Promise<any>;
   engineGetConversations: () => Promise<any>;
+  engineGetMemoryDiagnostics: () => Promise<
+    { ok: true; report: Record<string, unknown> } | { ok: false; error: string }
+  >;
   engineUpsertConversation: (conversation: any) => Promise<{ success: boolean }>;
   engineDeleteConversation: (conversationId: string) => Promise<{ success: boolean }>;
   engineGatewayStart: (params?: { port?: number }) => Promise<{ success: boolean }>;
@@ -560,6 +563,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineSendMessage: (params: { conversationId: string; userText: string; mode?: 'ask' | 'plan' | 'multitask'; modelId?: string }) =>
     ipcRenderer.invoke('engine:sendMessage', params),
   engineGetConversations: () => ipcRenderer.invoke('engine:getConversations'),
+  engineGetMemoryDiagnostics: () => ipcRenderer.invoke('engine:getMemoryDiagnostics'),
   engineDeleteConversation: (conversationId: string) => ipcRenderer.invoke('engine:deleteConversation', conversationId),
   engineUpsertConversation: (conversation: any) => ipcRenderer.invoke('engine:upsertConversation', conversation),
   engineGatewayStart: (params?: { port?: number }) => ipcRenderer.invoke('engineGateway:start', params ?? {}),

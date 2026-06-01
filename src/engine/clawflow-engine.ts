@@ -10,8 +10,11 @@ import { mergeCompletionReasoning } from '../utils/split-reasoning-from-content'
 import { createStreamReasoningPhaseEmitter } from '../utils/reasoning-stream-phase-emitter';
 import { truncateToolResultText } from '../utils/tool-result-truncate';
 import { SessionStore, StoredConversation, StoredMessage } from './session-store';
-import { broadcastChatConversationsDirty } from '../messaging/chat-broadcast';
-import { refreshHermesMemoryIndexBestEffort } from './hermes-memory-index-hooks';
+import {
+  flushConversationsPersistedSideEffects,
+  scheduleConversationsPersistedSideEffects,
+} from './persist-notify-coalescer';
+import { collectMemoryDiagnostics, type MemoryDiagnosticsReport } from './memory-diagnostics';
 import { ProviderRouter } from './provider-router';
 import { DeepSeekProvider } from './providers/deepseek';
 import { OpenAIProvider } from './providers/openai';
@@ -216,6 +219,9 @@ export interface ClawFlowEngine {
       }
     | { ok: false; error: string }
   >;
+
+  /** 主进程内存与磁盘会话/Hermes 体量采样（排查卡顿用） */
+  collectMemoryDiagnostics(workspaceRoot?: string): MemoryDiagnosticsReport;
 }
 
 class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
@@ -241,18 +247,13 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
     return s;
   }
 
-  /** 会话落盘后广播，便于侧栏「未读汇总」等从磁盘重算 */
+  /** 会话落盘后广播 + Hermes 增量同步（合并工具循环内的多次落盘，避免 CPU 飙升） */
   private notifyConversationsPersisted(store: SessionStore): void {
-    try {
-      broadcastChatConversationsDirty({ workspaceRoot: store.resolvedWorkspaceRoot() });
-    } catch {
-      /* ignore */
-    }
-    try {
-      refreshHermesMemoryIndexBestEffort(store.resolvedWorkspaceRoot());
-    } catch {
-      /* ignore */
-    }
+    scheduleConversationsPersistedSideEffects(store.resolvedWorkspaceRoot());
+  }
+
+  private flushConversationsPersisted(store: SessionStore): void {
+    flushConversationsPersistedSideEffects(store.resolvedWorkspaceRoot());
   }
 
   resolveToolApproval(approvalId: string, approved: boolean): void {
@@ -354,6 +355,15 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       this.config.workspaceRoot = pending;
       this.store = this.getSessionStore(pending);
     }
+  }
+
+  collectMemoryDiagnostics(workspaceRoot?: string): MemoryDiagnosticsReport {
+    const eff = this.resolveListConversationsRoot(workspaceRoot) ?? this.config.workspaceRoot;
+    const store = this.getSessionStore(eff);
+    return collectMemoryDiagnostics({
+      workspaceRoot: eff,
+      sessionCacheLoaded: store.hasMemoryCache(),
+    });
   }
 
   private resolveListConversationsRoot(workspaceRoot?: string): string | null {
@@ -1015,6 +1025,7 @@ class ClawFlowEngineImpl extends EventEmitter implements ClawFlowEngine {
       params.assistantMessageMeta,
       params.assistantMessageChannel
     );
+    this.flushConversationsPersisted(store);
     return { message: reply };
   }
 
