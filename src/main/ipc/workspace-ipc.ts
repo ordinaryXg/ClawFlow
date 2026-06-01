@@ -559,10 +559,15 @@ export function registerWorkspaceIPC(): void {
   );
 
   ipcMain.handle('knowledge:ingestFile', async (event, relativePath: string) => {
-    const root = requireWorkspaceRootForWebContents(event.sender);
-    const res = await ingestWorkspaceFileToKnowledge(root, String(relativePath ?? ''));
-    if (res.ok) broadcastWorkspaceFilesUpdated(root);
-    return res;
+    try {
+      const root = requireWorkspaceRootForWebContents(event.sender);
+      const res = await ingestWorkspaceFileToKnowledge(root, String(relativePath ?? ''));
+      if (res.ok) broadcastWorkspaceFilesUpdated(root);
+      return res;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false as const, error: msg };
+    }
   });
 
   ipcMain.handle('hermes:getEmbeddingPrefs', async () => {

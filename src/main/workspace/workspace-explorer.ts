@@ -201,6 +201,27 @@ function isPathUnderOrEqualDir(absChild: string, absParent: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+/**
+ * 将用户输入（相对或绝对路径）规范为工作区内的 POSIX 相对路径。
+ * 绝对路径仅在工作区根之下时接受；否则抛出 `Path escapes workspace`。
+ */
+export function normalizeUserWorkspaceRelativePath(workspaceRoot: string, rawInput: string): string {
+  const root = path.resolve(String(workspaceRoot ?? '').trim());
+  const trimmed = String(rawInput ?? '').trim();
+  if (!trimmed) return '';
+
+  if (path.isAbsolute(trimmed)) {
+    const abs = path.resolve(trimmed);
+    const rel = path.relative(root, abs);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+      throw new Error('Path escapes workspace');
+    }
+    return rel.split(path.sep).join('/');
+  }
+
+  return trimmed.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
 export function resolvePathInsideWorkspace(workspaceRoot: string, relativePath: string): string {
   const root = path.resolve(workspaceRoot);
   const parts = String(relativePath || '')

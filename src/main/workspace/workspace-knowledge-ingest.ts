@@ -13,7 +13,7 @@ import {
   previewExcelBuffer,
   previewPdfBuffer,
 } from './workspace-office-preview';
-import { resolvePathInsideWorkspace } from './workspace-explorer';
+import { normalizeUserWorkspaceRelativePath, resolvePathInsideWorkspace } from './workspace-explorer';
 import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
 
 export function knowledgeIngestDirAbs(workspaceRoot: string): string {
@@ -34,13 +34,22 @@ export async function ingestWorkspaceFileToKnowledge(
   relativePath: string
 ): Promise<{ ok: true; ingestRelPath: string; sourceRelPath: string } | { ok: false; error: string }> {
   const root = path.resolve(workspaceRoot);
-  const rel = String(relativePath ?? '')
-    .trim()
-    .replace(/\\/g, '/')
-    .replace(/^\/+/, '');
+  let rel: string;
+  try {
+    rel = normalizeUserWorkspaceRelativePath(root, relativePath);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
   if (!rel) return { ok: false, error: 'missing path' };
 
-  const abs = resolvePathInsideWorkspace(root, rel);
+  let abs: string;
+  try {
+    abs = resolvePathInsideWorkspace(root, rel);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
   let st: fs.Stats;
   try {
     st = await fs.promises.stat(abs);
