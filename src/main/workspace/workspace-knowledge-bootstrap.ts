@@ -7,7 +7,7 @@ import * as path from 'path';
 import { buildWorkspaceMemoryNoteTemplate } from '../../shared/workspace-memory-frontmatter';
 import { WORKSPACE_AGENT_KNOWLEDGE_REL, workspaceAgentKnowledgeDirAbs } from './workspace-agent-layout';
 import { rebuildKnowledgeManifest } from './workspace-knowledge-manifest';
-import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
+import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes/hermes-memory-index-hooks';
 
 const README = `# 工作区知识库（${WORKSPACE_AGENT_KNOWLEDGE_REL}）
 

@@ -1,6 +1,6 @@
 /** 系统子 Agent 单次运行请求/结果。 */
 
-import type { ToolApprovalNeededPayload } from '../../engine/clawflow-engine';
+import type { ToolApprovalNeededPayload } from '../../engine/core/clawflow-engine';
 
 export type SubAgentRunRequest = {
   workspaceRoot: string;

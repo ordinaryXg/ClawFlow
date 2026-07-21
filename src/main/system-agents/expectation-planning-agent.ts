@@ -2,11 +2,11 @@
  * 预期规划 Agent：M3/M4 发送主对话前的任务编排（Plan + JSON，不写入会话存储）。
  */
 
-import type { ProviderRouter } from '../../engine/provider-router';
+import type { ProviderRouter } from '../../engine/core/provider-router';
 import type { ModelProvider } from '../../engine/providers/provider';
 import type { ChatCompletionRequest, ModeConfig } from '../../engine/providers/types';
-import { buildModeConfig } from '../../engine/mode-policy';
-import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import { buildModeConfig } from '../../engine/mode/mode-policy';
+import { resolveModelIdForInteractionMode } from '../../engine/mode/mode-defaults';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import {
   buildExpectationPlanningUserMessage,

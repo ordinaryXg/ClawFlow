@@ -1,6 +1,6 @@
 import { BrowserWindow, WebContents } from 'electron';
 import * as path from 'path';
-import { getActiveWorkspaceRoot } from '../engine/active-workspace-root';
+import { getActiveWorkspaceRoot } from '../engine/core/active-workspace-root';
 import { stickySatellitePathByWindowId } from './sticky-satellite-windows';
 import { getMainShellLastWorkspacePath } from './shell/main-shell-workspace';
 import * as workspaceService from './workspace/workspace-service';

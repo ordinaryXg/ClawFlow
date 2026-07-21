@@ -14,7 +14,7 @@ import {
   WORKSPACE_OFFICE_PREVIEW_MAX_BYTES,
 } from './workspace-office-preview';
 import { clawflowDir } from './workspace-service';
-import { getBetterSqliteCtor } from '../../engine/hermes-memory-db';
+import { getBetterSqliteCtor } from '../../engine/hermes/hermes-memory-db';
 
 const TEXT_PREVIEW_MAX = 256 * 1024;
 const FILE_HARD_MAX = 1024 * 1024;

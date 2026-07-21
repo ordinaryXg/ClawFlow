@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { evolutionBackupsDirAbs } from '../workspace/workspace-evolution-layout';
 import { workspaceRoleAgentDirAbs, workspaceSkillsDirAbs } from '../workspace/workspace-agent-layout';
-import { snapshotHermesMemoryDocuments } from '../../engine/hermes-memory-store';
+import { snapshotHermesMemoryDocuments } from '../../engine/hermes/hermes-memory-store';
 
 export type EvolutionDiffKind = 'added' | 'modified' | 'deleted';
 

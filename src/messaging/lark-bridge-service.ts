@@ -11,8 +11,8 @@ import {
   type FeishuReceiveIdType,
 } from '../main/prefs/messaging-prefs';
 import * as workspaceService from '../main/workspace/workspace-service';
-import { getGlobalClawFlowEngine } from '../engine/clawflow-engine';
-import { SessionStore } from '../engine/session-store';
+import { getGlobalClawFlowEngine } from '../engine/core/clawflow-engine';
+import { SessionStore } from '../engine/session/session-store';
 import { formatAssistantReplyForFeishu } from './feishu-outbound-text';
 import { broadcastChatConversationsDirty } from './chat-broadcast';
 import { extractInboundFromEventConsumeLine } from './feishu-inbound-parse';

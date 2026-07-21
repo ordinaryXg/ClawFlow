@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { BrowserWindow } from 'electron';
-import { getGlobalClawFlowEngine } from '../../engine/clawflow-engine';
+import { getGlobalClawFlowEngine } from '../../engine/core/clawflow-engine';
 import {
   resolveWorkspaceRootForWebContents,
   workspaceRootOrUndefined,

@@ -166,7 +166,11 @@ const MemorySettingsPanel: FC = () => {
       setLastRebuild({ indexed: res.indexed, pruned: res.pruned });
       (window as any).__cf_toast?.success?.(
         t('settings.savedTitle'),
-        t('settings.memory.rebuildOk', { indexed: res.indexed, pruned: res.pruned })
+        t('settings.memory.rebuildOk', {
+          indexed: res.indexed,
+          pruned: res.pruned,
+          embedded: res.embedded ?? 0,
+        })
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

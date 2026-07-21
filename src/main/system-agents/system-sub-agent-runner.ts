@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
-import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from '../../engine/clawflow-engine';
+import { getGlobalClawFlowEngine, type ToolApprovalNeededPayload } from '../../engine/core/clawflow-engine';
 import { buildSystemSubAgentRoleSystemContent } from './system-agent-role-bootstrap';
 import { readSystemSubAgentSlots, writeSystemSubAgentSlots } from './system-agent-service';
 import {

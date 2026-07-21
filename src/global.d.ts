@@ -450,11 +450,25 @@ export interface IElectronAPI {
           snippet: string;
           rank: number;
         }>;
+        hybridUsed?: boolean;
+      }
+    | { ok: false; error: string }
+  >;
+  memoryFtsGetIndexStatus: () => Promise<
+    | {
+        ok: true;
+        status: {
+          enabled: boolean;
+          sqliteVec: boolean;
+          docCount: number;
+          vectorCount: number;
+          hybridReady: boolean;
+        };
       }
     | { ok: false; error: string }
   >;
   memoryFtsRebuild: () => Promise<
-    { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
+    { ok: true; indexed: number; pruned: number; embedded?: number } | { ok: false; error: string }
   >;
   knowledgeListManifest: (opts?: { refresh?: boolean }) => Promise<
     | {

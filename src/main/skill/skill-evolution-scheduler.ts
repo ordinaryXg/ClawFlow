@@ -4,13 +4,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { StoredMessage } from '../../engine/session-store';
-import { SessionStore } from '../../engine/session-store';
+import type { StoredMessage } from '../../engine/session/session-store';
+import { SessionStore } from '../../engine/session/session-store';
 import { readWorkspaceToolManifest } from '../workspace/workspace-service';
 import { applySuccessfulEvolutionRewards, readSkillEvolutionState, writeSkillEvolutionState } from './skill-evolution-state';
 import { releaseSystemSubAgentSlot } from '../system-agents/system-sub-agent-runner';
 import { SKILL_AGENT_SLOT_ID, computeSkillEvolutionSpacing } from '../../shared/skill-agent-constants';
-import { buildHermesMemoryExcerpt } from '../../engine/hermes-memory-store';
+import { buildHermesMemoryExcerpt } from '../../engine/hermes/hermes-memory-store';
 import { appendWorkspaceChangeLog } from '../workspace/workspace-change-log';
 import {
   evolutionToolsGate,

@@ -2,7 +2,7 @@
  * 将进化管线输出写入主会话消息列表，供聊天窗口合并展示。
  */
 import { randomUUID } from 'crypto';
-import { SessionStore, type StoredMessage } from '../../engine/session-store';
+import { SessionStore, type StoredMessage } from '../../engine/session/session-store';
 import {
   broadcastChatConversationsDirty,
   broadcastChatEvolutionUpdate,

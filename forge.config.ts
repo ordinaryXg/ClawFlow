@@ -90,7 +90,9 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
-      port: 9001,
+      // 避开 Windows 常占用段（本机 9000/9001 被 svchost 绑定）
+      port: 13001,
+      loggerPort: 13020,
       // 允许 renderer 连接本机 GatewayDaemon（ws/http），否则浏览器 WebSocket 会被 CSP 拦截
       devContentSecurityPolicy:
         "default-src 'self' 'unsafe-inline' data:; " +

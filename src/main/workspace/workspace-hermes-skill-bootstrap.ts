@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
+import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes/hermes-memory-index-hooks';
 import { syncWorkspaceSkillManifest } from './workspace-skill-manifest';
 import { SKILL_CREATOR_PACKAGE_VERSION, SKILL_CREATOR_TEMPLATE_FILES } from './skill-creator-template-bundle';
 import { workspaceSkillsDirAbs } from './workspace-agent-layout';

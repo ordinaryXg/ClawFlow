@@ -18,6 +18,14 @@ type MemoryHit = {
   snippet: string;
 };
 
+type IndexStatus = {
+  enabled: boolean;
+  sqliteVec: boolean;
+  docCount: number;
+  vectorCount: number;
+  hybridReady: boolean;
+};
+
 type Props = {
   workspacePath: string | null;
 };
@@ -31,6 +39,8 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hits, setHits] = useState<MemoryHit[]>([]);
+  const [searchMode, setSearchMode] = useState<'hybrid' | 'fts' | null>(null);
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [createBusy, setCreateBusy] = useState(false);
   const [rebuildBusy, setRebuildBusy] = useState(false);
@@ -80,6 +90,40 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
     void loadManifest(true);
   }, [loadManifest]);
 
+  const loadIndexStatus = useCallback(async () => {
+    if (!workspacePath?.trim()) {
+      setIndexStatus(null);
+      return;
+    }
+    try {
+      const res = await window.electronAPI?.memoryFtsGetIndexStatus?.();
+      if (res?.ok && res.status) setIndexStatus(res.status);
+    } catch {
+      setIndexStatus(null);
+    }
+  }, [workspacePath]);
+
+  useEffect(() => {
+    void loadIndexStatus();
+  }, [loadIndexStatus]);
+
+  const indexStatusLine = useMemo(() => {
+    if (!indexStatus) return t('chat.workspaceHub.kbHybridOff');
+    if (indexStatus.hybridReady) {
+      return t('chat.workspaceHub.kbHybridReady', {
+        vectorCount: indexStatus.vectorCount,
+        docCount: indexStatus.docCount,
+      });
+    }
+    if (indexStatus.enabled) {
+      return t('chat.workspaceHub.kbHybridPending', {
+        vectorCount: indexStatus.vectorCount,
+        docCount: indexStatus.docCount,
+      });
+    }
+    return t('chat.workspaceHub.kbHybridOff');
+  }, [indexStatus, t]);
+
   const onSearch = async () => {
     const q = searchQuery.trim();
     if (!q) return;
@@ -89,6 +133,7 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
     }
     setSearchBusy(true);
     setSearchError(null);
+    setSearchMode(null);
     try {
       const res = await window.electronAPI?.memoryFtsSearch?.({ query: q, limit: 16 });
       if (!res?.ok) {
@@ -97,6 +142,7 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
         return;
       }
       setHits((res.hits ?? []) as MemoryHit[]);
+      setSearchMode(res.hybridUsed ? 'hybrid' : 'fts');
     } catch (e: unknown) {
       setHits([]);
       setSearchError(e instanceof Error ? e.message : String(e));
@@ -165,9 +211,14 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
       }
       (window as unknown as { __cf_toast?: { success?: (a: string, b?: string) => void } }).__cf_toast?.success?.(
         t('chat.workspaceHub.kbRebuildOk'),
-        t('chat.workspaceHub.kbRebuildOkBody', { indexed: res.indexed, pruned: res.pruned })
+        t('chat.workspaceHub.kbRebuildOkBody', {
+          indexed: res.indexed,
+          pruned: res.pruned,
+          embedded: res.embedded ?? 0,
+        })
       );
       await loadManifest(true);
+      await loadIndexStatus();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       (window as unknown as { __cf_toast?: { error?: (a: string, b?: string) => void } }).__cf_toast?.error?.(
@@ -195,6 +246,7 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
       <div className="cf-hubPage__toolbar">
         <HubToolbarHeader title={t('chat.workspaceHub.kbTitle')} hint={t('chat.workspaceHub.kbHint')} noWs={noWs} />
         <p className="cf-sub cf-hubKbStatusLine">{t('chat.workspaceHub.kbStatusLine')}</p>
+        <p className="cf-sub cf-hubKbStatusLine">{indexStatusLine}</p>
       </div>
       <div className="cf-hubPage__scroll">
         <div className="cf-hubCard">
@@ -231,6 +283,13 @@ const KnowledgeBaseHubPanel: FC<Props> = ({ workspacePath }) => {
             </button>
           </div>
           {searchError ? <div className="cf-hubKbError">{searchError}</div> : null}
+          {searchMode ? (
+            <p className="cf-sub" style={{ marginTop: 8 }}>
+              {searchMode === 'hybrid'
+                ? t('chat.workspaceHub.kbSearchHybrid')
+                : t('chat.workspaceHub.kbSearchFtsOnly')}
+            </p>
+          ) : null}
           {hits.length > 0 ? (
             <ul className="cf-hubKbHitList">
               {hits.map((h) => (

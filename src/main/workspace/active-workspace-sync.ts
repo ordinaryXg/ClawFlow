@@ -3,8 +3,8 @@
  */
 import { app } from 'electron';
 import * as path from 'path';
-import { setActiveWorkspaceRoot } from '../../engine/active-workspace-root';
-import { syncClawFlowEngineWorkspaceRoot } from '../../engine/clawflow-engine';
+import { setActiveWorkspaceRoot } from '../../engine/core/active-workspace-root';
+import { syncClawFlowEngineWorkspaceRoot } from '../../engine/core/clawflow-engine';
 import * as workspaceService from './workspace-service';
 import { setWorkspaceFilesWatchRoot } from './workspace-files-watcher';
 

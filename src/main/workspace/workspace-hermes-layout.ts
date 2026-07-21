@@ -4,7 +4,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { workspaceAgentRootAbs } from './workspace-agent-layout';
-import { seedHermesMemoryReadmeIfEmpty } from '../../engine/hermes-memory-store';
+import { seedHermesMemoryReadmeIfEmpty } from '../../engine/hermes/hermes-memory-store';
 
 export const WORKSPACE_HERMES_REL = '.agent/.hermes';
 export const WORKSPACE_HERMES_INDEX_REL = '.agent/.hermes/index';
@@ -30,7 +30,7 @@ export function getHermesMemoryDbPath(workspaceRoot: string): string {
 
 export function isHermesNotesWorkspaceRel(rel: string): boolean {
   try {
-    const { isHermesMemoryRel } = require('../../engine/hermes-memory-store') as typeof import('../../engine/hermes-memory-store');
+    const { isHermesMemoryRel } = require('../../engine/hermes/hermes-memory-store') as typeof import('../../engine/hermes/hermes-memory-store');
     return isHermesMemoryRel(rel);
   } catch {
     return false;

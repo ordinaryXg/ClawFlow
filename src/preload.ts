@@ -483,11 +483,25 @@ export interface IElectronAPI {
           snippet: string;
           rank: number;
         }>;
+        hybridUsed?: boolean;
+      }
+    | { ok: false; error: string }
+  >;
+  memoryFtsGetIndexStatus: () => Promise<
+    | {
+        ok: true;
+        status: {
+          enabled: boolean;
+          sqliteVec: boolean;
+          docCount: number;
+          vectorCount: number;
+          hybridReady: boolean;
+        };
       }
     | { ok: false; error: string }
   >;
   memoryFtsRebuild: () => Promise<
-    { ok: true; indexed: number; pruned: number } | { ok: false; error: string }
+    { ok: true; indexed: number; pruned: number; embedded?: number } | { ok: false; error: string }
   >;
   knowledgeListManifest: (opts?: { refresh?: boolean }) => Promise<
     | {
@@ -823,6 +837,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('workspace:appendChangeLog', payload),
   memoryFtsSearch: (params: { query: string; limit?: number; skillName?: string }) =>
     ipcRenderer.invoke('memoryFts:search', params),
+  memoryFtsGetIndexStatus: () => ipcRenderer.invoke('memoryFts:getIndexStatus'),
   memoryFtsRebuild: () => ipcRenderer.invoke('memoryFts:rebuild'),
   knowledgeListManifest: (opts?: { refresh?: boolean }) => ipcRenderer.invoke('knowledge:listManifest', opts ?? {}),
   knowledgeCreateNote: (params?: { title?: string; subdir?: 'notes' | 'docs' }) =>

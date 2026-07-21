@@ -1,4 +1,4 @@
-import type { StoredMessage } from '../../engine/session-store';
+import type { StoredMessage } from '../../engine/session/session-store';
 import { classifyEvolutionOutcomeMarkdown, isEvolutionCountedUserMessage, lastRoundCountsTowardEvolution } from './skill-evolution-scheduler';
 
 function u(content: string, channel?: string): StoredMessage {

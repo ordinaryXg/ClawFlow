@@ -3,7 +3,7 @@
  */
 
 import * as path from 'path';
-import { SessionStore, type StoredConversation, type StoredMessage } from '../../engine/session-store';
+import { SessionStore, type StoredConversation, type StoredMessage } from '../../engine/session/session-store';
 
 export type WorkspaceUnreadSummary = {
   workspaceRoot: string;

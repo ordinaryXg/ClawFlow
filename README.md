@@ -2,6 +2,15 @@
 
 Electron + React 桌面应用：工作区 Agent、Hermes 技能与记忆、飞书等集成。
 
+## 文档
+
+完整产品/功能/架构文档见 **[docs/README.md](./docs/README.md)**：
+
+- [功能总览与实现进度](./docs/features/README.md) — 每个独立功能一份文档
+- [代码架构](./docs/engineering/architecture.md)
+- [产品原型](./docs/product/ux-prototype.md)
+- [文档规范](./docs/conventions.md)
+
 ## 仓库指南（协作者与 AI）
 
 主进程集中注册大量 IPC，渲染进程为聊天 / 工作区 / 技能等 SPA。
@@ -77,7 +86,7 @@ src/
 
 新功能应只扩展 Gateway WS 协议；`engine:sendMessage` 保留作兼容，不新增并行行为。
 
-工具注册：`engine/tool-runtime-core.ts`（`ToolRuntime` 类）+ `tool-runtime-default-tools.ts`（`createDefaultToolRuntime`）。
+工具注册：`engine/tool-runtime/tool-runtime-core.ts`（`ToolRuntime` 类）+ `engine/tool-runtime/default-tools/`（`createDefaultToolRuntime`）。
 
 ## 渲染层
 

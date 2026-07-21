@@ -22,7 +22,7 @@ import {
   resolveContextTokenLimit,
 } from '../../utils/context-saturation';
 import { formatUtf8Bytes } from '../../utils/format-bytes';
-import { normalizeToProviderRepresentative, pickGroupedCatalogModelId } from '../../engine/chat-model-catalog';
+import { normalizeToProviderRepresentative, pickGroupedCatalogModelId } from '../../engine/mode/chat-model-catalog';
 import {
   OUTBOUND_MERGE_WINDOW_PREFS_EVENT,
   refreshOutboundMergeWindowMsFromEngine,

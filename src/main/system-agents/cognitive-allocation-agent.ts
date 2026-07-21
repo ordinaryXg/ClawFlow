@@ -3,18 +3,18 @@
  * 角色提示词见应用缓存 `system/.subagent-roles/cognitive-allocation/`（AGENTS.md + SOUL.md + TOOLS.md）。
  */
 
-import type { ProviderRouter } from '../../engine/provider-router';
+import type { ProviderRouter } from '../../engine/core/provider-router';
 import type { ModelProvider } from '../../engine/providers/provider';
 import type { ChatCompletionRequest, ModeConfig } from '../../engine/providers/types';
-import { buildModeConfig } from '../../engine/mode-policy';
-import { resolveModelIdForInteractionMode } from '../../engine/mode-defaults';
+import { buildModeConfig } from '../../engine/mode/mode-policy';
+import { resolveModelIdForInteractionMode } from '../../engine/mode/mode-defaults';
 import { mergeCompletionReasoning } from '../../utils/split-reasoning-from-content';
 import {
   buildConversationModeClassifierUserMessage,
   heuristicConversationModeClassification,
   parseClassificationResponse,
   type ConversationModeClassification,
-} from '../../engine/conversation-mode-classifier';
+} from '../../engine/mode/conversation-mode-classifier';
 import { buildSystemSubAgentRoleSystemContent } from './system-agent-role-bootstrap';
 import { COGNITIVE_ALLOCATION_AGENT_SLOT_ID } from '../../shared/system-agent-constants';
 import type { SystemAgentSettings } from '../../shared/system-agent-settings';

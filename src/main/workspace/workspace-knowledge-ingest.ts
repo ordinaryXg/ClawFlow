@@ -14,7 +14,7 @@ import {
   previewPdfBuffer,
 } from './workspace-office-preview';
 import { normalizeUserWorkspaceRelativePath, resolvePathInsideWorkspace } from './workspace-explorer';
-import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes-memory-index-hooks';
+import { refreshHermesMemoryIndexBestEffort } from '../../engine/hermes/hermes-memory-index-hooks';
 
 export function knowledgeIngestDirAbs(workspaceRoot: string): string {
   return path.join(clawflowDir(workspaceRoot), 'knowledge-ingest');

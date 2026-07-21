@@ -22,8 +22,8 @@ import {
 } from '../workspace/active-workspace-sync';
 import { broadcastWorkspaceFilesUpdated } from '../workspace/workspace-files-broadcast';
 import { rescheduleAllScheduleTriggers } from '../scheduling/schedule-triggers-scheduler';
-import { evictClawFlowSessionStore } from '../../engine/clawflow-engine';
-import { rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes-memory-db';
+import { evictClawFlowSessionStore } from '../../engine/core/clawflow-engine';
+import { getHermesMemoryVectorIndexStatus, rebuildHermesSkillFtsIndex, searchHermesMemory } from '../../engine/hermes/hermes-memory-db';
 import { listKnowledgeManifestEntries, rebuildKnowledgeManifest } from '../workspace/workspace-knowledge-manifest';
 import { createKnowledgeNote } from '../workspace/workspace-knowledge-bootstrap';
 import { ingestWorkspaceFileToKnowledge } from '../workspace/workspace-knowledge-ingest';
@@ -518,16 +518,22 @@ export function registerWorkspaceIPC(): void {
         skillName: params?.skillName != null ? String(params.skillName).trim() || undefined : undefined,
       });
       if (!res.ok) return { ok: false as const, error: res.error };
-      return { ok: true as const, hits: res.hits };
+      return { ok: true as const, hits: res.hits, hybridUsed: res.hybridUsed };
     }
   );
+
+  ipcMain.handle('memoryFts:getIndexStatus', async (event) => {
+    const root = resolveWorkspaceRootForWebContents(event.sender);
+    if (!root) return { ok: false as const, error: 'no_workspace' };
+    return { ok: true as const, status: getHermesMemoryVectorIndexStatus(root) };
+  });
 
   ipcMain.handle('memoryFts:rebuild', async (event) => {
     const root = resolveWorkspaceRootForWebContents(event.sender);
     if (!root) return { ok: false as const, error: 'no_workspace' };
     const res = await rebuildHermesSkillFtsIndex(root);
     if (!res.ok) return { ok: false as const, error: res.error };
-    return { ok: true as const, indexed: res.indexed, pruned: res.pruned };
+    return { ok: true as const, indexed: res.indexed, pruned: res.pruned, embedded: res.embedded ?? 0 };
   });
 
   ipcMain.handle('knowledge:listManifest', async (event, opts?: { refresh?: boolean }) => {
